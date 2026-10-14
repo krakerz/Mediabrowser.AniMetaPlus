@@ -24,6 +24,9 @@ public class AniListExternalId : IExternalId
     public ExternalIdMediaType? Type => null;
 
     /// <inheritdoc />
+    public string? UrlFormatString => "https://anilist.co/anime/{0}";
+
+    /// <inheritdoc />
     public bool Supports(IHasProviderIds item) => item is Series || item is Movie;
 }
 

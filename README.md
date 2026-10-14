@@ -12,7 +12,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 
 ## Features
 
-- Works on Emby Server 4.10+ and Jellyfin 12.x (separate DLL for each)
+- Works on Emby Server 4.10+ and Jellyfin 10.11 (separate DLL for each); releases before 2.0.0 were for Jellyfin 12
 - Sources: AniDB (needs your own client name; off until set), AniList (no key), MyAnimeList (official API with a client id, or Jikan), plus the server's installed TheTVDB and TheMovieDb providers, asked by AniMeta+ itself even when unticked in the library
 - Source order per kind of data: titles, overview, dates & studios, genres & tags, rating, cast & staff, episodes, poster, fanart, banner, logo
 - Genres/tags, rating (vote-weighted) and cast are combined across sources; the rest comes from the first source that has it
@@ -56,7 +56,7 @@ If you installed it by hand before, delete that `AniMetaPlus_*` plugin folder fi
 
 By hand instead:
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.6.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_2.0.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`
@@ -70,7 +70,7 @@ Then, either way:
 
 ## Building from source
 
-Prerequisites: the .NET SDK 10. The .NET 8 targeting pack is restored automatically.
+Prerequisites: the .NET SDK 10. The .NET 8 (Emby) and .NET 9 (Jellyfin) targeting packs are restored automatically.
 
 ```
 dotnet build AniMetaPlus.slnx -c Release
@@ -79,7 +79,7 @@ dotnet build AniMetaPlus.slnx -c Release
 Outputs (LiteDB is merged into each DLL):
 
 - `src/AniMetaPlus.Emby/bin/Release/net8.0/merged/AniMetaPlus.dll`
-- `src/AniMetaPlus.Jellyfin/bin/Release/net10.0/merged/AniMetaPlus.dll`
+- `src/AniMetaPlus.Jellyfin/bin/Release/net9.0/merged/AniMetaPlus.dll`
 
 Tests (need the ASP.NET Core 10 runtime):
 
