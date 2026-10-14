@@ -31,10 +31,11 @@ public enum AnimeDefaultGenreType
 public partial class PluginConfiguration : BasePluginConfiguration
 {
     /// <summary>
-    /// The shortest cache window AniDB metadata may be reused for. AniDB permits few requests
-    /// per IP per day, and a shorter window would get a library of any size banned mid-scan.
+    /// The shortest cache window AniDB metadata may be reused for. AniDB asks clients not to
+    /// fetch the same anime more than once a day; three days keeps a library's scans well
+    /// clear of that, and scans stay paced by <see cref="AniDbShowsPerRun"/> besides.
     /// </summary>
-    public const int MinimumCacheAgeDays = 7;
+    public const int MinimumCacheAgeDays = 3;
 
     /// <summary>
     /// The shortest gap between two AniDB requests. AniDB bans a client that sends them
@@ -48,9 +49,11 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public const int DefaultMinimumTagWeight = 400;
 
-    private int _maxCacheAge = MinimumCacheAgeDays;
+    private int _maxCacheAge = 7;
 
     private int _requestIntervalMs = MinimumRequestIntervalMs;
+
+    private int _aniDbShowsPerRun = 25;
 
     private string _tagBlacklist = string.Empty;
 
@@ -178,6 +181,18 @@ public partial class PluginConfiguration : BasePluginConfiguration
     {
         get => Math.Max(_requestIntervalMs, MinimumRequestIntervalMs);
         set => _requestIntervalMs = value;
+    }
+
+    /// <summary>
+    /// Gets or sets how many shows one run of the scan task, and of the queue task, may send to
+    /// AniDB for a new answer. Shows identified from local data, or whose answer is cached, do
+    /// not count: they cost AniDB nothing. Pacing a large library over many runs is what keeps a
+    /// first scan, or the catch-up after a ban, from earning a ban of its own.
+    /// </summary>
+    public int AniDbShowsPerRun
+    {
+        get => Math.Max(_aniDbShowsPerRun, 1);
+        set => _aniDbShowsPerRun = value;
     }
 
     /// <summary>

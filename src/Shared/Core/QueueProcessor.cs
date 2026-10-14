@@ -45,11 +45,15 @@ public static class QueueProcessor
         var refresher = HostServices.Refresher;
         var db = AniMetaDb.Current;
         var budget = MaxRefreshesPerRun;
+
+        // Items going back to AniDB once it answers again are paced like the library scan: the
+        // catch-up after a ban is exactly the burst that earns the next one.
+        var aniDbBudget = Plugin.Instance.Configuration.AniDbShowsPerRun;
         var refreshed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        bool Refresh(string path, bool replaceAll)
+        bool Refresh(string path, bool replaceAll, bool toAniDb = false)
         {
-            if (budget <= 0 || refresher == null || string.IsNullOrEmpty(path))
+            if (budget <= 0 || (toAniDb && aniDbBudget <= 0) || refresher == null || string.IsNullOrEmpty(path))
             {
                 return false;
             }
@@ -63,6 +67,10 @@ public static class QueueProcessor
             if (refresher.Refresh(path, replaceAll))
             {
                 budget--;
+                if (toAniDb)
+                {
+                    aniDbBudget--;
+                }
 
                 return true;
             }
@@ -81,7 +89,7 @@ public static class QueueProcessor
                 continue;
             }
 
-            if (Refresh(waiting.ItemPath, false))
+            if (Refresh(waiting.ItemPath, false, waiting.Source == SourceIds.AniDb))
             {
                 db.Waiting.Delete(waiting.Id);
                 resumed++;
@@ -111,7 +119,7 @@ public static class QueueProcessor
             var mode = configuration.GetSource(provenance.PreferredSource).Mode;
             if (mode is FallbackMode.SwitchUpgrade or FallbackMode.Pause || (mode == FallbackMode.SwitchReview && !db.Reviews.Exists(r => r.Id == provenance.Id)))
             {
-                if (Refresh(provenance.ItemPath, false))
+                if (Refresh(provenance.ItemPath, false, provenance.PreferredSource == SourceIds.AniDb))
                 {
                     upgraded++;
                 }

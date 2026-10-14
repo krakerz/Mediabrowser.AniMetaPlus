@@ -373,6 +373,7 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampMinTagWeight').value = config.MinimumTagWeight;
         view.querySelector('#ampTagBlacklist').value = config.TagBlacklist || '';
         view.querySelector('#ampRequestInterval').value = config.RequestIntervalMs;
+        view.querySelector('#ampAniDbPerRun').value = config.AniDbShowsPerRun || 25;
         view.querySelector('#ampMaxCacheAge').value = config.MaxCacheAge;
         view.querySelector('#ampImportGenres').checked = !!config.ImportGenres;
         view.querySelector('#ampImportTags').checked = !!config.ImportTags;
@@ -535,7 +536,8 @@ function aniMetaPlusPage(host) {
                 config.MinimumTagWeight = parseInt(view.querySelector('#ampMinTagWeight').value, 10) || 0;
                 config.TagBlacklist = view.querySelector('#ampTagBlacklist').value;
                 config.RequestIntervalMs = Math.max(2500, parseInt(view.querySelector('#ampRequestInterval').value, 10) || 2500);
-                config.MaxCacheAge = Math.max(7, parseInt(view.querySelector('#ampMaxCacheAge').value, 10) || 7);
+                config.AniDbShowsPerRun = Math.max(1, parseInt(view.querySelector('#ampAniDbPerRun').value, 10) || 25);
+                config.MaxCacheAge = Math.max(3, parseInt(view.querySelector('#ampMaxCacheAge').value, 10) || 7);
                 config.ImportGenres = view.querySelector('#ampImportGenres').checked;
                 config.ImportTags = view.querySelector('#ampImportTags').checked;
                 config.ImportCommunityRating = view.querySelector('#ampImportRating').checked;

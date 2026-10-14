@@ -26,7 +26,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Titles dump downloaded by a scheduled task or by hand, never more than once every 3 days
 - Cached AniDB, AniList and MyAnimeList answers listed with the date scans reuse them until, and reset per source
 - Request gaps per source can be raised but never set below their defaults
-- Library scan task that identifies from local data first and refreshes a batch at a time, newest first
+- Library scan task that identifies the whole library from local data each run; only shows that need a new AniDB answer are paced, a set number per run (25 by default)
 - Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Review, Blocks, General and Import/Export tabs; recent request log
 - Export/Import of mappings, review decisions and pinned blocks (never keys), usable across Emby and Jellyfin
 - Adult content is always included; AniDB's restricted flag still sets the parental rating
@@ -56,7 +56,7 @@ If you installed it by hand before, delete that `AniMetaPlus_*` plugin folder fi
 
 By hand instead:
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.3.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.4.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`
@@ -126,7 +126,7 @@ When a source is blocked, the mode decides what happens to the items it would fi
 
 - **Refresh AniDB titles dump**: every 12 hours; downloads only when due.
 - **Process AniMeta+ queues**: every 30 minutes.
-- **Identify anime libraries**: hourly, 25 items per run.
+- **Identify anime libraries**: hourly; identifies the whole library from local data and sends at most the set number of shows (25 by default) to AniDB per run.
 
 ### Season mapping and overrides
 
@@ -137,7 +137,7 @@ When a source is blocked, the mode decides what happens to the items it would fi
 ### Data locations
 
 - `<plugins>/configurations/AniMetaPlus/`: database `animetaplus.db`, `decisions.json` (a copy of your review decisions) and the titles dump.
-- Cached AniDB answers: the server cache folder, under `anidb/`.
+- `<plugins>/configurations/AniMetaPlus/cache/`: what AniDB, AniList and MyAnimeList answered (one entry per anime), cast details and the mapping files. Kept out of the server's cache folder so that the server's cache cleanup does not delete them; reset them per source on the General tab.
 
 ## FAQ
 

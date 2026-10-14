@@ -86,7 +86,10 @@ public sealed class HostLibrary : IHostRefresher
             IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],
 #endif
             Recursive = true,
-            DtoOptions = new DtoOptions(false)
+
+            // Every field, provider ids included: Jellyfin leaves them out of a bare query, and
+            // the scan would then take every identified show for an unidentified one.
+            DtoOptions = new DtoOptions(true)
         });
 
         var result = new List<ScanItem>();

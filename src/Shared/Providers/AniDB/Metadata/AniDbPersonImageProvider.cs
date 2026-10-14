@@ -44,7 +44,7 @@ public class AniDbPersonImageProvider(IApplicationPaths paths) : IRemoteImagePro
     {
         var infos = new List<RemoteImageInfo>();
 
-        var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, item.Name);
+        var person = AniDbSeriesProvider.GetPersonInfo(Core.PluginPaths.CacheFolder(_paths), item.Name);
         if (person != null && !string.IsNullOrEmpty(person.Image))
         {
             infos.Add(new RemoteImageInfo
