@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-14
+
+### Added
+- Jellyfin plugin repository, so AniMeta+ installs and updates from Jellyfin's plugin catalog
+- Plugin banner in Emby's and Jellyfin's plugin lists
+
 ## [1.1.0] — 2026-10-14
 
 ### Added

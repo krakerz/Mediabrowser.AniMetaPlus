@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+    <EmbeddedResource Include="..\..\packaging\banner.jpg" LogicalName="AniMetaPlus.banner.jpg" />
   </ItemGroup>
 
   <ItemGroup>

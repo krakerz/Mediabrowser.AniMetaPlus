@@ -1,0 +1,39 @@
+name: Jellyfin repository
+# Rebuilds the Jellyfin plugin repository whenever a release is published, onto the orphan
+# "manifest" branch so that main and dev never get a bot commit. Jellyfin reads
+# https://raw.githubusercontent.com/<owner>/<repo>/manifest/manifest.json
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: jellyfin-repository
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      # The script and plugin details come from the default branch, not the release's tag.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Build manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          scripts/jellyfin-manifest.py "${{ github.repository }}" \
+            "https://raw.githubusercontent.com/${{ github.repository }}/manifest/banner.jpg" out/manifest.json
+          cp packaging/banner.jpg out/
+
+      - name: Publish to the manifest branch
+        working-directory: out
+        run: |
+          git init -q -b manifest
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json banner.jpg
+          git commit -q -m "Jellyfin repository manifest"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" manifest

@@ -46,11 +46,23 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 
 ### Jellyfin
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.1.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
+From the plugin repository (updates show up in Jellyfin by themselves):
+
+1. Open Dashboard > Plugins > Manage Repositories, add a repository named `AniMeta+` with the URL `https://raw.githubusercontent.com/krakerz/Mediabrowser.AniMetaPlus/manifest/manifest.json`, and save.
+2. Find AniMeta+ in the plugin catalog under Anime, install it, and restart Jellyfin.
+
+If you installed it by hand before, delete that `AniMetaPlus_*` plugin folder first, so that Jellyfin does not load two copies.
+
+By hand instead:
+
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.2.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`
 2. Restart Jellyfin.
+
+Then, either way:
+
 3. Open Dashboard > Plugins > AniMeta+ and go to **Clients & keys**. Enter your own AniDB client name and press **Test**. AniDB is not asked anything until a client name is set.
 4. In the anime library's settings, tick AniMeta+ as metadata and image fetcher for Series, Season and Episode, and untick TheTVDB and TheMovieDb. AniMeta+ still uses them itself where its source order lists them, so the TheTVDB plugin must stay installed for TVDB data.
 5. Optional: put `anime-titles.dat.gz` in `<plugins>/configurations/AniMetaPlus/` as for Emby.
