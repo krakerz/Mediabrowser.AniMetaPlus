@@ -57,6 +57,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(info);
+        RefreshScope.Enter(info);
 
         SourceState aniDbState;
         MetadataResult<Episode> aniDb;

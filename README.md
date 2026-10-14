@@ -24,6 +24,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Images from every source in the image order, labelled by source in the image picker, such as "AniMeta+ (AniList)"
 - AniDB, MyAnimeList and AniList links on shows and movies
 - Titles dump downloaded by a scheduled task or by hand, never more than once every 3 days
+- Cached AniDB, AniList and MyAnimeList answers listed with the date scans reuse them until, and reset per source
 - Request gaps per source can be raised but never set below their defaults
 - Library scan task that identifies from local data first and refreshes a batch at a time, newest first
 - Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Review, Blocks, General and Import/Export tabs; recent request log
@@ -55,7 +56,7 @@ If you installed it by hand before, delete that `AniMetaPlus_*` plugin folder fi
 
 By hand instead:
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.2.1.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.3.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`
@@ -154,6 +155,9 @@ Open the Unmatched tab and pick a suggestion, search by title, or paste an AniDB
 
 **What happens when a source is down?**
 It is blocked and retried with backoff. Depending on the mode, the item either pauses or falls back to the next source.
+
+**A refresh does not change anything.**
+Scans and scheduled tasks reuse fetched answers for the days set under General. A refresh you start by hand asks AniList and MyAnimeList again, and AniDB once its answer is a day old: AniDB asks clients not to fetch the same anime more often.
 
 **Can I move my mappings between Emby and Jellyfin?**
 Yes, using Import/Export.

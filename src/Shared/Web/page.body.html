@@ -161,7 +161,7 @@
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampTagBlacklist" type="text" label="Tags never imported (comma separated):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampRequestInterval" type="number" min="2500" step="100" label="AniDB request interval (ms, at least 2500):" /></div>
-    <div class="inputContainer"><input is="emby-input" id="ampMaxCacheAge" type="number" min="7" label="Days a fetched answer is reused (at least 7):" /></div>
+    <div class="inputContainer"><input is="emby-input" id="ampMaxCacheAge" type="number" min="7" label="Days scans and tasks reuse a fetched answer (at least 7; a refresh by hand asks again sooner):" /></div>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportGenres" /><span>Import genres</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportTags" /><span>Import tags</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportRating" /><span>Import community rating</span></label>
@@ -169,6 +169,11 @@
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampPublishIds" /><span>Write the mapped TVDB and TMDB ids onto shows</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampUseAniBridge" /><span>Use the AniBridge mappings</span></label>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveGeneral"><span>Save</span></button></div>
+
+    <h3>Cached answers</h3>
+    <p class="amp-small">What AniDB, AniList and MyAnimeList answered is kept and reused, so that a refresh does not ask them again. <b>Reset</b> makes the next refresh or scan ask that source again; the old copies stay on disk, and AniDB's stay in use while AniDB is banned.</p>
+    <div class="amp-scroll"><table class="amp-table" id="ampCache"></table></div>
+    <div class="amp-result" id="ampCacheResult"></div>
 </div>
 
 <!-- Import/Export -->

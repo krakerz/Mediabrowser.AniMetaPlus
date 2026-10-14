@@ -34,6 +34,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     /// <inheritdoc />
     public async Task<MetadataResult<Season>> GetMetadata(SeasonInfo info, CancellationToken cancellationToken)
     {
+        RefreshScope.Enter(info);
         var result = new MetadataResult<Season>
         {
             HasMetadata = true,

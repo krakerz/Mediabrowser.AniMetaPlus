@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AniMetaPlus.Core;
 using AniMetaPlus.Data;
 using AniMetaPlus.Titles;
 using MediaBrowser.Controller.Entities;
@@ -136,7 +137,7 @@ public static class SourceFetcher
         return SourceOutcome.Unconfigured;
     }
 
-    private static TimeSpan MaxAge => TimeSpan.FromDays(Plugin.Instance.Configuration.MaxCacheAge);
+    private static TimeSpan MaxAge => RefreshScope.SourceMaxAge;
 
     private static async Task<SourceOutcome> FetchAniList(FetchContext context, CancellationToken cancellationToken)
     {
