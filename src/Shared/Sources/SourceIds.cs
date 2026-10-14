@@ -91,31 +91,45 @@ public static class SourceDefaults
     /// <returns>A new settings object.</returns>
     public static SourceSetting Setting(string id)
     {
-        var setting = new SourceSetting { Id = id };
+        var setting = new SourceSetting { Id = id, RequestIntervalMs = MinimumRequestIntervalMs(id) };
 
         if (string.Equals(id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
         {
             // AniDB's own data is the most accurate there is, so a stand-in for it is shown
             // to the owner before it is kept.
             setting.Mode = FallbackMode.SwitchReview;
-            setting.RequestIntervalMs = PluginConfiguration.MinimumRequestIntervalMs;
-        }
-        else if (string.Equals(id, SourceIds.AniList, StringComparison.OrdinalIgnoreCase))
-        {
-            // AniList allows 90 a minute, and has run at a degraded 30 for long stretches.
-            setting.RequestIntervalMs = 2100;
-        }
-        else if (string.Equals(id, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
-        {
-            // Jikan, the slower of the two ways in, allows 60 a minute and 3 a second.
-            setting.RequestIntervalMs = 1100;
-        }
-        else
-        {
-            setting.RequestIntervalMs = 250;
         }
 
         return setting;
+    }
+
+    /// <summary>
+    /// Gets the shortest gap a source's requests may be set to, in milliseconds. Hard floors,
+    /// so that no setting can send a source more than it tolerates.
+    /// </summary>
+    /// <param name="id">The source id.</param>
+    /// <returns>The floor.</returns>
+    public static int MinimumRequestIntervalMs(string? id)
+    {
+        if (string.Equals(id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
+        {
+            return PluginConfiguration.MinimumRequestIntervalMs;
+        }
+
+        if (string.Equals(id, SourceIds.AniList, StringComparison.OrdinalIgnoreCase))
+        {
+            // AniList allows 90 a minute, and has run at a degraded 30 for long stretches.
+            return 2100;
+        }
+
+        if (string.Equals(id, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
+        {
+            // Jikan, the slower of the two ways in, allows 60 a minute and 3 a second.
+            return 1100;
+        }
+
+        // The server's own TVDB and TMDB providers.
+        return 250;
     }
 
     /// <summary>

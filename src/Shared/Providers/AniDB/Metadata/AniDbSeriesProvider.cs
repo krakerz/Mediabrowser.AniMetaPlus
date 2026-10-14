@@ -23,6 +23,7 @@ using AniMetaPlus.Core;
 using AniMetaPlus.Sources;
 using AniMetaPlus.Providers.AniDB.Identity;
 using AniMetaPlus.Providers.AniDB.Mapping;
+using AniMetaPlus.Titles;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -38,6 +39,9 @@ namespace AniMetaPlus.Providers.AniDB.Metadata;
 /// The AniDB metadata provider for series.
 /// </summary>
 public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
+#if EMBY
+    , IHasSupportedExternalIdentifiers
+#endif
 {
     /// <summary>
     /// The rating given to anime AniDB flags as adult, so that Jellyfin's parental controls
@@ -49,14 +53,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// Where AniDB serves the pictures it names in a picture attribute.
     /// </summary>
     private const string PersonImageBaseUrl = "https://cdn.anidb.net/images/main/";
-
-    /// <summary>
-    /// How many name matches an identify offers. Each one costs an AniDB request, paced
-    /// seconds apart, and the fuzzy search behind them returns every show whose name merely
-    /// begins alike - 78 of them for "Oshi no Ko". Without a cap one identify of a commonly
-    /// named show spends dozens of requests and is enough on its own to earn a ban.
-    /// </summary>
-    private const int MaxSearchResults = 10;
 
     // AniDB bans a client that sends requests closer together than 2500ms, which is the
     // floor the configured interval is clamped to. A bucket limiter cannot express this: it
@@ -721,33 +717,97 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
     }
 
+#if EMBY
+    /// <summary>
+    /// Makes Emby's identify dialog offer the id fields <see cref="IdentifyIds"/> allows.
+    /// </summary>
+    /// <returns>The external id keys an identify can be given.</returns>
+    public string[] GetSupportedExternalIdentifiers() => IdentifyIds();
+
+#endif
+    /// <summary>
+    /// The ids an identify can be given: AniDB's while a client name is set and not rejected,
+    /// MyAnimeList's while that source is on, has a client id or Jikan, and its key was not
+    /// refused, AniList's (which needs no key) while that source is on. An id is useless
+    /// otherwise, as the refresh after a pick could not use it.
+    /// </summary>
+    /// <returns>The id keys.</returns>
+    internal static string[] IdentifyIds()
+    {
+        var ids = new List<string>(3);
+
+        if (IsClientUsable())
+        {
+            ids.Add(ProviderNames.AniDb);
+        }
+
+        if (Plugin.Instance?.Configuration is { } configuration)
+        {
+            if (configuration.GetSource(SourceIds.Mal).Enabled
+                && MalClient.IsConfigured
+                && BlockStore.SourceBlock(SourceIds.Mal) is not { Reason: BlockReason.AuthFailed })
+            {
+                ids.Add(SourceIds.Mal);
+            }
+
+            if (configuration.GetSource(SourceIds.AniList).Enabled)
+            {
+                ids.Add(SourceIds.AniList);
+            }
+        }
+
+        return [.. ids];
+    }
+
     /// <inheritdoc />
+    /// <remarks>
+    /// Answers from the titles dump and mappings alone, with a "Local only" poster: an identify that asked
+    /// AniDB for every guess would spend one paced request each, enough to earn a ban. The
+    /// refresh after a pick fetches the real metadata and images.
+    /// </remarks>
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
     {
         var results = new List<RemoteSearchResult>();
         var offered = new HashSet<string>(StringComparer.Ordinal);
-        var imageProvider = new AniDbImageProvider(_appPaths);
 
-        async Task Offer(string? id)
+        void Offer(string? id, string? title = null)
         {
             if (string.IsNullOrEmpty(id) || !offered.Add(id))
             {
                 return;
             }
 
-            var metadata = await GetMetadataForId(id, searchInfo, cancellationToken).ConfigureAwait(false);
-
-            if (metadata.HasMetadata)
+            var result = new RemoteSearchResult
             {
-                // Read from the document the line above has just cached, so this costs no
-                // request of its own.
-                var images = await imageProvider.GetImages(id, cancellationToken).ConfigureAwait(false);
-
-                results.Add(MetadataToRemoteSearchResult(metadata, images));
-            }
+                Name = title ?? TitlesDump.MainTitle(_appPaths, id) ?? "AniDB " + id,
+                ImageUrl = LocalOnlyImage.Url,
+                SearchProviderName = ProviderNames.Display
+            };
+            result.SetProviderId(ProviderNames.AniDb, id);
+            results.Add(result);
         }
 
-        await Offer(searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb)).ConfigureAwait(false);
+        var allowed = IdentifyIds();
+
+        if (allowed.Contains(ProviderNames.AniDb))
+        {
+            Offer(searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb));
+        }
+
+        // MyAnimeList and AniList ids are looked up in the mappings, never asked of the
+        // databases themselves.
+        foreach (var (key, prefix) in new[] { (SourceIds.Mal, "mal"), (SourceIds.AniList, "anilist") })
+        {
+            if (allowed.Contains(key))
+            {
+                Offer(await AniBridgeMappings.ResolveSeriesIdByLink(
+                    _appPaths,
+                    prefix,
+                    searchInfo.ProviderIds.GetValueOrDefault(key),
+                    Logger ?? (ILogger)NullLogger.Instance,
+                    cancellationToken).ConfigureAwait(false));
+            }
+        }
 
         // The mapping sources are the ones here that answer with a certainty rather than a
         // guess, so their answer goes first. They also settle the question the name cannot: they
@@ -761,41 +821,27 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             Logger ?? (ILogger)NullLogger.Instance,
             cancellationToken).ConfigureAwait(false);
 
-        await Offer(mapped?.AnimeId).ConfigureAwait(false);
+        Offer(mapped?.AnimeId);
 
         if (!string.IsNullOrEmpty(searchInfo.Name))
         {
-            foreach (var id in await Equals_check.XmlSearch(searchInfo.Name, MaxSearchResults, cancellationToken).ConfigureAwait(false))
+            foreach (var candidate in await Queues.Candidates(searchInfo.Name, cancellationToken).ConfigureAwait(false))
             {
-                await Offer(id).ConfigureAwait(false);
+                Offer(candidate.AnimeId, candidate.Title);
             }
         }
 
         return results;
     }
 
-    /// <summary>
-    /// Converts a metadata result into a remote search result.
-    /// </summary>
-    /// <param name="metadata">The metadata result.</param>
-    /// <param name="images">The available images.</param>
-    /// <returns>The remote search result.</returns>
-    public static RemoteSearchResult MetadataToRemoteSearchResult(MetadataResult<Series> metadata, IEnumerable<RemoteImageInfo> images)
-    {
-        return new RemoteSearchResult
-        {
-            Name = metadata.Item.Name,
-            ProductionYear = metadata.Item.PremiereDate?.Year,
-            PremiereDate = metadata.Item.PremiereDate,
-            ImageUrl = images.FirstOrDefault()?.Url,
-            ProviderIds = metadata.Item.ProviderIds,
-            SearchProviderName = ProviderNames.Display
-        };
-    }
-
     /// <inheritdoc />
     public async Task<HostImageResponse> GetImageResponse(string url, CancellationToken cancellationToken)
     {
+        if (LocalOnlyImage.Is(url))
+        {
+            return LocalOnlyImage.Response();
+        }
+
         await WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         return await Plugin.Instance.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
     }

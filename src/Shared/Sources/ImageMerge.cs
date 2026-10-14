@@ -130,6 +130,7 @@ public static class ImageMerge
                 // offers the rest further down when an image is chosen by hand.
                 foreach (var image in found)
                 {
+                    image.ProviderName = ProviderNames.ForImage(source);
                     image.CommunityRating = 10 - rank;
                     image.VoteCount = 1000 - rank;
                     images.Add(image);

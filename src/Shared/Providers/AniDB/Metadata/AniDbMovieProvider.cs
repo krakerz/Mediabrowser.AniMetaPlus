@@ -25,6 +25,9 @@ namespace AniMetaPlus.Providers.AniDB.Metadata;
 /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
 /// <param name="logger">Instance of the <see cref="ILogger{AniDbMovieProvider}"/> interface.</param>
 public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovieProvider> logger) : IRemoteMetadataProvider<Movie, MovieInfo>
+#if EMBY
+    , IHasSupportedExternalIdentifiers
+#endif
 {
     private readonly AniDbSeriesProvider _seriesProvider = new AniDbSeriesProvider(appPaths);
     private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
@@ -236,6 +239,14 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
             ids.Imdb);
     }
 
+#if EMBY
+    /// <summary>
+    /// Makes Emby's identify dialog offer the id fields the series provider allows.
+    /// </summary>
+    /// <returns>The external id keys an identify can be given.</returns>
+    public string[] GetSupportedExternalIdentifiers() => AniDbSeriesProvider.IdentifyIds();
+
+#endif
     /// <inheritdoc />
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
     {
@@ -245,6 +256,14 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
         if (animeId != null)
         {
             seriesInfo.ProviderIds.Add(ProviderNames.AniDb, animeId);
+        }
+
+        foreach (var key in new[] { SourceIds.Mal, SourceIds.AniList })
+        {
+            if (searchInfo.ProviderIds.GetValueOrDefault(key) is { } id)
+            {
+                seriesInfo.ProviderIds.Add(key, id);
+            }
         }
 
         seriesInfo.Name = searchInfo.Name;

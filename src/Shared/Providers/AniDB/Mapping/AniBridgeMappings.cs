@@ -173,6 +173,32 @@ internal static class AniBridgeMappings
     }
 
     /// <summary>
+    /// The AniDB entry a MyAnimeList or AniList entry is, from the mappings alone.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="prefix">The mappings' name for the database, "mal" or "anilist".</param>
+    /// <param name="id">The id in that database.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or <c>null</c> when the mappings link nothing to that id.</returns>
+    public static async Task<string?> ResolveSeriesIdByLink(
+        IApplicationPaths appPaths,
+        string prefix,
+        string? id,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(id) || !id.All(char.IsAsciiDigit))
+        {
+            return null;
+        }
+
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.AnimeIdByLink(prefix, id);
+    }
+
+    /// <summary>
     /// The AniDB entry a movie is, and which of its episodes holds it.
     /// </summary>
     /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>

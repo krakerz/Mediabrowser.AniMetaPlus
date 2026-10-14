@@ -152,7 +152,7 @@ function aniMetaPlusPage(host) {
                 + '<td><select data-field="Mode">' + modes.map(function (m) {
                     return '<option value="' + m + '"' + (m === mode ? ' selected' : '') + '>' + modeNames[m] + '</option>';
                 }).join('') + '</select></td>'
-                + '<td><input type="number" min="0" step="50" data-field="RequestIntervalMs" value="' + esc(s.RequestIntervalMs) + '" /></td>'
+                + '<td><input type="number" min="' + esc(s.MinimumRequestIntervalMs || 0) + '" step="50" data-field="RequestIntervalMs" title="At least ' + esc(s.MinimumRequestIntervalMs || 0) + ' ms" value="' + esc(s.RequestIntervalMs) + '" /></td>'
                 + '<td><input type="number" min="0" data-field="MaxPerHour" value="' + esc(s.MaxPerHour) + '" /></td>'
                 + '<td><input type="number" min="0" data-field="MaxPerDay" value="' + esc(s.MaxPerDay) + '" /></td>'
                 + '<td><input type="checkbox" data-field="IncludeInRating"' + (s.IncludeInRating ? ' checked' : '') + ' /></td>'
@@ -180,7 +180,7 @@ function aniMetaPlusPage(host) {
                     Id: row.getAttribute('data-source'),
                     Enabled: field('Enabled').checked,
                     Mode: field('Mode').value,
-                    RequestIntervalMs: parseInt(field('RequestIntervalMs').value, 10) || 0,
+                    RequestIntervalMs: Math.max(parseInt(field('RequestIntervalMs').min, 10) || 0, parseInt(field('RequestIntervalMs').value, 10) || 0),
                     MaxPerHour: parseInt(field('MaxPerHour').value, 10) || 0,
                     MaxPerDay: parseInt(field('MaxPerDay').value, 10) || 0,
                     IncludeInRating: field('IncludeInRating').checked,
@@ -475,7 +475,7 @@ function aniMetaPlusPage(host) {
             withConfig(view, function (config) {
                 config.TitlesDumpPath = view.querySelector('#ampTitlesPath').value.trim();
                 config.TitlesAutoRefresh = view.querySelector('#ampTitlesAuto').checked;
-                config.TitlesRefreshDays = Math.max(1, parseInt(view.querySelector('#ampTitlesDays').value, 10) || 7);
+                config.TitlesRefreshDays = Math.max(3, parseInt(view.querySelector('#ampTitlesDays').value, 10) || 7);
             });
         });
 

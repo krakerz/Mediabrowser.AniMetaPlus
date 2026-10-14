@@ -34,6 +34,7 @@ internal sealed class AniBridgeIndex
     private readonly IReadOnlyDictionary<string, string> _tmdbByAnimeId;
     private readonly IReadOnlyDictionary<AniDbAnimeListEpisode, IReadOnlyList<string>> _movieKeys;
     private readonly IReadOnlyDictionary<string, AniDbAnimeListEpisode> _soleMovieByAnimeId;
+    private IReadOnlyDictionary<string, string> _animeByLink = new Dictionary<string, string>();
 
     private AniBridgeIndex(
         IReadOnlyDictionary<string, AniBridgeEntry> byAnimeId,
@@ -101,6 +102,7 @@ internal sealed class AniBridgeIndex
         var seriesKeys = new Dictionary<string, string>(StringComparer.Ordinal);
         var tmdbCandidates = new Dictionary<string, List<SeasonClaim>>(StringComparer.Ordinal);
         var movies = new Dictionary<string, List<AniDbAnimeListEpisode>>(StringComparer.Ordinal);
+        var animeByLink = new Dictionary<string, string>(StringComparer.Ordinal);
         string? schemaVersion = null;
 
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
@@ -135,7 +137,7 @@ internal sealed class AniBridgeIndex
 
             if (TryReadScope(descriptor, out var animeId, out var kind))
             {
-                ReadTargets(ref reader, animeId, kind, spans, seriesKeys, tmdbCandidates, movies);
+                ReadTargets(ref reader, animeId, kind, spans, seriesKeys, tmdbCandidates, movies, animeByLink);
             }
             else
             {
@@ -152,7 +154,10 @@ internal sealed class AniBridgeIndex
                 SchemaMajorVersion);
         }
 
-        return Build(spans, seriesKeys, tmdbCandidates, movies, schemaVersion, cachedAtUtc, description, logger);
+        var index = Build(spans, seriesKeys, tmdbCandidates, movies, schemaVersion, cachedAtUtc, description, logger);
+        index._animeByLink = animeByLink;
+
+        return index;
     }
 
     /// <summary>
@@ -269,6 +274,16 @@ internal sealed class AniBridgeIndex
     /// <returns>The AniDB id, or <c>null</c> where the mappings place nothing against that id.</returns>
     public string? FirstSeasonByTmdb(string tmdbId)
         => _firstSeasonByTmdb.GetValueOrDefault(tmdbId);
+
+    /// <summary>
+    /// The AniDB entry a MyAnimeList or AniList entry is. All three keep one entry per season
+    /// or cour, so they line up one to one far more often than any does with TVDB.
+    /// </summary>
+    /// <param name="prefix">The mappings' name for the database, "mal" or "anilist".</param>
+    /// <param name="id">The id in that database.</param>
+    /// <returns>The AniDB id, or <c>null</c> where the mappings link nothing to that id.</returns>
+    public string? AnimeIdByLink(string prefix, string id)
+        => _animeByLink.GetValueOrDefault(prefix + ":" + id);
 
     /// <summary>
     /// The AniDB entry a movie is, and which of its episodes holds it.
@@ -593,7 +608,8 @@ internal sealed class AniBridgeIndex
         Dictionary<string, List<AniBridgeSpan>> spans,
         Dictionary<string, string> seriesKeys,
         Dictionary<string, List<SeasonClaim>> tmdbCandidates,
-        Dictionary<string, List<AniDbAnimeListEpisode>> movies)
+        Dictionary<string, List<AniDbAnimeListEpisode>> movies,
+        Dictionary<string, string> animeByLink)
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
@@ -602,6 +618,22 @@ internal sealed class AniBridgeIndex
 
         while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
+            // Only a regular entry's link is kept: the same id also turns up against the
+            // specials scope of the entry, which is not a show of its own.
+            if (reader.ValueSpan.StartsWith("mal:"u8) || reader.ValueSpan.StartsWith("anilist:"u8))
+            {
+                var link = reader.GetString()!;
+                if (kind == AniDbEpisodeKind.Regular && link[(link.IndexOf(':') + 1)..] is { Length: > 0 } linked && linked.All(char.IsAsciiDigit))
+                {
+                    animeByLink.TryAdd(link, animeId);
+                }
+
+                reader.Read();
+                reader.Skip();
+
+                continue;
+            }
+
             var isTvdb = reader.ValueSpan.StartsWith("tvdb_show:"u8);
 
             // A movie is keyed by its own id with whichever provider, and by no season: the
