@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using AniMetaPlus.Sources;
 using Microsoft.Extensions.Logging;
 
@@ -98,13 +99,17 @@ public static class QueueProcessor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrEmpty(provenance.PreferredSource) || BlockStore.SourceBlock(provenance.PreferredSource) != null)
+            if (string.IsNullOrEmpty(provenance.PreferredSource)
+                || BlockStore.SourceBlock(provenance.PreferredSource) != null
+                || (provenance.PreferredSource == SourceIds.AniDb && AniDbSeriesProvider.GetRemainingBanTime() > TimeSpan.Zero))
             {
                 continue;
             }
 
+            // A paused source stood in for only where the item had nothing, and replaces that
+            // stand-in like a switched one.
             var mode = configuration.GetSource(provenance.PreferredSource).Mode;
-            if (mode == FallbackMode.SwitchUpgrade || (mode == FallbackMode.SwitchReview && !db.Reviews.Exists(r => r.Id == provenance.Id)))
+            if (mode is FallbackMode.SwitchUpgrade or FallbackMode.Pause || (mode == FallbackMode.SwitchReview && !db.Reviews.Exists(r => r.Id == provenance.Id)))
             {
                 if (Refresh(provenance.ItemPath, false))
                 {
