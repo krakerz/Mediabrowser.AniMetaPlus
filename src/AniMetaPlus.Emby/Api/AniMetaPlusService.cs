@@ -187,6 +187,20 @@ public class GetRequests : IReturn<RequestLogRecord[]>
     public int Count { get; set; } = 100;
 }
 
+/// <summary>Describes what each source has cached.</summary>
+[Route("/AniMetaPlus/Cache", "GET")]
+public class GetCache : IReturn<CacheSourceStatus[]>
+{
+}
+
+/// <summary>Marks every cached answer of a source as expired.</summary>
+[Route("/AniMetaPlus/Cache/Expire", "POST")]
+public class ExpireCache : IReturn<CacheExpireResult>
+{
+    /// <summary>Gets or sets the source id.</summary>
+    public string Source { get; set; } = string.Empty;
+}
+
 /// <summary>Checks a source's client name or key.</summary>
 [Route("/AniMetaPlus/Clients/Test", "POST")]
 public class TestClient : IReturn<ClientTestResult>
@@ -338,6 +352,16 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public object Get(GetRequests request) => AniMetaApi.GetRequests(request.Count);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Get(GetCache request) => AnswerCache.Status();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(ExpireCache request) => AnswerCache.Expire(request.Source);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

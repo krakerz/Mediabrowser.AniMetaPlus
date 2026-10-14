@@ -346,6 +346,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
+        RefreshScope.Enter(info);
         var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
         var unidentifiedKey = ItemKeys.ForUnidentified("Series", info.Path, info.Name);
 
@@ -943,7 +944,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         return !fileInfo.Exists
             || fileInfo.Length == 0
-            || DateTime.UtcNow - fileInfo.LastWriteTimeUtc > TimeSpan.FromDays(Plugin.Instance.Configuration.MaxCacheAge);
+            || DateTime.UtcNow - fileInfo.LastWriteTimeUtc > RefreshScope.AniDbMaxAge;
     }
 
     /// <summary>

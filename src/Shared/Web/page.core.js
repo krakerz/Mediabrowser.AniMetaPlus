@@ -341,6 +341,32 @@ function aniMetaPlusPage(host) {
 
     // General
 
+    function span(minutes) {
+        return minutes >= 1440 ? (minutes / 1440) + (minutes === 1440 ? ' day' : ' days') : minutes + ' min';
+    }
+
+    function later(value, days) {
+        return value ? when(new Date(new Date(value).getTime() + days * 86400000)) : '';
+    }
+
+    function renderCache(view, sources) {
+        view.querySelector('#ampCache').innerHTML = '<tr><th>Source</th><th>Cached</th><th>Fetched</th><th>Scans reuse it until</th><th>A refresh by hand</th><th></th></tr>'
+            + sources.map(function (s) {
+                var fresh = s.Answers - s.Expired;
+                var until = !s.Answers ? '<span class="amp-muted">nothing cached</span>'
+                    : !fresh ? badge('all expired', 'amp-warn') + ' the next refresh or scan asks again'
+                    : (fresh === 1 ? esc(later(s.NewestUtc, s.ScanReuseDays))
+                        : 'newest until ' + esc(later(s.NewestUtc, s.ScanReuseDays)) + '<br/>oldest until ' + esc(later(s.OldestUtc, s.ScanReuseDays)))
+                        + (s.Expired ? '<br/>' + s.Expired + ' already expired' : '');
+                return '<tr><td>' + esc(s.Source) + '</td>'
+                    + '<td>' + s.Answers + (s.Answers === 1 ? ' answer' : ' answers') + '</td>'
+                    + '<td>' + (fresh ? esc(when(s.OldestUtc)) + (fresh > 1 ? ' to<br/>' + esc(when(s.NewestUtc)) : '') : '') + '</td>'
+                    + '<td>' + until + '</td>'
+                    + '<td class="amp-small">asks again once an answer is ' + span(s.ManualReuseMinutes) + ' old</td>'
+                    + '<td>' + (s.Answers ? '<button type="button" is="emby-button" class="raised" data-expire="' + esc(s.Source) + '">Reset</button>' : '') + '</td></tr>';
+            }).join('');
+    }
+
     function renderGeneral(view, config) {
         view.querySelector('#ampTitlePreference').value = enumName(config.TitlePreference, titlePreferences) || 'Localized';
         view.querySelector('#ampMaxGenres').value = config.MaxGenres;
@@ -367,7 +393,8 @@ function aniMetaPlusPage(host) {
             get('Unmatched', { IncludeIgnored: view.querySelector('#ampShowIgnored').checked }),
             get('Mappings'),
             get('Reviews', { PendingOnly: true }),
-            get('Blocks', { IncludeExpired: view.querySelector('#ampShowExpired').checked })
+            get('Blocks', { IncludeExpired: view.querySelector('#ampShowExpired').checked }),
+            get('Cache')
         ]).then(function (r) {
             var config = r[0];
             var overview = r[1];
@@ -379,6 +406,7 @@ function aniMetaPlusPage(host) {
             renderReviews(view, r[7]);
             renderBlocks(view, r[8]);
             renderGeneral(view, config);
+            renderCache(view, r[9]);
             host.hideLoading();
         }, fail);
     }
@@ -515,6 +543,25 @@ function aniMetaPlusPage(host) {
                 config.PublishMappedIds = view.querySelector('#ampPublishIds').checked;
                 config.UseAniBridgeMappings = view.querySelector('#ampUseAniBridge').checked;
             });
+        });
+
+        view.querySelector('#ampCache').addEventListener('click', function (e) {
+            var button = e.target.closest('[data-expire]');
+            if (!button) {
+                return;
+            }
+
+            var source = button.getAttribute('data-expire');
+
+            // Every cached AniDB answer becomes a request again, paced but many for a large library.
+            if (source === 'AniDB' && !window.confirm('Reset every cached AniDB answer? The next refresh or scan asks AniDB again for each anime, one request at a time, which can take hours for a large library.')) {
+                return;
+            }
+
+            post('Cache/Expire', { Source: source }).then(function (r) {
+                view.querySelector('#ampCacheResult').innerHTML = badge('reset', 'amp-ok') + ' ' + esc(r.Message);
+                loadAll(view);
+            }, fail);
         });
 
         view.querySelector('#ampExport').addEventListener('click', function () {

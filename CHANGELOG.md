@@ -4,6 +4,14 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-14
+
+### Added
+- General tab shows how many AniDB, AniList and MyAnimeList answers are cached and until when, with a Reset button per source
+
+### Fixed
+- A refresh started by hand asks AniList and MyAnimeList again, and AniDB once its answer is a day old, instead of reusing week-old answers
+
 ## [1.2.1] — 2026-10-14
 
 ### Fixed

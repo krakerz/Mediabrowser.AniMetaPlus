@@ -186,6 +186,27 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpGet("Requests")]
     public IReadOnlyList<RequestLogRecord> GetRequests([FromQuery] int count = 100) => AniMetaApi.GetRequests(count);
 
+    /// <summary>Describes what each source has cached.</summary>
+    /// <returns>One entry per source.</returns>
+    [HttpGet("Cache")]
+    public IReadOnlyList<CacheSourceStatus> GetCache() => AnswerCache.Status();
+
+    /// <summary>Marks every cached answer of a source as expired.</summary>
+    /// <param name="source">The source id.</param>
+    /// <returns>What happened.</returns>
+    [HttpPost("Cache/Expire")]
+    public ActionResult<CacheExpireResult> ExpireCache([FromQuery] string source)
+    {
+        try
+        {
+            return AnswerCache.Expire(source);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     /// <summary>Checks a source's client name or key.</summary>
     /// <param name="source">The source id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>

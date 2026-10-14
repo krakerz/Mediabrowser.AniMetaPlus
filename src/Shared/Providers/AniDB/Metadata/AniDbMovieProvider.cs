@@ -38,6 +38,7 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
     /// <inheritdoc />
     public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
+        RefreshScope.Enter(info);
         var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
         var unidentifiedKey = ItemKeys.ForUnidentified("Movie", info.Path, info.Name);
         MappedMovie? mapped = null;
