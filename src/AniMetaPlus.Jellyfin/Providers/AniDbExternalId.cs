@@ -24,6 +24,9 @@ public class AniDbExternalId : IExternalId
         => null;
 
     /// <inheritdoc />
+    public string? UrlFormatString => "https://anidb.net/anime/{0}";
+
+    /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
         => item is Series || item is Movie;
 }

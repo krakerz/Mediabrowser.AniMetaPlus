@@ -23,6 +23,9 @@ public class AniDbExternalSeasonId : IExternalId
         => ExternalIdMediaType.Season;
 
     /// <inheritdoc />
+    public string? UrlFormatString => "https://anidb.net/anime/{0}";
+
+    /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
         => item is Season;
 }

@@ -23,6 +23,9 @@ public class AniDbExternalEpisodeId : IExternalId
         => ExternalIdMediaType.Episode;
 
     /// <inheritdoc />
+    public string? UrlFormatString => "https://anidb.net/episode/{0}";
+
+    /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
         => item is Episode;
 }

@@ -4,6 +4,15 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-15
+
+### Changed
+- The Jellyfin build is for Jellyfin 10.11 instead of Jellyfin 12; Jellyfin 12 servers should stay on 1.6.0
+- The plugin repository lists each release with the Jellyfin version it was built for
+
+### Removed
+- Similar items on Jellyfin, which needs Jellyfin 12
+
 ## [1.6.0] — 2026-10-14
 
 ### Added

@@ -36,6 +36,17 @@ for key in ("name", "guid", "targetAbi", "owner", "overview", "category"):
 description = re.search(r"^description:\s*>\s*\n((?:[ \t]+.*\n?)+)", text, re.M)
 meta["description"] = " ".join(line.strip() for line in description.group(1).splitlines()).strip() if description else meta["overview"]
 
+def target_abi(tag):
+    # Each release names the Jellyfin it was built for in the build.yaml it was tagged with:
+    # 1.x targeted Jellyfin 12, later ones 10.11. Falls back to the current one.
+    try:
+        text = get(f"https://api.github.com/repos/{repo}/contents/build.yaml?ref={tag}", "application/vnd.github.raw").decode("utf-8")
+        match = re.search(r'^targetAbi:\s*"?(.*?)"?\s*$', text, re.M)
+        return match.group(1) if match else meta["targetAbi"]
+    except Exception:
+        return meta["targetAbi"]
+
+
 versions = []
 for release in json.loads(get(api)):
     if release["draft"] or release["prerelease"]:
@@ -51,7 +62,7 @@ for release in json.loads(get(api)):
     versions.append({
         "version": version,
         "changelog": changelog,
-        "targetAbi": meta["targetAbi"],
+        "targetAbi": target_abi(release["tag_name"]),
         "sourceUrl": asset["browser_download_url"],
         "checksum": checksum,
         "timestamp": release["published_at"],

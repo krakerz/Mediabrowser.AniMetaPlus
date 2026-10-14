@@ -17,6 +17,7 @@ jobs:
         with:
           dotnet-version: |
             8.0.x
+            9.0.x
             10.0.x
 
       - uses: actions/cache@v4
@@ -51,7 +52,7 @@ jobs:
           mkdir -p dist/emby/AniMetaPlus dist/jellyfin/AniMetaPlus
           cp src/AniMetaPlus.Emby/bin/Release/net8.0/merged/AniMetaPlus.dll dist/emby/AniMetaPlus/
           cp packaging/INSTALL-emby.txt dist/emby/AniMetaPlus/INSTALL.txt
-          cp src/AniMetaPlus.Jellyfin/bin/Release/net10.0/merged/AniMetaPlus.dll dist/jellyfin/AniMetaPlus/
+          cp src/AniMetaPlus.Jellyfin/bin/Release/net9.0/merged/AniMetaPlus.dll dist/jellyfin/AniMetaPlus/
           cp packaging/INSTALL-jellyfin.txt dist/jellyfin/AniMetaPlus/INSTALL.txt
           (cd dist/emby && zip -r "../AniMetaPlus-Emby-v$v.zip" AniMetaPlus)
           (cd dist/jellyfin && zip -r "../AniMetaPlus-Jellyfin-v$v.zip" AniMetaPlus)

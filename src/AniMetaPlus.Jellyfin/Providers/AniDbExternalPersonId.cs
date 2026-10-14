@@ -23,6 +23,9 @@ public class AniDbExternalPersonId : IExternalId
         => ExternalIdMediaType.Person;
 
     /// <inheritdoc />
+    public string? UrlFormatString => "https://anidb.net/creator/{0}";
+
+    /// <inheritdoc />
     public bool Supports(IHasProviderIds item)
         => item is Person;
 }
