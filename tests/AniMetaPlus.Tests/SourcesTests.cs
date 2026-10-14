@@ -251,6 +251,73 @@ public class SourcesTests
     }
 
     [Theory]
+    [InlineData(SourceIds.AniDb, 2500)]
+    [InlineData(SourceIds.AniList, 2100)]
+    [InlineData(SourceIds.Mal, 1100)]
+    [InlineData("thetvdb", 250)]
+    public void RequestGapNeverGoesBelowTheSourcesFloor(string id, int floor)
+    {
+        var setting = new SourceSetting { Id = id, RequestIntervalMs = 0 };
+        Assert.Equal(floor, setting.RequestIntervalMs);
+
+        setting.RequestIntervalMs = floor + 500;
+        Assert.Equal(floor + 500, setting.RequestIntervalMs);
+        Assert.Equal(floor, SourceDefaults.Setting(id).RequestIntervalMs);
+    }
+
+    [Theory]
+    [InlineData(0.2, "1 s")]
+    [InlineData(40, "40 s")]
+    [InlineData(120, "2 min")]
+    [InlineData(208.3, "3 min 29 s")]
+    public void WritesWaitsTheWayAPersonSaysThem(double seconds, string expected)
+        => Assert.Equal(expected, AniMetaApi.Duration(TimeSpan.FromSeconds(seconds)));
+
+    [Fact]
+    public void MapsMyAnimeListAndAniListIdsToTheirAniDbEntry()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """
+                {
+                  "$meta": { "schema_version": "3.0.0" },
+                  "anidb:11021:R": { "anilist:21222": { "1-4": "1-4" }, "mal:29575": { "1-4": "1-4" } },
+                  "anidb:11022:S": { "mal:40000": { "1": "1" } },
+                  "mal:29575": { "anidb:11021:R": { "1-4": "1-4" } }
+                }
+                """);
+
+            var index = AniMetaPlus.Providers.AniDB.Mapping.AniBridgeIndex.Parse(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, DateTime.UtcNow, "test");
+
+            Assert.Equal("11021", index.AnimeIdByLink("mal", "29575"));
+            Assert.Equal("11021", index.AnimeIdByLink("anilist", "21222"));
+            Assert.Null(index.AnimeIdByLink("mal", "40000"));
+            Assert.Null(index.AnimeIdByLink("mal", "21222"));
+            Assert.Null(index.AnimeIdByLink("mal", "1"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void TitlesRefreshIsAtLeastThreeDays()
+    {
+        Assert.Equal(3, new PluginConfiguration { TitlesRefreshDays = 1 }.TitlesRefreshDays);
+        Assert.Equal(10, new PluginConfiguration { TitlesRefreshDays = 10 }.TitlesRefreshDays);
+    }
+
+    [Fact]
+    public void FloorStaysOutOfTheConfigurationFile()
+    {
+        var xml = new StringWriter();
+        new XmlSerializer(typeof(SourceSetting)).Serialize(xml, new SourceSetting { Id = SourceIds.AniList });
+        Assert.DoesNotContain(nameof(SourceSetting.MinimumRequestIntervalMs), xml.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("Nyanbo! (Fall)", "Nyanbo!")]
     [InlineData("Show [BD 1080p] (Season 2)", "Show")]
     [InlineData("Ranma ½ (1989)", "Ranma ½ (1989)")]

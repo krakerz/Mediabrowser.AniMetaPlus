@@ -7,8 +7,8 @@
     .amp-table { width: 100%; border-collapse: collapse; margin: .6em 0 1em; font-size: .92em; }
     .amp-table th, .amp-table td { text-align: left; padding: .45em .5em; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
     .amp-table input[type=number] { width: 6em; }
-    .amp-table input[type=number], .amp-table select, .amp-row select, .amp-row input[type=text] { background: rgba(128,128,128,.12); color: inherit; border: 1px solid rgba(128,128,128,.45); border-radius: .25em; padding: .3em .4em; font: inherit; }
-    .amp-table select option, .amp-row select option { color: #000; }
+    .amp-table input[type=number], .amp-table select, .amp-row select:not(.emby-select), .amp-row input[type=text]:not(.emby-input) { background: rgba(128,128,128,.12); color: inherit; border: 1px solid rgba(128,128,128,.45); border-radius: .25em; padding: .3em .4em; font: inherit; }
+    .amp-table select option, .amp-row select:not(.emby-select) option { color: #000; }
     .amp-badge { display: inline-block; padding: .1em .5em; border-radius: 1em; font-size: .85em; background: rgba(128,128,128,.25); }
     .amp-ok { background: rgba(82,181,75,.3); }
     .amp-bad { background: rgba(204,51,51,.35); }
@@ -16,10 +16,10 @@
     .amp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(11em, 1fr)); gap: .8em; margin-bottom: 1.2em; }
     .amp-card { padding: .8em; border-radius: .4em; background: rgba(128,128,128,.12); }
     .amp-card b { display: block; font-size: 1.6em; }
-    .amp-row { display: flex; gap: .6em; align-items: flex-end; flex-wrap: wrap; }
-    .amp-row .inputContainer { flex: 1 1 14em; margin-bottom: .6em; }
-    .amp-secret { display: flex; align-items: flex-end; gap: .4em; }
-    .amp-secret .inputContainer { flex-grow: 1; }
+    .amp-row { display: flex; gap: .6em; align-items: flex-start; flex-wrap: wrap; }
+    .amp-row .inputContainer, .amp-row .selectContainer { flex: 1 1 14em; margin-bottom: .6em; }
+    .amp-secret { display: flex; align-items: flex-end; gap: .4em; margin-bottom: 1.2em; }
+    .amp-secret .inputContainer { flex-grow: 1; margin-bottom: 0; }
     .amp-small { font-size: .85em; opacity: .8; }
     .amp-actions button { margin: .1em .2em .1em 0; }
     .amp-muted { opacity: .6; }
@@ -63,11 +63,11 @@
 <div class="amp-tab" data-tab="sources">
     <p class="amp-small">Untick TheTVDB and TheMovieDb in the anime library's settings and tick only AniMeta+. They stay installed, and AniMeta+ asks them itself where they are listed below. A provider ticked below AniMeta+ in the library fills fields AniMeta+ left empty, with its own data.</p>
     <div class="amp-scroll"><table class="amp-table" id="ampSources"></table></div>
-    <p class="amp-small"><b>Pause</b>: the item keeps what it has and waits. <b>Switch</b>: the next source fills in, and is replaced once this one answers again. <b>Switch + review</b>: the next source fills in, and the replacement waits for your review. Bans are per IP address.</p>
+    <p class="amp-small"><b>Pause</b>: the item keeps what it has and waits. <b>Switch</b>: the next source fills in, and is replaced once this one answers again. <b>Switch + review</b>: the next source fills in, and the replacement waits for your review. Bans are per IP address. The gap between requests never goes below each source's default.</p>
     <h3>Source order</h3>
     <p class="amp-small">First listed is asked first. Genres, rating and cast combine every source listed. Ids: AniDB, AniList, MyAnimeList, TheTVDB, TheMovieDb.</p>
     <div id="ampPriorities"></div>
-    <button is="emby-button" type="button" class="raised button-submit" id="ampSaveSources"><span>Save</span></button>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveSources"><span>Save</span></button></div>
 </div>
 
 <!-- Clients & keys -->
@@ -100,17 +100,17 @@
 
     <h3>AniList</h3>
     <p class="amp-small">Needs no key.</p>
-    <button is="emby-button" type="button" class="raised" data-test="AniList"><span>Test</span></button>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" data-test="AniList"><span>Test</span></button></div>
     <div class="amp-result" data-result="AniList"></div>
 </div>
 
 <!-- Titles dump -->
 <div class="amp-tab" data-tab="titles">
-    <p class="amp-small">The AniDB titles dump is what anime are identified from. Only the scheduled task downloads it, and never more than once a day: AniDB bans a client that downloads it more often.</p>
+    <p class="amp-small">The AniDB titles dump is what anime are identified from. It is downloaded by the scheduled task or "Download now", and never more than once every 3 days, counted from the last attempt: AniDB bans a client that downloads it more than once a day.</p>
     <div id="ampTitlesStatus" class="amp-result"></div>
     <div class="inputContainer"><input is="emby-input" id="ampTitlesPath" type="text" label="Dump file (.dat.gz or .xml.gz; empty for the default):" /></div>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampTitlesAuto" /><span>Download a fresh dump on schedule</span></label>
-    <div class="inputContainer"><input is="emby-input" id="ampTitlesDays" type="number" min="1" label="Every how many days:" /></div>
+    <div class="inputContainer"><input is="emby-input" id="ampTitlesDays" type="number" min="3" label="Every how many days (at least 3):" /></div>
     <div class="amp-actions">
         <button is="emby-button" type="button" class="raised button-submit" id="ampSaveTitles"><span>Save</span></button>
         <button is="emby-button" type="button" class="raised" id="ampTitlesRefresh"><span>Download now</span></button>
@@ -141,11 +141,11 @@
     <div class="amp-scroll"><table class="amp-table" id="ampBlocks"></table></div>
     <h3>Block by hand</h3>
     <div class="amp-row">
-        <div class="inputContainer"><select is="emby-select" id="ampBlockSource" label="Source:"></select></div>
+        <div class="selectContainer"><select is="emby-select" id="ampBlockSource" label="Source:"></select></div>
         <div class="inputContainer"><input is="emby-input" id="ampBlockItem" type="text" label="Item key (e.g. anidb:23; empty for the whole source):" /></div>
         <div class="inputContainer"><input is="emby-input" id="ampBlockKind" type="text" label="Kind (empty for all):" /></div>
     </div>
-    <button is="emby-button" type="button" class="raised" id="ampAddBlock"><span>Block</span></button>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampAddBlock"><span>Block</span></button></div>
 </div>
 
 <!-- General -->
@@ -168,13 +168,13 @@
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampCastCharacters" /><span>List characters rather than voice actors</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampPublishIds" /><span>Write the mapped TVDB and TMDB ids onto shows</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampUseAniBridge" /><span>Use the AniBridge mappings</span></label>
-    <button is="emby-button" type="button" class="raised button-submit" id="ampSaveGeneral"><span>Save</span></button>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveGeneral"><span>Save</span></button></div>
 </div>
 
 <!-- Import/Export -->
 <div class="amp-tab" data-tab="backup">
     <p class="amp-small">Your mappings, review decisions and pinned blocks, as a file that works on Emby and Jellyfin alike. Keys and client names are never in it.</p>
-    <button is="emby-button" type="button" class="raised" id="ampExport"><span>Export</span></button>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampExport"><span>Export</span></button></div>
     <h3>Import</h3>
     <input type="file" id="ampImportFile" accept=".json,application/json" />
     <div class="amp-result" id="ampImportResult"></div>

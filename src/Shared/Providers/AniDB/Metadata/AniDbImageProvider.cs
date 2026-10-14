@@ -16,6 +16,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using AniMetaPlus.Core;
 using AniMetaPlus.Sources;
 
 namespace AniMetaPlus.Providers.AniDB.Metadata;
@@ -34,6 +35,13 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
     /// <inheritdoc />
     public async Task<HostImageResponse> GetImageResponse(string url, CancellationToken cancellationToken)
     {
+        // Emby fetches a search result's picture through whichever provider shares the
+        // result's provider name, which is this one rather than the series provider.
+        if (LocalOnlyImage.Is(url))
+        {
+            return LocalOnlyImage.Response();
+        }
+
         await AniDbSeriesProvider.WaitForImageSlot(cancellationToken).ConfigureAwait(false);
         return await Plugin.Instance.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
     }
@@ -108,7 +116,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
             {
                 list.Add(new RemoteImageInfo
                 {
-                    ProviderName = Name,
+                    ProviderName = ProviderNames.ForImage(SourceIds.AniDb),
                     Url = imageUrl
                 });
             }

@@ -46,10 +46,23 @@ public class SourceSetting
     /// </summary>
     public FallbackMode Mode { get; set; } = FallbackMode.SwitchUpgrade;
 
+    private int _requestIntervalMs;
+
     /// <summary>
-    /// Gets or sets the shortest gap between two requests to the source, in milliseconds.
+    /// Gets or sets the shortest gap between two requests to the source, in milliseconds. Never
+    /// below the source's floor, <see cref="SourceDefaults.MinimumRequestIntervalMs"/>.
     /// </summary>
-    public int RequestIntervalMs { get; set; }
+    public int RequestIntervalMs
+    {
+        get => Math.Max(_requestIntervalMs, SourceDefaults.MinimumRequestIntervalMs(Id));
+        set => _requestIntervalMs = value;
+    }
+
+    /// <summary>
+    /// Gets the floor of <see cref="RequestIntervalMs"/>, for the settings page. Read-only, so
+    /// it is not written into the configuration file.
+    /// </summary>
+    public int MinimumRequestIntervalMs => SourceDefaults.MinimumRequestIntervalMs(Id);
 
     /// <summary>
     /// Gets or sets how many requests the source may be sent per hour. Zero means no cap.
@@ -94,10 +107,10 @@ public class KindPriority
 public partial class PluginConfiguration
 {
     /// <summary>
-    /// The shortest interval the titles dump may be refreshed at. AniDB bans a client that
-    /// downloads it more than once a day.
+    /// The shortest interval the titles dump may be refreshed at, by hand or on schedule.
+    /// AniDB bans a client that downloads it more than once a day; three days leaves a wide margin.
     /// </summary>
-    public const int MinimumTitlesRefreshDays = 1;
+    public const int MinimumTitlesRefreshDays = 3;
 
     private int _titlesRefreshDays = 7;
     private string _aniDbClientName = string.Empty;

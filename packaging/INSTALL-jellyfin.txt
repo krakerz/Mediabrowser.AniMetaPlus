@@ -1,8 +1,9 @@
 AniMeta+ for Jellyfin (12.x)
 ============================
 
-1. Create the folder <jellyfin config>/plugins/AniMetaPlus_1.0.0.0/ and copy
-   AniMetaPlus.dll into it.
+1. Create the folder <jellyfin config>/plugins/AniMetaPlus_1.1.0.0/ and copy
+   AniMetaPlus.dll into it. When updating, replace the DLL in the AniMetaPlus_*
+   folder you already have instead of adding a second folder.
      Linux package:  /var/lib/jellyfin/plugins
      Docker:         /config/plugins
      Windows:        %ProgramData%\Jellyfin\Server\plugins
@@ -18,6 +19,6 @@ AniMeta+ for Jellyfin (12.x)
    TheTVDB plugin must be installed for TVDB data).
 5. Optional: put AniDB's anime-titles.dat.gz in
    <plugins>/configurations/AniMetaPlus/ so anime can be identified at once;
-   otherwise the "Refresh AniDB titles dump" task downloads it (at most once a day).
+   otherwise the "Refresh AniDB titles dump" task downloads it (at most once every 3 days).
 
 Settings, blocks and mappings live in <plugins>/configurations/AniMetaPlus/.

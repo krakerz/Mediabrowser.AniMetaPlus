@@ -16,6 +16,7 @@
     <ItemGroup>
       <EmbeddedResource Include="$(_WebOut)animetaplus.html" LogicalName="AniMetaPlus.Configuration.animetaplus.html" />
       <EmbeddedResource Include="$(_WebOut)animetaplus.js" LogicalName="AniMetaPlus.Configuration.animetaplus.js" />
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)Shared/Images/local-only.png" LogicalName="AniMetaPlus.Images.local-only.png" />
     </ItemGroup>
   </Target>
 </Project>

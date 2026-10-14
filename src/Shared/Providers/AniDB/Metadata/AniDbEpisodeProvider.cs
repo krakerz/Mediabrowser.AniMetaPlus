@@ -177,7 +177,11 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         result.Item = new Episode
         {
             IndexNumber = info.IndexNumber,
-            ParentIndexNumber = info.ParentIndexNumber
+
+            // Files loose in the show's folder and named without a season ("Show - 01") reach
+            // Jellyfin with none, which files them under "Season Unknown" and shows them in
+            // Latest one by one instead of as the show. Emby already takes them as season 1.
+            ParentIndexNumber = info.ParentIndexNumber ?? 1
         };
 
         result.HasMetadata = true;

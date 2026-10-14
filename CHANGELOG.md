@@ -4,8 +4,25 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-14
+
+### Added
+- Identify by AniDB, MyAnimeList or AniList id, each offered while that source is set up and its key accepted; Emby shows the fields in its Identify dialog
+- MyAnimeList and AniList links and id fields on shows and movies
+
 ### Changed
 - License corrected to GPL-2.0 to match the upstream Jellyfin AniDB plugin
+- Identify searches the local titles dump only and shows a "Local only" poster; the refresh after a pick fetches the real data
+- AniDB titles dump is downloaded at most every 3 days, counted from the last attempt, including "Download now"
+- Per-source request gaps can no longer be set below their defaults
+- Images in the server's image picker are labelled by source, such as "AniMeta+ (AniList)"
+- A throttled client check says how long until the next one is allowed
+
+### Fixed
+- AniDB titles failed to load for title matching
+- A client check that found no key no longer holds up the next check
+- Episodes named without a season on Jellyfin go into season 1 instead of "Season Unknown"
+- Settings page fields, dropdowns, the show/hide button and lone buttons line up on Emby and Jellyfin
 
 ## [1.0.0] — 2026-10-14
 

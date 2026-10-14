@@ -12,4 +12,12 @@ public static class ProviderNames
     /// The name the plugin's providers go by in the server's library settings.
     /// </summary>
     public const string Display = "AniMeta+";
+
+    /// <summary>
+    /// The name an image goes by in the server's image picker, which then shows where it came
+    /// from. The servers download a picked image by its url, not by this name.
+    /// </summary>
+    /// <param name="source">The source id, one of <see cref="Sources.SourceIds"/>.</param>
+    /// <returns>The name, such as "AniMeta+ (AniList)".</returns>
+    public static string ForImage(string source) => Display + " (" + source + ")";
 }

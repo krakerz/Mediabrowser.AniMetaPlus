@@ -78,7 +78,7 @@ public class TitlesRefreshTask(PluginLog<TitlesRefreshTask> logger) : AniMetaTas
     public override string Key => "AniMetaPlusTitlesRefresh";
 
     /// <inheritdoc />
-    public override string Description => "Downloads a fresh AniDB titles dump when the one on disk is older than the interval set in AniMeta+, never more than once a day.";
+    public override string Description => "Downloads a fresh AniDB titles dump when the one on disk is older than the interval set in AniMeta+, never more than once every 3 days.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromHours(12))];

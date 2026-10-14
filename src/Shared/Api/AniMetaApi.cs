@@ -456,10 +456,12 @@ public static class AniMetaApi
         var db = Db;
         var configuration = Plugin.Instance.Configuration;
 
-        // Each check is a real request, so they are spaced like any other.
-        if (db.ClientTests.FindById(source) is { } last && DateTime.UtcNow - last.AtUtc < _testGap)
+        // Each check is a real request, so they are spaced like any other. An unconfigured
+        // result sent nothing, so it does not hold up the check after the key is entered.
+        if (db.ClientTests.FindById(source) is { Result: not "unconfigured" } last && DateTime.UtcNow - last.AtUtc < _testGap)
         {
-            return new ClientTestResult("throttled", "Checked " + (int)(DateTime.UtcNow - last.AtUtc).TotalSeconds + " seconds ago: " + last.Result + ". Wait a few minutes before checking again.");
+            var since = DateTime.UtcNow - last.AtUtc;
+            return new ClientTestResult("throttled", "Checked " + Duration(since) + " ago: " + last.Result + ". Checks are kept " + Duration(_testGap) + " apart, so the next one is allowed in " + Duration(_testGap - since) + ".");
         }
 
         ClientTestResult result;
@@ -664,6 +666,20 @@ public static class AniMetaApi
                 _ => new ClientTestResult("unreachable", ex.Message)
             };
         }
+    }
+
+    /// <summary>
+    /// Writes a short span the way a person says it: "2 min 5 s", "40 s".
+    /// </summary>
+    /// <param name="span">The span.</param>
+    /// <returns>The text.</returns>
+    internal static string Duration(TimeSpan span)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(span.TotalSeconds));
+        var minutes = seconds / 60;
+        seconds %= 60;
+
+        return minutes == 0 ? seconds + " s" : seconds == 0 ? minutes + " min" : minutes + " min " + seconds + " s";
     }
 
     private static string Mask(string? key)

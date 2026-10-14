@@ -37,7 +37,8 @@ public sealed record TitlesDumpStatus(string SourcePath, bool SourceExists, Date
 /// <summary>
 /// The AniDB titles dump the plugin identifies anime from. It is read from a local file, and the
 /// only thing that ever downloads one is the scheduled task: nothing on a lookup path does.
-/// AniDB bans a client that fetches the dump more than once a day.
+/// AniDB bans a client that fetches the dump more than once a day; downloads are kept at
+/// least <see cref="Configuration.PluginConfiguration.MinimumTitlesRefreshDays"/> days apart.
 /// </summary>
 public static class TitlesDump
 {
@@ -55,7 +56,7 @@ public static class TitlesDump
     /// </summary>
     private const int MinimumTitleCount = 10000;
 
-    private static readonly TimeSpan _minimumDownloadGap = TimeSpan.FromHours(24);
+    private static readonly TimeSpan _minimumDownloadGap = TimeSpan.FromDays(Configuration.PluginConfiguration.MinimumTitlesRefreshDays);
     private static readonly SemaphoreSlim _gate = new(1, 1);
     private static int _animeCount;
     private static Dictionary<string, string>? _mainTitles;
@@ -158,23 +159,29 @@ public static class TitlesDump
         var configuration = Plugin.Instance.Configuration;
         var target = new FileInfo(SourcePath(paths));
 
-        if (target.Exists)
-        {
-            var age = DateTime.UtcNow - target.LastWriteTimeUtc;
+        // Counted from the last attempt as well as the file: a failed download leaves the file
+        // as it was, and a deleted one leaves nothing to count from.
+        var lastAttempt = LastDownloadAttempt(paths);
+        var last = target.Exists && target.LastWriteTimeUtc > (lastAttempt ?? DateTime.MinValue) ? target.LastWriteTimeUtc : lastAttempt;
 
-            if (age < _minimumDownloadGap)
+        if (last is { } lastUtc)
+        {
+            var since = DateTime.UtcNow - lastUtc;
+
+            if (since < _minimumDownloadGap)
             {
                 return new TitlesRefreshResult(false, string.Format(
                     CultureInfo.InvariantCulture,
-                    "The titles dump is {0:0.#} hours old. AniDB bans a client that downloads it more than once a day, so the next download is allowed in {1:0.#} hours.",
-                    age.TotalHours,
-                    (_minimumDownloadGap - age).TotalHours));
+                    "The titles dump was last downloaded {0:0.#} hours ago. AniMeta+ downloads it at most every {1} days, so the next download is allowed in {2:0.#} hours.",
+                    since.TotalHours,
+                    _minimumDownloadGap.TotalDays,
+                    (_minimumDownloadGap - since).TotalHours));
             }
+        }
 
-            if (!force && age < TimeSpan.FromDays(configuration.TitlesRefreshDays))
-            {
-                return new TitlesRefreshResult(false, "The titles dump is not due for a refresh yet.");
-            }
+        if (target.Exists && !force && DateTime.UtcNow - target.LastWriteTimeUtc < TimeSpan.FromDays(configuration.TitlesRefreshDays))
+        {
+            return new TitlesRefreshResult(false, "The titles dump is not due for a refresh yet.");
         }
 
         if (!force && !configuration.TitlesAutoRefresh)
@@ -191,6 +198,8 @@ public static class TitlesDump
         var isXml = target.Name.EndsWith(".xml.gz", StringComparison.OrdinalIgnoreCase) || target.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
         var compressed = target.Name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
         var temporary = target.FullName + ".download";
+
+        File.WriteAllText(AttemptPath(paths), DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
 
         try
         {
@@ -235,6 +244,21 @@ public static class TitlesDump
         return new TitlesRefreshResult(true, "A fresh titles dump was downloaded and imported.");
     }
 
+    private static string AttemptPath(IApplicationPaths paths)
+        => Path.Combine(PluginPaths.DataFolder(paths), "titles-download.txt");
+
+    private static DateTime? LastDownloadAttempt(IApplicationPaths paths)
+    {
+        try
+        {
+            return DateTime.TryParse(File.ReadAllText(AttemptPath(paths)), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when) ? when.ToUniversalTime() : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Gets what is known about the dump in use.
     /// </summary>
@@ -245,9 +269,14 @@ public static class TitlesDump
         var configuration = Plugin.Instance.Configuration;
         var source = new FileInfo(SourcePath(paths));
         DateTime? written = source.Exists ? source.LastWriteTimeUtc : null;
+        var allowed = LastDownloadAttempt(paths) + _minimumDownloadGap;
         DateTime? next = configuration.TitlesAutoRefresh
             ? (written ?? DateTime.UtcNow) + TimeSpan.FromDays(configuration.TitlesRefreshDays)
             : null;
+        if (next < allowed)
+        {
+            next = allowed;
+        }
 
         // After a restart the imported copy is reused rather than imported again, so the count
         // is taken from it: one main title per anime.

@@ -20,7 +20,11 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Every failed request is remembered as a block, either for the whole source (ban, rate limit, server down, refused key) or for one item (not found, unreadable), with growing backoff; blocks can be lifted or pinned by hand
 - Per source, when it is blocked: Pause (item keeps its data and waits), Switch (next source fills in, replaced automatically later), or Switch + review (replacement waits for Accept / Keep / Lock)
 - Unmatched list with suggestions from the titles dump, title search, and mapping by AniDB id or link
-- Titles dump refreshed only by a scheduled task, never more than once a day
+- Identify by title, AniDB id, MyAnimeList id or AniList id (each id only while that source is set up and its key accepted; Emby shows the id fields); results come from local data with a "Local only" poster, and the real data and images arrive on the refresh after a pick
+- Images from every source in the image order, labelled by source in the image picker, such as "AniMeta+ (AniList)"
+- AniDB, MyAnimeList and AniList links on shows and movies
+- Titles dump downloaded by a scheduled task or by hand, never more than once every 3 days
+- Request gaps per source can be raised but never set below their defaults
 - Library scan task that identifies from local data first and refreshes a batch at a time, newest first
 - Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Review, Blocks, General and Import/Export tabs; recent request log
 - Export/Import of mappings, review decisions and pinned blocks (never keys), usable across Emby and Jellyfin
@@ -38,11 +42,11 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 2. Restart Emby.
 3. Open Settings > AniMeta+ and go to **Clients & keys**. Enter your own AniDB client name (register one on anidb.net, under your profile, "Client registration") and press **Test**. AniDB is not asked anything until a client name is set.
 4. In the anime library's settings, tick AniMeta+ as metadata and image downloader for Series, Season and Episode, and untick TheTVDB and TheMovieDb.
-5. Optional: put AniDB's `anime-titles.dat.gz` in `<plugins>/configurations/AniMetaPlus/` so anime can be identified at once. Otherwise the "Refresh AniDB titles dump" task downloads it, at most once a day.
+5. Optional: put AniDB's `anime-titles.dat.gz` in `<plugins>/configurations/AniMetaPlus/` so anime can be identified at once. Otherwise the "Refresh AniDB titles dump" task downloads it, at most once every 3 days.
 
 ### Jellyfin
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.0.0.0/` and copy `AniMetaPlus.dll` into it:
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.1.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`

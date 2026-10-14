@@ -16,6 +16,6 @@ AniMeta+ for Emby Server (4.10 or newer)
    AniMeta+ still uses them itself where its source order lists them.
 5. Optional: put AniDB's anime-titles.dat.gz in
    <plugins>/configurations/AniMetaPlus/ so anime can be identified at once;
-   otherwise the "Refresh AniDB titles dump" task downloads it (at most once a day).
+   otherwise the "Refresh AniDB titles dump" task downloads it (at most once every 3 days).
 
 Settings, blocks and mappings live in <plugins>/configurations/AniMetaPlus/.
