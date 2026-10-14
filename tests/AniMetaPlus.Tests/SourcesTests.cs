@@ -302,6 +302,18 @@ public class SourcesTests
         }
     }
 
+    [Theory]
+    [InlineData("11021", "11021")]
+    [InlineData("https://anidb.net/anime/11021", "11021")]
+    [InlineData("anilist:21222", "anilist:21222")]
+    [InlineData("https://anilist.co/anime/21222/Mankitsu-Happening/", "anilist:21222")]
+    [InlineData("mal:29575", "mal:29575")]
+    [InlineData("https://myanimelist.net/anime/29575/Mankitsu_Happening", "mal:29575")]
+    [InlineData("anilist:", null)]
+    [InlineData("not an id", null)]
+    public void ReadsWhatAnItemIsMappedTo(string input, string? expected)
+        => Assert.Equal(expected, AniMetaApi.ParseMapping(input));
+
     [Fact]
     public void TitlesRefreshIsAtLeastThreeDays()
     {

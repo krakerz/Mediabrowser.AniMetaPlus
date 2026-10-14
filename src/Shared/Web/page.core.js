@@ -248,17 +248,18 @@ function aniMetaPlusPage(host) {
                 + '<div class="amp-small">' + esc(u.Path) + ' - tried ' + u.Attempts + 'x, last ' + when(u.LastAttemptUtc) + '</div>'
                 + '<div class="amp-row" style="margin-top:.5em">'
                 + '<div class="inputContainer"><select class="amp-guess"><option value="">Guesses from the titles dump...</option>' + guesses + '</select></div>'
-                + '<div class="inputContainer"><input type="text" class="amp-search" placeholder="Search titles" /></div>'
-                + '<div class="inputContainer"><input type="text" class="amp-id" placeholder="AniDB id or link" /></div>'
+                + '<div class="inputContainer"><input type="text" class="amp-search" placeholder="Search the titles dump" value="' + esc(u.Name) + '" /></div>'
+                + '<div class="inputContainer"><input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></div>'
                 + '</div>'
-                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
+                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-act="online">Search AniList and MyAnimeList</button>'
+                + '<button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
                 + '<button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
                 + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div>'
                 + '</div>';
         }).join('') : '<p class="amp-muted">Everything is identified.</p>';
 
         view.querySelector('#ampMappings').innerHTML = mappings.length
-            ? '<tr><th>Item</th><th>AniDB</th><th>Mapped</th><th></th></tr>' + mappings.map(function (m) {
+            ? '<tr><th>Item</th><th>Mapped to</th><th>When</th><th></th></tr>' + mappings.map(function (m) {
                 return '<tr><td>' + esc(m.ItemName || m.Id) + '</td><td>' + esc(m.AnimeId) + '</td><td>' + when(m.CreatedUtc) + '</td><td><button type="button" is="emby-button" class="raised" data-unmap="' + esc(m.Id) + '">Remove</button></td></tr>';
             }).join('')
             : '<tr><td class="amp-muted">None.</td></tr>';
@@ -279,14 +280,32 @@ function aniMetaPlusPage(host) {
             return;
         }
 
-        var id = card.querySelector('.amp-id').value.trim() || card.querySelector('.amp-guess').value;
-        if (!id) {
-            notify('Pick a guess or enter an AniDB id first');
+        if (act === 'online') {
+            var select = card.querySelector('.amp-guess');
+            var query = card.querySelector('.amp-search').value.trim();
+            select.innerHTML = '<option value="">Searching AniList and MyAnimeList...</option>';
+            get('Titles/SearchOnline', { Query: query }).then(function (found) {
+                // A result the mappings tie to AniDB maps to that AniDB entry; one they do not is
+                // mapped to itself, and the item is filled from AniList and MyAnimeList.
+                select.innerHTML = '<option value="">' + found.length + ' found on AniList and MyAnimeList...</option>' + found.map(function (c) {
+                    var value = c.AniDbId || (c.Source === 'AniList' ? 'anilist:' : 'mal:') + c.Id;
+                    var details = [c.Year, c.Format].filter(function (x) { return x; }).join(', ');
+                    return '<option value="' + esc(value) + '">' + esc(c.Source + ': ' + c.Title + (details ? ' (' + details + ')' : '')
+                        + (c.AniDbId ? ' = AniDB ' + c.AniDbId : ' - not on AniDB')) + '</option>';
+                }).join('');
+            }, fail);
             return;
         }
 
-        post('Unmatched/Map', null, { ItemKey: key, AnimeId: id, ApplyNow: act === 'mapnow' }).then(function () {
-            notify('Mapped to AniDB ' + id + (act === 'mapnow' ? '; refreshing' : '; applies on the next queue run'));
+        var id = card.querySelector('.amp-id').value.trim() || card.querySelector('.amp-guess').value;
+        if (!id) {
+            notify('Pick a guess or enter an id first');
+            return;
+        }
+
+        post('Unmatched/Map', null, { ItemKey: key, AnimeId: id, ApplyNow: act === 'mapnow' }).then(function (mapped) {
+            var to = String(mapped || id);
+            notify('Mapped to ' + (/^anilist:/.test(to) ? 'AniList ' + to.slice(8) : /^mal:/.test(to) ? 'MyAnimeList ' + to.slice(4) : 'AniDB ' + to) + (act === 'mapnow' ? '; refreshing' : '; applies on the next queue run'));
             loadAll(view);
         }, fail);
     }

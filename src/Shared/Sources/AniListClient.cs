@@ -97,7 +97,61 @@ public static partial class AniListClient
             cancellationToken);
     }
 
+    /// <summary>
+    /// Lists the anime whose titles match, for the owner to pick from.
+    /// </summary>
+    /// <param name="httpClient">The client.</param>
+    /// <param name="title">The title.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The matches, most relevant first.</returns>
+    public static async Task<IReadOnlyList<RemoteCandidate>> SearchMany(HttpClient httpClient, string title, CancellationToken cancellationToken)
+    {
+        using var document = await Post(
+            httpClient,
+            "query ($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME) { id title { romaji english } startDate { year } format } } }",
+            new Dictionary<string, object> { ["search"] = title },
+            cancellationToken).ConfigureAwait(false);
+
+        var found = new List<RemoteCandidate>();
+
+        if (document.RootElement.TryGetProperty("data", out var data)
+            && data.TryGetProperty("Page", out var page)
+            && page.TryGetProperty("media", out var media)
+            && media.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in media.EnumerateArray())
+            {
+                if (Int(entry, "id") is not { } id)
+                {
+                    continue;
+                }
+
+                var titles = entry.TryGetProperty("title", out var t) ? t : default;
+                var name = (titles.ValueKind == JsonValueKind.Object ? Str(titles, "romaji") ?? Str(titles, "english") : null) ?? id.ToString(CultureInfo.InvariantCulture);
+                var year = entry.TryGetProperty("startDate", out var start) && start.ValueKind == JsonValueKind.Object ? Int(start, "year") : null;
+
+                found.Add(new RemoteCandidate(SourceIds.AniList, id.ToString(CultureInfo.InvariantCulture), name, year, Str(entry, "format"), null));
+            }
+        }
+
+        return found;
+    }
+
     private static async Task<AnimeRecord> Query(HttpClient httpClient, string query, Dictionary<string, object> variables, CancellationToken cancellationToken)
+    {
+        using var document = await Post(httpClient, query, variables, cancellationToken).ConfigureAwait(false);
+
+        if (!document.RootElement.TryGetProperty("data", out var data)
+            || !data.TryGetProperty("Media", out var media)
+            || media.ValueKind != JsonValueKind.Object)
+        {
+            throw new KeyNotFoundException("AniList has no such anime.");
+        }
+
+        return Read(media);
+    }
+
+    private static async Task<JsonDocument> Post(HttpClient httpClient, string query, Dictionary<string, object> variables, CancellationToken cancellationToken)
     {
         var body = JsonSerializer.Serialize(new { query, variables });
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
@@ -123,16 +177,7 @@ public static partial class AniListClient
                 response.Headers.RetryAfter?.Delta ?? (response.StatusCode == HttpStatusCode.TooManyRequests ? TimeSpan.FromMinutes(1) : null));
         }
 
-        using var document = JsonDocument.Parse(text);
-
-        if (!document.RootElement.TryGetProperty("data", out var data)
-            || !data.TryGetProperty("Media", out var media)
-            || media.ValueKind != JsonValueKind.Object)
-        {
-            throw new KeyNotFoundException("AniList has no such anime.");
-        }
-
-        return Read(media);
+        return JsonDocument.Parse(text);
     }
 
     /// <summary>

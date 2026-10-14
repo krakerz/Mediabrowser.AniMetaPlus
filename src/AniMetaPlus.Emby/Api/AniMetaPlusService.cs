@@ -147,6 +147,14 @@ public class SearchTitles : IReturn<CandidateRecord[]>
     public string Query { get; set; } = string.Empty;
 }
 
+/// <summary>Searches AniList and MyAnimeList by title.</summary>
+[Route("/AniMetaPlus/Titles/SearchOnline", "GET")]
+public class SearchOnline : IReturn<Sources.RemoteCandidate[]>
+{
+    /// <summary>Gets or sets the title.</summary>
+    public string Query { get; set; } = string.Empty;
+}
+
 /// <summary>Downloads a fresh titles dump, within AniDB's once-a-day allowance.</summary>
 [Route("/AniMetaPlus/Titles/Refresh", "POST")]
 public class RefreshTitles : IReturn<Titles.TitlesRefreshResult>
@@ -322,6 +330,11 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public async Task<object> Get(SearchTitles request) => await AniMetaApi.SearchTitles(request.Query, CancellationToken.None).ConfigureAwait(false);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public async Task<object> Get(SearchOnline request) => await AniMetaApi.SearchOnline(request.Query, _logger, CancellationToken.None).ConfigureAwait(false);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

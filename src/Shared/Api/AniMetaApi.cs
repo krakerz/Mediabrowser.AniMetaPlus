@@ -126,7 +126,7 @@ public static class AniMetaApi
             NextRequestInSeconds = untilNext.TotalSeconds,
             RequestsSent = sent,
             LastRequestUtc = lastSentUtc,
-            RequestIntervalMs = Plugin.Instance.Configuration.RequestIntervalMs,
+            RequestIntervalMs = AniDbSeriesProvider.GetRequestIntervalMs(),
             AnimeListCachedAtUtc = cachedAtUtc,
             AnimeListCheckedAtUtc = checkedAtUtc,
             AnimeListEntryCount = entryCount,
@@ -360,7 +360,7 @@ public static class AniMetaApi
     /// <returns>The mapped id.</returns>
     public static string Map(string itemKey, string animeIdOrUrl, bool applyNow)
     {
-        var animeId = ParseAnimeId(animeIdOrUrl) ?? throw new ArgumentException("Not an AniDB id or link: " + animeIdOrUrl, nameof(animeIdOrUrl));
+        var animeId = ParseMapping(animeIdOrUrl) ?? throw new ArgumentException("Not an AniDB, AniList or MyAnimeList id or link: " + animeIdOrUrl, nameof(animeIdOrUrl));
         var unmatched = Queues.Map(itemKey, animeId);
 
         if (applyNow && unmatched is { Path.Length: > 0 } && HostServices.Refresher?.Refresh(unmatched.Path, true) == true)
@@ -548,6 +548,46 @@ public static class AniMetaApi
     /// <returns>What was done.</returns>
     public static Task<QueueRunResult> RunQueues(ILogger logger, CancellationToken cancellationToken)
         => QueueProcessor.Run(logger, null, cancellationToken);
+
+    /// <summary>
+    /// Searches AniList and MyAnimeList by title.
+    /// </summary>
+    /// <param name="query">The title.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The matches, each with the AniDB entry it maps to, when it does.</returns>
+    public static Task<IReadOnlyList<RemoteCandidate>> SearchOnline(string query, ILogger logger, CancellationToken cancellationToken)
+        => RemoteSearch.Search(query, logger, cancellationToken);
+
+    /// <summary>
+    /// Reads what an item is mapped to: an AniDB id, or "anilist:" or "mal:" and an id, from an
+    /// id, one of those, or a link to the anime on AniDB, AniList or MyAnimeList.
+    /// </summary>
+    /// <param name="value">What the owner entered.</param>
+    /// <returns>The mapping, or <c>null</c>.</returns>
+    internal static string? ParseMapping(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var text = value.Trim();
+
+        // Checked before AniDB's links, whose "/anime/" AniList's and MyAnimeList's share.
+        foreach (var (marker, prefix) in new[] { ("anilist.co/anime/", "anilist"), ("myanimelist.net/anime/", "mal"), ("anilist:", "anilist"), ("mal:", "mal") })
+        {
+            var at = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0)
+            {
+                var digits = new string(text[(at + marker.Length)..].TakeWhile(char.IsDigit).ToArray());
+
+                return digits.Length > 0 ? prefix + ":" + digits : null;
+            }
+        }
+
+        return ParseAnimeId(text);
+    }
 
     /// <summary>
     /// Reads an AniDB id from an id or a link to an anime on AniDB.

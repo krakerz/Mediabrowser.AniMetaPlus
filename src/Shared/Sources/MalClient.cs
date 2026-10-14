@@ -61,13 +61,35 @@ public static class MalClient
     /// <exception cref="KeyNotFoundException">Nothing matched.</exception>
     public static async Task<string> Search(HttpClient httpClient, string title, int? year, CancellationToken cancellationToken)
     {
+        var candidates = await SearchMany(httpClient, title, cancellationToken).ConfigureAwait(false);
+
+        if (candidates.Count == 0)
+        {
+            throw new KeyNotFoundException("MyAnimeList has no anime called " + title + ".");
+        }
+
+        // The search ranks by relevance; the year only breaks a tie between remakes and sequels.
+        var match = year is { } y ? candidates.FirstOrDefault(c => c.Year == y) : null;
+
+        return (match ?? candidates[0]).Id;
+    }
+
+    /// <summary>
+    /// Lists the anime whose titles match, for the owner to pick from.
+    /// </summary>
+    /// <param name="httpClient">The client.</param>
+    /// <param name="title">The title.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The matches, most relevant first.</returns>
+    public static async Task<IReadOnlyList<RemoteCandidate>> SearchMany(HttpClient httpClient, string title, CancellationToken cancellationToken)
+    {
         var clientId = Plugin.Instance.Configuration.MalClientId;
         var official = !string.IsNullOrWhiteSpace(clientId);
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             official
-                ? "https://api.myanimelist.net/v2/anime?limit=10&fields=start_date&q=" + Uri.EscapeDataString(Truncate(title))
+                ? "https://api.myanimelist.net/v2/anime?limit=10&nsfw=true&fields=start_date,media_type&q=" + Uri.EscapeDataString(Truncate(title))
                 : "https://api.jikan.moe/v4/anime?limit=10&q=" + Uri.EscapeDataString(title));
 
         if (official)
@@ -78,7 +100,7 @@ public static class MalClient
         request.Headers.Accept.ParseAdd("application/json");
 
         using var document = await Send(httpClient, request, official ? "MyAnimeList" : "Jikan", cancellationToken).ConfigureAwait(false);
-        var candidates = new List<(string Id, int? Year)>();
+        var candidates = new List<RemoteCandidate>();
 
         foreach (var entry in Array(document.RootElement, "data"))
         {
@@ -91,18 +113,11 @@ public static class MalClient
             }
 
             var start = Str(node, "start_date") ?? (node.TryGetProperty("aired", out var aired) ? Str(aired, "from") : null);
-            candidates.Add((id.Value.ToString(CultureInfo.InvariantCulture), ParseDate(start)?.Year));
+            var key = id.Value.ToString(CultureInfo.InvariantCulture);
+            candidates.Add(new RemoteCandidate(SourceIds.Mal, key, Str(node, "title") ?? key, ParseDate(start)?.Year, Str(node, "media_type") ?? Str(node, "type"), null));
         }
 
-        if (candidates.Count == 0)
-        {
-            throw new KeyNotFoundException("MyAnimeList has no anime called " + title + ".");
-        }
-
-        // The search ranks by relevance; the year only breaks a tie between remakes and sequels.
-        var match = year is { } y ? candidates.FirstOrDefault(c => c.Year == y) : default;
-
-        return match.Id ?? candidates[0].Id;
+        return candidates;
     }
 
     // The official search rejects queries over 64 characters.

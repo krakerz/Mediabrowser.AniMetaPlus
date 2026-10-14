@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Providers;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
@@ -50,9 +51,12 @@ public static class ImageMerge
 
         var configuration = Plugin.Instance.Configuration;
         var animeId = item.GetProviderId(ProviderNames.AniDb);
+
+        // An item AniDB has no entry for may still be tied to AniList or MyAnimeList by id.
+        var link = string.IsNullOrEmpty(animeId) ? AniDbSeriesProvider.LinkFromIds(item.ProviderIds) : null;
         var context = new FetchContext
         {
-            ItemKey = string.IsNullOrEmpty(animeId) ? ItemKeys.ForUnidentified("Series", item.Path, item.Name) : ItemKeys.ForAnime(animeId),
+            ItemKey = !string.IsNullOrEmpty(animeId) ? ItemKeys.ForAnime(animeId) : link ?? ItemKeys.ForUnidentified("Series", item.Path, item.Name),
             ItemName = item.Name ?? string.Empty,
             ItemPath = item.Path ?? string.Empty,
             AnimeId = animeId,
@@ -98,7 +102,7 @@ public static class ImageMerge
 
                     found = list.Where(i => i.Type == type);
                 }
-                else if (string.IsNullOrEmpty(animeId))
+                else if (string.IsNullOrEmpty(animeId) && link is null)
                 {
                     // An item nothing identified is not looked up by name: a name search that
                     // matches the wrong anime would put its poster on the item.

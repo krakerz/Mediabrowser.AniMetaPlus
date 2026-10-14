@@ -58,6 +58,14 @@ public static class LibraryScan
 
         // Items that already carry an AniDB id were identified by an earlier refresh, and items
         // already listed as unmatched wait for the owner, so neither is looked at again.
+        // An item that carries an AniDB id is identified, whatever the unmatched list says: a
+        // listing left by an earlier run - one that took identified shows for unidentified ones
+        // - is cleared here rather than waiting for that item's next refresh.
+        foreach (var item in items.Where(i => i.ProviderIds.TryGetValue(ProviderNames.AniDb, out var id) && !string.IsNullOrEmpty(id)))
+        {
+            Queues.ClearUnmatched(ItemKeys.ForUnidentified(item.Kind, item.Path, item.Name));
+        }
+
         var pending = items
             .Where(i => !i.ProviderIds.TryGetValue(ProviderNames.AniDb, out var id) || string.IsNullOrEmpty(id))
             .Where(i => db.Unmatched.FindById(ItemKeys.ForUnidentified(i.Kind, i.Path, i.Name)) is not { } u || u.PendingRefresh)
@@ -79,9 +87,32 @@ public static class LibraryScan
             progress?.Report(100d * processed / Math.Max(pending.Count, 1));
 
             var key = ItemKeys.ForUnidentified(item.Kind, item.Path, item.Name);
-            var animeId = Queues.MappedAnimeId(key)
-                ?? await FromMappings(item, logger, cancellationToken).ConfigureAwait(false)
-                ?? await FromDump(item, cancellationToken).ConfigureAwait(false);
+            var mapped = Queues.MappedAnimeId(key);
+            string? animeId;
+
+            if (AniDbSeriesProvider.LinkParts(mapped) is { } link)
+            {
+                // Mapped by hand to AniList or MyAnimeList: its own refresh fills it from there,
+                // and it is sent on only once the mappings tie that entry to AniDB.
+                animeId = await AniBridgeMappings.ResolveSeriesIdByLink(paths, link.Prefix, link.Id, logger, cancellationToken).ConfigureAwait(false);
+                if (animeId is null)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                animeId = mapped
+                    ?? await FromMappings(item, logger, cancellationToken).ConfigureAwait(false)
+                    ?? await FromDump(item, cancellationToken).ConfigureAwait(false);
+            }
+
+            // An item tied to AniList or MyAnimeList by id is filled from those by its refresh,
+            // so it is not listed for mapping by hand.
+            if (string.IsNullOrEmpty(animeId) && AniDbSeriesProvider.LinkFromIds(item.ProviderIds) is not null)
+            {
+                continue;
+            }
 
             if (string.IsNullOrEmpty(animeId))
             {
@@ -135,14 +166,19 @@ public static class LibraryScan
         item.ProviderIds.TryGetValue("Tvdb", out var tvdb);
         item.ProviderIds.TryGetValue("Tmdb", out var tmdb);
 
-        if (string.IsNullOrEmpty(tvdb) && string.IsNullOrEmpty(tmdb))
+        if (!string.IsNullOrEmpty(tvdb) || !string.IsNullOrEmpty(tmdb))
         {
-            return null;
+            var mapped = await AniDbMappings.ResolveSeriesId(Plugin.Instance.AppPaths, tvdb, tmdb, logger, cancellationToken).ConfigureAwait(false);
+            if (mapped?.AnimeId is { } byShow)
+            {
+                return byShow;
+            }
         }
 
-        var mapped = await AniDbMappings.ResolveSeriesId(Plugin.Instance.AppPaths, tvdb, tmdb, logger, cancellationToken).ConfigureAwait(false);
-
-        return mapped?.AnimeId;
+        // An AniList or MyAnimeList id another plugin or an earlier refresh left on the item.
+        return AniDbSeriesProvider.LinkParts(AniDbSeriesProvider.LinkFromIds(item.ProviderIds)) is { } link
+            ? await AniBridgeMappings.ResolveSeriesIdByLink(Plugin.Instance.AppPaths, link.Prefix, link.Id, logger, cancellationToken).ConfigureAwait(false)
+            : null;
     }
 
     private static async Task<string?> FromDump(ScanItem item, CancellationToken cancellationToken)

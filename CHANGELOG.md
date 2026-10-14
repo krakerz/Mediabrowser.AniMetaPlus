@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-14
+
+### Added
+- Unmatched tab searches AniList and MyAnimeList, showing which results AniDB lists
+- Shows can be mapped to an AniList or MyAnimeList entry and are filled from those when AniDB has no entry
+
+### Fixed
+- Unmatched entries for shows that already have an AniDB id are cleared by the next scan run
+- AniDB requests show in the Status counts and the request log
+- AniDB's gap and caps on the Sources tab are applied; the larger of the two AniDB gaps is used
+
 ## [1.4.0] — 2026-10-14
 
 ### Added

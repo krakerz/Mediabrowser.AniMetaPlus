@@ -100,7 +100,7 @@ internal static class AnswerCache
         }
 
         var next = id == SourceIds.AniDb
-            ? "The next refresh or scan asks AniDB again for each of them, one request every " + (Plugin.Instance.Configuration.RequestIntervalMs / 1000d) + " s; the old copies stay in use while AniDB is banned."
+            ? "The next refresh or scan asks AniDB again for each of them, one request every " + (AniDbSeriesProvider.GetRequestIntervalMs() / 1000d) + " s; the old copies stay in use while AniDB is banned."
             : "The next refresh or scan asks " + id + " again for each of them.";
 
         return new CacheExpireResult(id, expired, expired + " cached " + id + " answers reset. " + next);
