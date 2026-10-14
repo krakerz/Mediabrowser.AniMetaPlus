@@ -4,6 +4,14 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-15
+
+### Changed
+- Status, Unmatched and General are split into sub-tabs, with the Status buttons at the top
+
+### Fixed
+- Mapping or setting aside an unmatched item no longer reloads the list and loses the other items' search results
+
 ## [2.0.0] — 2026-10-15
 
 ### Changed
