@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Data;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB.Mapping;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using Microsoft.Extensions.Logging;
 
 namespace AniMetaPlus.Core;
@@ -26,22 +27,19 @@ public sealed record ScanItem(string Path, string Name, int? Year, string Kind, 
 /// </summary>
 /// <param name="Identified">Items identified without asking AniDB, and queued for a refresh.</param>
 /// <param name="Unmatched">Items nothing identified, now listed for mapping by hand.</param>
-/// <param name="Remaining">Items left for later runs.</param>
-public sealed record ScanResult(int Identified, int Unmatched, int Remaining);
+/// <param name="Remaining">Items identified whose refresh would ask AniDB, left for later runs.</param>
+/// <param name="AskingAniDb">Of the queued items, how many will ask AniDB.</param>
+public sealed record ScanResult(int Identified, int Unmatched, int Remaining, int AskingAniDb);
 
 /// <summary>
 /// Goes through an anime library and identifies what it can from local data alone - the
-/// mapping sources and the titles dump - before anything is asked of AniDB. What it identifies
-/// is refreshed a batch at a time, newest first, so that a large library reaches AniDB slowly
-/// over many runs rather than all at once; what it cannot is listed for mapping by hand.
+/// mapping sources and the titles dump - before anything is asked of AniDB, and lists what it
+/// cannot for mapping by hand. Everything identified is refreshed at once, except refreshes
+/// that would ask AniDB for a new answer: those go a few per run, newest first, so that a large
+/// library reaches AniDB slowly over many runs rather than all at once.
 /// </summary>
 public static class LibraryScan
 {
-    /// <summary>
-    /// How many items one run sends for a refresh.
-    /// </summary>
-    public const int BatchSize = 25;
-
     /// <summary>
     /// Runs the scan once.
     /// </summary>
@@ -66,18 +64,16 @@ public static class LibraryScan
             .OrderByDescending(i => i.AddedUtc)
             .ToList();
 
+        var aniDbLimit = Plugin.Instance.Configuration.AniDbShowsPerRun;
         var identified = 0;
+        var askingAniDb = 0;
+        var deferred = 0;
         var unmatched = 0;
         var processed = 0;
 
         foreach (var item in pending)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (identified >= BatchSize)
-            {
-                break;
-            }
 
             processed++;
             progress?.Report(100d * processed / Math.Max(pending.Count, 1));
@@ -95,26 +91,43 @@ public static class LibraryScan
                 continue;
             }
 
+            // A refresh that only reads cached or local data costs AniDB nothing, and is queued
+            // whatever the limit. One that would ask AniDB waits for a later run once the limit is
+            // reached; it is identified again then, which costs nothing either.
+            var asks = AniDbSeriesProvider.WouldAskAniDb(paths, animeId);
+            if (asks && askingAniDb >= aniDbLimit)
+            {
+                deferred++;
+
+                continue;
+            }
+
             // The refresh identifies it again, the same way plus the steps that ask AniDB, and
-            // then reads it. Queued here only to pace it.
+            // then reads it.
             if (refresher?.Refresh(item.Path, false) == true)
             {
                 identified++;
+
+                if (asks)
+                {
+                    askingAniDb++;
+                }
             }
         }
 
-        var remaining = pending.Count - processed;
-
         logger.LogInformation(
-            "AniMeta+ library scan: {Identified} items identified from local data and queued, {Unmatched} listed for mapping by hand, {Remaining} left for later runs",
+            "AniMeta+ library scan: {Identified} items identified from local data and queued for a refresh ({Cached} need nothing new from AniDB, {AskingAniDb} ask AniDB), {Unmatched} listed for mapping by hand, {Deferred} wait for AniDB in later runs (at most {Limit} per run)",
             identified,
+            identified - askingAniDb,
+            askingAniDb,
             unmatched,
-            remaining);
+            deferred,
+            aniDbLimit);
 
         db.Checkpoint();
         progress?.Report(100);
 
-        return new ScanResult(identified, unmatched, remaining);
+        return new ScanResult(identified, unmatched, deferred, askingAniDb);
     }
 
     private static async Task<string?> FromMappings(ScanItem item, ILogger logger, CancellationToken cancellationToken)

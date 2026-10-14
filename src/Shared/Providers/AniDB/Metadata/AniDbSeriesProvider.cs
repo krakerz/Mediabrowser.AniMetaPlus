@@ -907,7 +907,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
             try
             {
-                await DownloadSeriesData(seriesId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
+                await DownloadSeriesData(seriesId, seriesDataPath, PluginPaths.CacheFolder(appPaths), cancellationToken).ConfigureAwait(false);
 
                 _refusedIds.TryRemove(seriesId, out _);
             }
@@ -932,6 +932,21 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         return seriesDataPath;
     }
+
+    /// <summary>
+    /// Whether refreshing an anime now would send AniDB a request: not while AniDB cannot be
+    /// asked - banned, blocked, turned off or without a client - and not while its answer is
+    /// cached and current. Used to pace scans by what they cost AniDB, not by item count.
+    /// </summary>
+    /// <param name="appPaths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns><c>true</c> when the refresh would ask AniDB.</returns>
+    internal static bool WouldAskAniDb(IApplicationPaths appPaths, string animeId)
+        => Plugin.Instance.Configuration.GetSource(SourceIds.AniDb).Enabled
+            && IsClientUsable()
+            && GetRemainingBanTime() <= TimeSpan.Zero
+            && BlockStore.SourceBlock(SourceIds.AniDb) == null
+            && NeedsDownload(Path.Combine(GetSeriesDataPath(appPaths, animeId), "series.xml"));
 
     /// <summary>
     /// Whether the cached document of an anime has to be downloaded before it can be read.
@@ -1343,7 +1358,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         const string TestAnimeId = "1";
         var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths, TestAnimeId), "series.xml");
 
-        await DownloadSeriesData(TestAnimeId, seriesDataPath, appPaths.CachePath, cancellationToken).ConfigureAwait(false);
+        await DownloadSeriesData(TestAnimeId, seriesDataPath, PluginPaths.CacheFolder(appPaths), cancellationToken).ConfigureAwait(false);
     }
 
     private static TimeSpan GetRemainingInterval()
@@ -2132,7 +2147,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private static string GetCastPath(string name, string cachePath)
     {
         name = name.ToLowerInvariant();
-        return Path.Combine(cachePath, "anidb-people", name[0].ToString(), name + ".xml");
+        return Path.Combine(cachePath, "people", name[0].ToString(), name + ".xml");
     }
 
     private static IEnumerable<AniDbPersonInfo> ParseCharacterList(string xml)
@@ -2285,7 +2300,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>System.String.</returns>
     public static string GetSeriesDataPath(IApplicationPaths appPaths, string seriesId)
     {
-        return Path.Combine(appPaths.CachePath, "anidb", "series", seriesId);
+        return Path.Combine(PluginPaths.CacheFolder(appPaths), "series", seriesId);
     }
 
     [GeneratedRegex(@"<error[^>]*>.*?</error>", RegexOptions.Singleline)]

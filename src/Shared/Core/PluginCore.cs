@@ -71,6 +71,15 @@ public static class PluginCore
 
         try
         {
+            PluginPaths.MoveLegacyCache(paths, logger);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "AniMeta+ could not move its cached answers out of the server's cache folder; they are fetched again as needed");
+        }
+
+        try
+        {
             var db = AniMetaDb.Get(paths, logger);
 
             if (db.GetState("migrated") == null)

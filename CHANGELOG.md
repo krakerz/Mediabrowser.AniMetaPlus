@@ -4,6 +4,20 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-14
+
+### Added
+- Setting for how many shows one scan or queue run sends to AniDB, 25 by default
+
+### Changed
+- The scan task identifies the whole library each run; only shows needing a new AniDB answer count toward the per-run limit
+- Catch-up after an AniDB ban follows the same per-run limit
+- How long scans reuse a fetched answer can be set down to 3 days (7 by default)
+- Fetched answers are kept in the plugin's data folder instead of the server's cache folder, so cache cleanup no longer deletes them; existing ones are moved on first start
+
+### Fixed
+- On Jellyfin the scan task took every show for unidentified and kept refreshing already matched shows
+
 ## [1.3.0] — 2026-10-14
 
 ### Added

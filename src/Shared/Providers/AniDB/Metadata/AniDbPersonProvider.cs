@@ -33,7 +33,7 @@ public class AniDbPersonProvider(IApplicationPaths paths) : IRemoteMetadataProvi
             return Task.FromResult(result);
         }
 
-        var person = AniDbSeriesProvider.GetPersonInfo(_paths.CachePath, info.Name);
+        var person = AniDbSeriesProvider.GetPersonInfo(Core.PluginPaths.CacheFolder(_paths), info.Name);
         if (!string.IsNullOrEmpty(person?.Id))
         {
             result.Item = new Person();
