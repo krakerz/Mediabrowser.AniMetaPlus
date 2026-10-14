@@ -8,7 +8,7 @@ AniDB bans an IP address when it is asked too often, and every install of the ol
 
 AniMeta+ identifies anime from a local AniDB titles dump and mapping files first, and only asks AniDB with the user's own registered client name. It remembers every failed request so it does not repeat it, and fills each field from other sources in an order the user sets. One codebase builds two plugins, one for Emby and one for Jellyfin.
 
-Licensed under GPL-2.0, see LICENSE.
+Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are under the ISC license, see `src/Shared/Web/LICENSE-lucide.txt`.
 
 ## Features
 
