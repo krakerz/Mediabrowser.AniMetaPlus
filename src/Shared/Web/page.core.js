@@ -251,7 +251,7 @@ function aniMetaPlusPage(host) {
                 + '<div class="inputContainer"><input type="text" class="amp-search" placeholder="Search the titles dump" value="' + esc(u.Name) + '" /></div>'
                 + '<div class="inputContainer"><input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></div>'
                 + '</div>'
-                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-act="online">Search AniList and MyAnimeList</button>'
+                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-act="online">Search titles dump, AniList and MyAnimeList</button>'
                 + '<button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
                 + '<button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
                 + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div>'
@@ -281,19 +281,7 @@ function aniMetaPlusPage(host) {
         }
 
         if (act === 'online') {
-            var select = card.querySelector('.amp-guess');
-            var query = card.querySelector('.amp-search').value.trim();
-            select.innerHTML = '<option value="">Searching AniList and MyAnimeList...</option>';
-            get('Titles/SearchOnline', { Query: query }).then(function (found) {
-                // A result the mappings tie to AniDB maps to that AniDB entry; one they do not is
-                // mapped to itself, and the item is filled from AniList and MyAnimeList.
-                select.innerHTML = '<option value="">' + found.length + ' found on AniList and MyAnimeList...</option>' + found.map(function (c) {
-                    var value = c.AniDbId || (c.Source === 'AniList' ? 'anilist:' : 'mal:') + c.Id;
-                    var details = [c.Year, c.Format].filter(function (x) { return x; }).join(', ');
-                    return '<option value="' + esc(value) + '">' + esc(c.Source + ': ' + c.Title + (details ? ' (' + details + ')' : '')
-                        + (c.AniDbId ? ' = AniDB ' + c.AniDbId : ' - not on AniDB')) + '</option>';
-                }).join('');
-            }, fail);
+            searchCard(card).then(null, fail);
             return;
         }
 
@@ -308,6 +296,59 @@ function aniMetaPlusPage(host) {
             notify('Mapped to ' + (/^anilist:/.test(to) ? 'AniList ' + to.slice(8) : /^mal:/.test(to) ? 'MyAnimeList ' + to.slice(4) : 'AniDB ' + to) + (act === 'mapnow' ? '; refreshing' : '; applies on the next queue run'));
             loadAll(view);
         }, fail);
+    }
+
+    // Searches the titles dump, AniList and MyAnimeList for one card and fills its guesses. A
+    // result AniList or MyAnimeList ties to AniDB maps to that AniDB entry; one they do not is
+    // mapped to itself, and the item is filled from AniList and MyAnimeList.
+    function searchCard(card) {
+        var select = card.querySelector('.amp-guess');
+        var query = card.querySelector('.amp-search').value.trim();
+        select.innerHTML = '<option value="">Searching the titles dump, AniList and MyAnimeList...</option>';
+
+        return Promise.all([get('Titles/Search', { Query: query }), get('Titles/SearchOnline', { Query: query })]).then(function (r) {
+            var local = r[0].map(function (c) {
+                return '<option value="' + esc(c.AnimeId) + '">' + esc('AniDB: ' + c.Title + ' (' + c.AnimeId + ', ' + c.Score + '%)') + '</option>';
+            });
+            var online = r[1].map(function (c) {
+                var value = c.AniDbId || (c.Source === 'AniList' ? 'anilist:' : 'mal:') + c.Id;
+                var details = [c.Year, c.Format].filter(function (x) { return x; }).join(', ');
+                return '<option value="' + esc(value) + '">' + esc(c.Source + ': ' + c.Title + (details ? ' (' + details + ')' : '')
+                    + (c.AniDbId ? ' = AniDB ' + c.AniDbId : ' - not on AniDB')) + '</option>';
+            });
+            select.innerHTML = '<option value="">' + (local.length + online.length) + ' found (' + local.length + ' in the titles dump, ' + online.length + ' on AniList and MyAnimeList)...</option>'
+                + local.join('') + online.join('');
+
+            return local.length + online.length;
+        });
+    }
+
+    // One card after another: AniList and MyAnimeList are asked through their request gaps, and
+    // a page firing every search at once would only queue them up behind each other.
+    function searchAllUnmatched(view) {
+        var cards = Array.prototype.slice.call(view.querySelectorAll('#ampUnmatched [data-key]'));
+        var button = view.querySelector('#ampSearchAllUnmatched');
+        var status = view.querySelector('#ampSearchAllResult');
+        var withResults = 0;
+
+        if (!cards.length) {
+            status.innerHTML = 'Nothing listed to search.';
+            return;
+        }
+
+        button.disabled = true;
+
+        return cards.reduce(function (chain, card, index) {
+            return chain.then(function () {
+                status.innerHTML = 'Searching ' + (index + 1) + ' of ' + cards.length + '...';
+                return searchCard(card).then(function (count) {
+                    withResults += count ? 1 : 0;
+                }, function () { /* one failed search does not stop the rest */ });
+            });
+        }, Promise.resolve()).then(function () {
+            button.disabled = false;
+            status.innerHTML = 'Searched ' + cards.length + ' items; ' + withResults + ' have results to pick from.';
+        });
     }
 
     function onUnmatchedSearch(e) {
@@ -481,6 +522,7 @@ function aniMetaPlusPage(host) {
 
         view.querySelector('#ampUnmatched').addEventListener('click', function (e) { onUnmatchedClick(view, e); });
         view.querySelector('#ampUnmatched').addEventListener('keydown', onUnmatchedSearch);
+        view.querySelector('#ampSearchAllUnmatched').addEventListener('click', function () { searchAllUnmatched(view); });
         view.querySelector('#ampShowIgnored').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampShowExpired').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampRefreshStatus').addEventListener('click', function () { loadAll(view); });

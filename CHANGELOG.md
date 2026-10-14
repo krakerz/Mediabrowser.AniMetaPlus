@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-14
+
+### Added
+- Unmatched tab searches the titles dump, AniList and MyAnimeList together, for one item or for all listed at once
+
+### Changed
+- Shows mapped by hand are no longer listed as unmatched; they appear under Mapped by hand
+
+### Fixed
+- The Status page could fail to load while counting unmatched items
+
 ## [1.5.0] — 2026-10-14
 
 ### Added
