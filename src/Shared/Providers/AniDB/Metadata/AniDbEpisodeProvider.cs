@@ -95,8 +95,12 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
     {
         var configuration = Plugin.Instance.Configuration;
 
-        // A paused AniDB keeps the episode as it is until AniDB answers again.
-        if (aniDbState == SourceState.Blocked && configuration.GetSource(SourceIds.AniDb).Mode == FallbackMode.Pause)
+        // A paused AniDB keeps the episode as it is until AniDB answers again, where there is
+        // anything to keep. An episode still named after its file was never filled, and is
+        // filled by the next source rather than left bare for the length of a ban.
+        if (aniDbState == SourceState.Blocked
+            && configuration.GetSource(SourceIds.AniDb).Mode == FallbackMode.Pause
+            && !string.Equals(info.Name, Path.GetFileNameWithoutExtension(info.Path), StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }

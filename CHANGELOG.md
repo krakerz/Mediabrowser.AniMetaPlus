@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-10-14
+
+### Fixed
+- Shows AniDB never answered for are identified and filled from local data and the other sources while AniDB is banned
+- Episodes AniDB never answered for are filled from TVDB or TMDB while AniDB is banned
+
 ## [1.2.0] — 2026-10-14
 
 ### Added

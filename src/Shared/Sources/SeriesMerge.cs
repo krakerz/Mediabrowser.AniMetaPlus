@@ -149,7 +149,11 @@ public static class SeriesMerge
                 {
                     turnedAway = source;
 
-                    if (configuration.GetSource(source).Mode == FallbackMode.Pause)
+                    // Pause keeps what the item has. A field it never got has nothing to keep, so
+                    // the next source fills it, as with Switch, until the paused one answers: an
+                    // anime AniDB never answered for would otherwise get no data at all while
+                    // AniDB is banned, not even from the local dump and the other sources.
+                    if (configuration.GetSource(source).Mode == FallbackMode.Pause && provenance is not null)
                     {
                         paused = true;
                         break;
