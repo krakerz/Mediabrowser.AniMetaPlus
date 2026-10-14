@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -14,6 +15,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
@@ -23,7 +25,7 @@ namespace AniMetaPlus;
 /// <summary>
 /// The Emby entry point of the plugin.
 /// </summary>
-public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
+public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage
 {
     // Emby has no client factory for plugins. One client for the process is what the factory
     // would hand out anyway, and creating one per request exhausts sockets.
@@ -110,6 +112,12 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             Headers = response.Headers.ToDictionary(h => h.Key, h => string.Join(", ", h.Value), StringComparer.OrdinalIgnoreCase)
         };
     }
+
+    /// <inheritdoc />
+    public ImageFormat ThumbImageFormat => ImageFormat.Jpg;
+
+    /// <inheritdoc />
+    public Stream GetThumbImage() => GetType().Assembly.GetManifestResourceStream("AniMetaPlus.banner.jpg")!;
 
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages() =>
