@@ -19,7 +19,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Identification without network: local titles dump (anime-titles.dat.gz or .xml.gz), AniBridge and Anime-Lists mappings, manual mappings; folder notes like "(Fall)" or "[BD]" are ignored
 - Every failed request is remembered as a block, either for the whole source (ban, rate limit, server down, refused key) or for one item (not found, unreadable), with growing backoff; blocks can be lifted or pinned by hand
 - Per source, when it is blocked: Pause (item keeps its data and waits), Switch (next source fills in, replaced automatically later), or Switch + review (replacement waits for Accept / Keep / Lock)
-- Unmatched list with suggestions from the titles dump, title search, and mapping by AniDB id or link
+- Unmatched list with suggestions from the titles dump, title search, AniList and MyAnimeList search, and mapping by AniDB, AniList or MyAnimeList id or link; a show AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB
 - Identify by title, AniDB id, MyAnimeList id or AniList id (each id only while that source is set up and its key accepted; Emby shows the id fields); results come from local data with a "Local only" poster, and the real data and images arrive on the refresh after a pick
 - Images from every source in the image order, labelled by source in the image picker, such as "AniMeta+ (AniList)"
 - AniDB, MyAnimeList and AniList links on shows and movies
@@ -56,7 +56,7 @@ If you installed it by hand before, delete that `AniMetaPlus_*` plugin folder fi
 
 By hand instead:
 
-1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.4.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
+1. Download the Jellyfin zip for your server from the GitHub release. Create the folder `<jellyfin config>/plugins/AniMetaPlus_1.5.0.0/` and copy `AniMetaPlus.dll` into it (when updating, replace the DLL in the `AniMetaPlus_*` folder you already have instead of adding a second one):
    - Linux package: `/var/lib/jellyfin/plugins`
    - Docker: `/config/plugins`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins`
@@ -151,7 +151,7 @@ No. Bans are per IP address.
 AniMeta+ calls them itself, only for what its source order says. If they were ticked in the library, the server would also run them for everything, and providers ticked below AniMeta+ would fill any fields it left empty with their own data.
 
 **An anime was not identified.**
-Open the Unmatched tab and pick a suggestion, search by title, or paste an AniDB id or link. Map now refreshes it.
+Open the Unmatched tab and pick a suggestion, search by title, search AniList and MyAnimeList, or paste an AniDB, AniList or MyAnimeList id or link. Map now refreshes it. Anime too new for AniDB are mapped to their AniList or MyAnimeList entry and move to AniDB by themselves once the mappings list them there.
 
 **What happens when a source is down?**
 It is blocked and retried with backoff. Depending on the mode, the item either pauses or falls back to the next source.

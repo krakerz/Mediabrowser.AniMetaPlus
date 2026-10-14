@@ -152,6 +152,13 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpGet("Titles/Search")]
     public Task<List<CandidateRecord>> SearchTitles([FromQuery] string query, CancellationToken cancellationToken) => AniMetaApi.SearchTitles(query, cancellationToken);
 
+    /// <summary>Searches AniList and MyAnimeList by title.</summary>
+    /// <param name="query">The title.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The matches, each with the AniDB entry it maps to, when it does.</returns>
+    [HttpGet("Titles/SearchOnline")]
+    public Task<IReadOnlyList<Sources.RemoteCandidate>> SearchOnline([FromQuery] string query, CancellationToken cancellationToken) => AniMetaApi.SearchOnline(query, logger, cancellationToken);
+
     /// <summary>Downloads a fresh titles dump, within AniDB's once-a-day allowance.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>What happened.</returns>

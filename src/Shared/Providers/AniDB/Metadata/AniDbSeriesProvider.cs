@@ -351,14 +351,37 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         var unidentifiedKey = ItemKeys.ForUnidentified("Series", info.Path, info.Name);
 
         // What the owner mapped by hand settles the question before anything is guessed.
+        string? link = null;
         if (string.IsNullOrEmpty(animeId))
         {
             animeId = Queues.MappedAnimeId(unidentifiedKey);
+
+            // Mapped to an AniList or MyAnimeList entry: AniDB had none to map to.
+            if (animeId is { } mapped && LinkParts(mapped) is not null)
+            {
+                link = mapped;
+                animeId = await AniDbForLink(mapped, cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        if (string.IsNullOrEmpty(animeId))
+        if (string.IsNullOrEmpty(animeId) && link is null)
         {
             animeId = await Identify(info, cancellationToken).ConfigureAwait(false);
+
+            // An item another plugin or an earlier mapping tied to AniList or MyAnimeList, which
+            // nothing here could tie to AniDB, is still filled from those.
+            if (string.IsNullOrEmpty(animeId))
+            {
+                link = LinkFromIds(info.ProviderIds);
+                animeId = link is null ? null : await AniDbForLink(link, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (string.IsNullOrEmpty(animeId) && link is not null)
+        {
+            Queues.ClearUnmatched(unidentifiedKey);
+
+            return await GetLinkedMetadata(link, info, cancellationToken).ConfigureAwait(false);
         }
 
         if (string.IsNullOrEmpty(animeId))
@@ -448,6 +471,96 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             return new MetadataResult<Series>();
         }
 
+        result.HasMetadata = merged.HasData;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Splits a mapping to AniList or MyAnimeList, "anilist:123" or "mal:123".
+    /// </summary>
+    /// <param name="mapping">The mapping.</param>
+    /// <returns>The source and the id, or <c>null</c> for an AniDB id or anything else.</returns>
+    internal static (string Source, string Prefix, string Id)? LinkParts(string? mapping)
+    {
+        foreach (var (source, prefix) in new[] { (SourceIds.AniList, "anilist"), (SourceIds.Mal, "mal") })
+        {
+            if (mapping is not null && mapping.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase))
+            {
+                var id = mapping[(prefix.Length + 1)..];
+
+                return id.Length > 0 && id.All(char.IsAsciiDigit) ? (source, prefix, id) : null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the AniList or MyAnimeList mapping an item's own ids make, AniList's first.
+    /// </summary>
+    /// <param name="ids">The item's ids.</param>
+    /// <returns>"anilist:123", "mal:123", or <c>null</c>.</returns>
+    internal static string? LinkFromIds(IReadOnlyDictionary<string, string> ids)
+    {
+        if (ids.GetValueOrDefault(SourceIds.AniList) is { Length: > 0 } aniList && aniList.All(char.IsAsciiDigit))
+        {
+            return "anilist:" + aniList;
+        }
+
+        return ids.GetValueOrDefault(SourceIds.Mal) is { Length: > 0 } mal && mal.All(char.IsAsciiDigit) ? "mal:" + mal : null;
+    }
+
+    /// <summary>
+    /// Gets the AniDB entry the mappings link an AniList or MyAnimeList entry to, so that an
+    /// item mapped to one moves to AniDB once AniDB lists it and the mappings catch up.
+    /// </summary>
+    private async Task<string?> AniDbForLink(string link, CancellationToken cancellationToken)
+        => LinkParts(link) is { } parts
+            ? await AniBridgeMappings.ResolveSeriesIdByLink(_appPaths, parts.Prefix, parts.Id, Logger ?? (ILogger)NullLogger.Instance, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>
+    /// Fills a show AniDB has no entry for from the AniList or MyAnimeList entry it is mapped
+    /// to, and from every other source in the order the owner set.
+    /// </summary>
+    /// <param name="link">"anilist:123" or "mal:123".</param>
+    /// <param name="info">The lookup info.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The result; empty when the item waits for a paused source.</returns>
+    private async Task<MetadataResult<Series>> GetLinkedMetadata(string link, SeriesInfo info, CancellationToken cancellationToken)
+    {
+        var (source, _, id) = LinkParts(link)!.Value;
+        var result = new MetadataResult<Series> { Item = new Series() };
+        result.Item.SetProviderId(source, id);
+
+        var context = new FetchContext
+        {
+            ItemKey = link,
+            ItemName = info.Name ?? string.Empty,
+            ItemPath = info.Path ?? string.Empty,
+            Year = GetLookupYear(info),
+            Language = info.MetadataLanguage ?? "en"
+        };
+
+        foreach (var (provider, value) in info.ProviderIds)
+        {
+            context.Ids[provider] = value;
+        }
+
+        context.Ids[source] = id;
+
+        var merged = await SeriesMerge.Apply(result, SourceOutcome.Missing, context, Logger ?? (ILogger)NullLogger.Instance, cancellationToken).ConfigureAwait(false);
+
+        if (merged.PausedFor is { } paused)
+        {
+            Queues.Wait(context.ItemKey, context.ItemName, context.ItemPath, paused);
+            Logger?.LogInformation("{SeriesName} waits for {Source}, which is paused, and keeps what it has until then", info.Name, paused);
+
+            return new MetadataResult<Series>();
+        }
+
+        Logger?.LogInformation("{SeriesName} has no AniDB entry and is filled from {Source} {Id} and the other sources", info.Name, source, id);
         result.HasMetadata = merged.HasData;
 
         return result;
@@ -1008,6 +1121,16 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 if (countsAgainstTheApi)
                 {
                     ThrowIfBanned();
+
+                    try
+                    {
+                        SourceGate.CountOwnRequest(SourceIds.AniDb);
+                    }
+                    catch (SourceBlockedException ex)
+                    {
+                        // The caps on the Sources tab hold AniDB back like a short block.
+                        throw new AniDbUnavailableException(ex.Message, ex) { RetryAfter = TimeSpan.FromHours(1) };
+                    }
                 }
 
                 _nextRequestTimestamp = Stopwatch.GetTimestamp() + GetRequestIntervalTicks();
@@ -1370,11 +1493,20 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     /// <returns>The request interval in <see cref="Stopwatch"/> ticks.</returns>
     private static long GetRequestIntervalTicks()
-    {
-        var interval = Plugin.Instance?.Configuration.RequestIntervalMs
-            ?? PluginConfiguration.MinimumRequestIntervalMs;
+        => (long)(Stopwatch.Frequency * (GetRequestIntervalMs() / 1000d));
 
-        return (long)(Stopwatch.Frequency * (interval / 1000d));
+    /// <summary>
+    /// Gets the gap kept between two AniDB requests. It is set in two places, the General tab
+    /// and AniDB's row on the Sources tab, and the larger one is kept.
+    /// </summary>
+    /// <returns>The gap in milliseconds.</returns>
+    internal static int GetRequestIntervalMs()
+    {
+        var configuration = Plugin.Instance?.Configuration;
+
+        return configuration is null
+            ? PluginConfiguration.MinimumRequestIntervalMs
+            : Math.Max(configuration.RequestIntervalMs, configuration.GetSource(SourceIds.AniDb).RequestIntervalMs);
     }
 
     private async Task FetchSeriesInfo(MetadataResult<Series> result, string seriesDataPath, string preferredMetadataLangauge)
@@ -1878,6 +2010,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
+        var started = Stopwatch.GetTimestamp();
+        var target = "anime " + aid;
         string text;
         try
         {
@@ -1885,6 +2019,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
             if (!response.IsSuccessStatusCode)
             {
+                SourceGate.LogOwnRequest(SourceIds.AniDb, target, ItemKeys.ForAnime(aid), "HttpError", (int)response.StatusCode, started);
+
                 throw new SourceHttpException(
                     "AniDB answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + " " + response.ReasonPhrase,
                     response.StatusCode,
@@ -1895,6 +2031,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
+            if (ex is not SourceHttpException)
+            {
+                SourceGate.LogOwnRequest(SourceIds.AniDb, target, ItemKeys.ForAnime(aid), ex is TaskCanceledException ? "Timeout" : "Unreachable", null, started);
+            }
+
             // A failure that is not a ban was once forgotten as soon as it happened, so the next
             // episode asked again straight away. Whatever it means for the source as a whole is
             // remembered now, and stops the queue behind it.
@@ -1910,6 +2051,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         }
 
         text = text.Replace("&#x0;", string.Empty, StringComparison.Ordinal);
+
+        var answered = ErrorRegex().Match(text);
+        SourceGate.LogOwnRequest(
+            SourceIds.AniDb,
+            target,
+            ItemKeys.ForAnime(aid),
+            !answered.Success ? (string.IsNullOrWhiteSpace(text) ? "Banned" : "ok")
+                : BannedRegex().IsMatch(answered.Value) ? "Banned"
+                : ClientErrorRegex().IsMatch(answered.Value) ? "ClientRejected"
+                : "Error",
+            200,
+            started);
 
         // Validate before touching the cache. AniDB answers a ban with an <error> document,
         // and overwriting good cached data with one would force another request on the next

@@ -169,6 +169,33 @@ public static class SourceGate
         }
     }
 
+    /// <summary>
+    /// Counts a request sent through a source's own queue rather than through this gate - AniDB
+    /// paces its API itself, with its ban handling - so that it shows in the counts and its caps
+    /// apply. Throws when the source's hourly or daily cap is used up.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    public static void CountOwnRequest(string source)
+    {
+        var setting = Plugin.Instance.Configuration.GetSource(source);
+        var lane = _lanes.GetOrAdd(source, _ => new Lane());
+
+        lane.ThrowIfCapped(source, setting.MaxPerHour, setting.MaxPerDay);
+        lane.Count();
+    }
+
+    /// <summary>
+    /// Writes a request sent through a source's own queue to the request log.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <param name="target">What was asked for.</param>
+    /// <param name="itemKey">The item it was asked for.</param>
+    /// <param name="outcome">How it went.</param>
+    /// <param name="status">The HTTP status, when there was one.</param>
+    /// <param name="started">When it was sent, as a <see cref="Stopwatch"/> timestamp.</param>
+    public static void LogOwnRequest(string source, string target, string itemKey, string outcome, int? status, long started)
+        => Log(source, target, itemKey, outcome, status, started);
+
     private static void Log(string source, string target, string itemKey, string outcome, int? status, long started)
     {
         try
