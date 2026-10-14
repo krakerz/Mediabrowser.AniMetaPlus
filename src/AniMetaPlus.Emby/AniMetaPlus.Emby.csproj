@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Emby Server 4.10 ships its own .NET 8 runtime and loads plugins into it. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>AniMetaPlus</AssemblyName>
+    <RootNamespace>AniMetaPlus</RootNamespace>
+    <DefineConstants>$(DefineConstants);EMBY</DefineConstants>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.10.0.24-beta2" />
+    <PackageReference Include="LiteDB" Version="5.0.21" />
+    <!-- Emby ships these itself; compile against them, never copy them next to the plugin. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <Import Project="..\Web.targets" />
+  <Import Project="..\Merge.targets" />
+
+</Project>

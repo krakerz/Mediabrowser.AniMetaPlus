@@ -1,0 +1,26 @@
+<Project>
+  <!-- Merges LiteDB into the plugin DLL and makes it internal, so that the plugin ships as one
+       file and cannot clash with another plugin's LiteDB: Emby loads every plugin into one
+       shared context. ILRepack's MSBuild task only runs on .NET Framework, so the command line
+       tool is run instead. -->
+  <ItemGroup>
+    <PackageReference Include="ILRepack" Version="2.0.48" PrivateAssets="all" ExcludeAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <Target Name="MergeDependencies" AfterTargets="Build" Condition="'$(PkgILRepack)' != ''">
+    <ItemGroup>
+      <_MergeInput Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'LiteDB' And '%(Extension)' == '.dll'" />
+      <_MergeInput Include="@(ReferencePath)" Condition="'%(Filename)' == 'LiteDB' And '@(ReferenceCopyLocalPaths)' == ''" />
+      <_MergeLibDirs Include="@(ReferencePath->'%(RootDir)%(Directory)')" />
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_MergeOut>$(OutDir)merged/$(TargetFileName)</_MergeOut>
+      <_MergeLibs>@(_MergeLibDirs->Distinct()->'/lib:&quot;%(Identity).&quot;', ' ')</_MergeLibs>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(OutDir)merged" />
+    <Exec Command="dotnet &quot;$(PkgILRepack)/tools/ILRepack.exe&quot; /internalize /parallel /out:&quot;$(_MergeOut)&quot; $(_MergeLibs) &quot;$(TargetPath)&quot; @(_MergeInput->'&quot;%(Identity)&quot;', ' ')" StandardOutputImportance="low" />
+    <Message Importance="high" Text="$(MSBuildProjectName) -> $(_MergeOut)" />
+  </Target>
+</Project>

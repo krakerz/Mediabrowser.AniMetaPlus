@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AniMetaPlus.Emby/AniMetaPlus.Emby.csproj" />
+    <Project Path="src/AniMetaPlus.Jellyfin/AniMetaPlus.Jellyfin.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AniMetaPlus.Tests/AniMetaPlus.Tests.csproj" />
+  </Folder>
+</Solution>

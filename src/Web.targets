@@ -1,0 +1,21 @@
+<Project>
+  <!-- Builds the settings page from the markup and script shared by both servers, wrapped in
+       this server's page and module format (Web/head.* and Web/foot.* beside the project).
+       Read and written escaped, so that the semicolons in the script survive WriteLinesToFile. -->
+  <Target Name="BuildSettingsPage" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_WebOut>$(IntermediateOutputPath)web/</_WebOut>
+      <_PageHtml>$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Web/head.html'))))$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)Shared/Web/page.body.html'))))$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Web/foot.html'))))</_PageHtml>
+      <_PageJs>$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Web/head.js'))))$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)Shared/Web/page.core.js'))))$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Web/foot.js'))))</_PageJs>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(_WebOut)" />
+    <WriteLinesToFile File="$(_WebOut)animetaplus.html" Lines="$(_PageHtml)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(_WebOut)animetaplus.js" Lines="$(_PageJs)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+
+    <ItemGroup>
+      <EmbeddedResource Include="$(_WebOut)animetaplus.html" LogicalName="AniMetaPlus.Configuration.animetaplus.html" />
+      <EmbeddedResource Include="$(_WebOut)animetaplus.js" LogicalName="AniMetaPlus.Configuration.animetaplus.js" />
+    </ItemGroup>
+  </Target>
+</Project>

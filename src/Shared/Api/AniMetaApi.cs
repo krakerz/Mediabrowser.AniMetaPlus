@@ -1,0 +1,671 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using AniMetaPlus.Configuration;
+using AniMetaPlus.Core;
+using AniMetaPlus.Data;
+using AniMetaPlus.Providers.AniDB;
+using AniMetaPlus.Providers.AniDB.Mapping;
+using AniMetaPlus.Providers.AniDB.Metadata;
+using AniMetaPlus.Sources;
+using AniMetaPlus.Titles;
+using Microsoft.Extensions.Logging;
+
+namespace AniMetaPlus.Api;
+
+/// <summary>
+/// How one source stands, for the settings page.
+/// </summary>
+public class SourceStatus
+{
+    /// <summary>Gets or sets the source id.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether it is turned on.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether it can be asked: has its key or client, or is installed.</summary>
+    public bool Available { get; set; }
+
+    /// <summary>Gets or sets why it cannot be asked, when it cannot.</summary>
+    public string? Unavailable { get; set; }
+
+    /// <summary>Gets or sets the fallback mode.</summary>
+    public string Mode { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the source-wide block in force, if any.</summary>
+    public BlockRecord? Block { get; set; }
+
+    /// <summary>Gets or sets the requests sent in the last hour.</summary>
+    public int LastHour { get; set; }
+
+    /// <summary>Gets or sets the requests sent in the last day.</summary>
+    public int LastDay { get; set; }
+
+    /// <summary>Gets or sets the last check of its client or key.</summary>
+    public ClientTestRecord? LastTest { get; set; }
+}
+
+/// <summary>
+/// Everything the settings page shows at a glance.
+/// </summary>
+public class OverviewStatus
+{
+    /// <summary>Gets or sets AniDB's request queue and ban.</summary>
+    public AniDbStatus AniDb { get; set; } = new();
+
+    /// <summary>Gets or sets every source.</summary>
+    public List<SourceStatus> Sources { get; set; } = [];
+
+    /// <summary>Gets or sets the titles dump.</summary>
+    public TitlesDumpStatus? Titles { get; set; }
+
+    /// <summary>Gets or sets how many items wait for a paused source.</summary>
+    public int Waiting { get; set; }
+
+    /// <summary>Gets or sets how many replacements wait for review.</summary>
+    public int PendingReviews { get; set; }
+
+    /// <summary>Gets or sets how many items nothing identified.</summary>
+    public int Unmatched { get; set; }
+
+    /// <summary>Gets or sets how many fields a stand-in supplied.</summary>
+    public int Provisional { get; set; }
+
+    /// <summary>Gets or sets how many blocks are in force.</summary>
+    public int ActiveBlocks { get; set; }
+
+    /// <summary>Gets or sets every source's settings, defaults filled in.</summary>
+    public List<SourceSetting> Settings { get; set; } = [];
+
+    /// <summary>Gets or sets the source order of every kind of data, defaults filled in.</summary>
+    public List<KindPriority> Priorities { get; set; } = [];
+}
+
+/// <summary>
+/// The result of checking a client name or key.
+/// </summary>
+/// <param name="Result">valid, invalid, banned, unreachable, throttled or unconfigured.</param>
+/// <param name="Message">What was found.</param>
+public sealed record ClientTestResult(string Result, string Message);
+
+/// <summary>
+/// What the settings page can ask of the plugin, the same on both servers. Each server's own
+/// endpoints only pass requests through to this.
+/// </summary>
+public static class AniMetaApi
+{
+    private static readonly TimeSpan _testGap = TimeSpan.FromMinutes(3);
+    private static readonly JsonSerializerOptions _json = new() { WriteIndented = true };
+
+    private static AniMetaDb Db => AniMetaDb.Current;
+
+    /// <summary>
+    /// Gets AniDB's status in the shape the original status page read.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The status.</returns>
+    public static async Task<AniDbStatus> GetAniDbStatus(ILogger logger, CancellationToken cancellationToken)
+    {
+        var paths = Plugin.Instance.AppPaths;
+        var (banRemaining, queued, untilNext, sent, lastSentUtc) = AniDbSeriesProvider.GetRequestStatus();
+        var (cachedAtUtc, checkedAtUtc, entryCount, maxAgeInDays) = AniDbAnimeList.GetStatus(paths);
+        var (bridgeCachedAtUtc, bridgeCheckedAtUtc, bridgeEntryCount, bridgeMaxAgeInDays) = AniBridgeMappings.GetStatus(paths);
+        var (overridesPath, overridesWrittenAtUtc, overridesEntryCount, overridesShowCount, overridesMovieCount, overridesError) =
+            await AniDbMappingOverrides.GetStatus(paths, logger, cancellationToken).ConfigureAwait(false);
+
+        return new AniDbStatus
+        {
+            IsBanned = banRemaining > TimeSpan.Zero,
+            BanRemainingSeconds = banRemaining.TotalSeconds,
+            QueuedRequests = queued,
+            NextRequestInSeconds = untilNext.TotalSeconds,
+            RequestsSent = sent,
+            LastRequestUtc = lastSentUtc,
+            RequestIntervalMs = Plugin.Instance.Configuration.RequestIntervalMs,
+            AnimeListCachedAtUtc = cachedAtUtc,
+            AnimeListCheckedAtUtc = checkedAtUtc,
+            AnimeListEntryCount = entryCount,
+            AnimeListMaxAgeDays = maxAgeInDays,
+            AniBridgeCachedAtUtc = bridgeCachedAtUtc,
+            AniBridgeCheckedAtUtc = bridgeCheckedAtUtc,
+            AniBridgeEntryCount = bridgeEntryCount,
+            AniBridgeMaxAgeDays = bridgeMaxAgeInDays,
+            AniBridgeEnabled = Plugin.Instance.Configuration.UseAniBridgeMappings,
+            OverridesPath = overridesPath,
+            OverridesWrittenAtUtc = overridesWrittenAtUtc,
+            OverridesEntryCount = overridesEntryCount,
+            OverridesShowCount = overridesShowCount,
+            OverridesMovieCount = overridesMovieCount,
+            OverridesError = overridesError
+        };
+    }
+
+    /// <summary>
+    /// Checks both downloaded mapping sources for a newer copy.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>What each check came to.</returns>
+    public static async Task<AniDbSourceCheck> CheckMappingSources(ILogger logger, CancellationToken cancellationToken)
+    {
+        var paths = Plugin.Instance.AppPaths;
+        var outcomes = await Task.WhenAll(
+            AniBridgeMappings.CheckNow(paths, logger, cancellationToken),
+            AniDbAnimeList.CheckNow(paths, logger, cancellationToken)).ConfigureAwait(false);
+
+        static string Describe(MappingSourceCheck check) => check switch
+        {
+            MappingSourceCheck.Updated => "a newer copy was downloaded",
+            MappingSourceCheck.Unchanged => "already the current copy",
+            MappingSourceCheck.NotUsed => "not used",
+            MappingSourceCheck.NotDownloaded => "not downloaded",
+            _ => "could not be checked - see the server log"
+        };
+
+        return new AniDbSourceCheck { AniBridge = Describe(outcomes[0]), AnimeList = Describe(outcomes[1]) };
+    }
+
+    /// <summary>
+    /// Gets everything the settings page shows at a glance.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The status.</returns>
+    public static async Task<OverviewStatus> GetOverview(ILogger logger, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+        var counts = SourceGate.Counts();
+        var db = Db;
+        var now = DateTime.UtcNow;
+
+        var status = new OverviewStatus
+        {
+            AniDb = await GetAniDbStatus(logger, cancellationToken).ConfigureAwait(false),
+            Titles = TitlesDump.GetStatus(Plugin.Instance.AppPaths),
+            Waiting = db.Waiting.Count(),
+            PendingReviews = db.Reviews.Count(r => r.Status == ReviewStatus.Pending),
+            Unmatched = db.Unmatched.Count(u => !u.Ignored),
+            Provisional = db.Provenance.Count(p => p.Provisional),
+            ActiveBlocks = BlockStore.List().Count
+        };
+
+        foreach (var kind in Enum.GetValues<DataKind>())
+        {
+            status.Priorities.Add(new KindPriority { Kind = kind.ToString(), Sources = string.Join(",", configuration.GetPriority(kind)) });
+        }
+
+        foreach (var id in SourceIds.All)
+        {
+            var setting = configuration.GetSource(id);
+            status.Settings.Add(setting);
+            var (available, why) = Availability(id);
+            counts.TryGetValue(id, out var count);
+
+            status.Sources.Add(new SourceStatus
+            {
+                Id = id,
+                Enabled = setting.Enabled,
+                Available = available,
+                Unavailable = why,
+                Mode = setting.Mode.ToString(),
+                Block = BlockStore.SourceBlock(id),
+                LastHour = count.LastHour,
+                LastDay = count.LastDay,
+                LastTest = db.ClientTests.FindById(id)
+            });
+        }
+
+        return status;
+    }
+
+    /// <summary>
+    /// Lists blocks.
+    /// </summary>
+    /// <param name="includeExpired">Whether to include lapsed blocks.</param>
+    /// <returns>The blocks, newest first.</returns>
+    public static IReadOnlyList<BlockRecord> GetBlocks(bool includeExpired) => BlockStore.List(includeExpired);
+
+    /// <summary>
+    /// Lifts a block. An AniDB ban lifted by hand clears the plugin's own record of it too.
+    /// </summary>
+    /// <param name="id">The block id.</param>
+    /// <returns>The lifted block, or <c>null</c>.</returns>
+    public static BlockRecord? LiftBlock(string id)
+    {
+        var block = BlockStore.Lift(id);
+
+        // An item blocked for a source is refreshed, so that the lift shows at once.
+        if (block is { Scope: BlockScope.Item })
+        {
+            var path = Db.Provenance.Find(p => p.ItemKey == block.ItemKey).Select(p => p.ItemPath).FirstOrDefault(p => !string.IsNullOrEmpty(p));
+            if (path != null)
+            {
+                HostServices.Refresher?.Refresh(path, false);
+            }
+        }
+
+        return block;
+    }
+
+    /// <summary>
+    /// Pins a block.
+    /// </summary>
+    /// <param name="id">The block id.</param>
+    /// <returns>The pinned block, or <c>null</c>.</returns>
+    public static BlockRecord? PinBlock(string id) => BlockStore.Pin(id);
+
+    /// <summary>
+    /// Blocks a source by hand, for one item or as a whole.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <param name="itemKey">The item key, or empty for the whole source.</param>
+    /// <param name="itemName">The item's name.</param>
+    /// <param name="kind">The kind of data, or empty for every kind.</param>
+    /// <returns>The block.</returns>
+    public static BlockRecord? AddBlock(string source, string itemKey, string itemName, string kind)
+        => BlockStore.Add(source, itemKey ?? string.Empty, itemName ?? string.Empty, kind ?? string.Empty);
+
+    /// <summary>
+    /// Lists reviews.
+    /// </summary>
+    /// <param name="pendingOnly">Whether to list only the undecided.</param>
+    /// <returns>The reviews, newest first.</returns>
+    public static IReadOnlyList<ReviewRecord> GetReviews(bool pendingOnly)
+        => Db.Reviews.FindAll()
+            .Where(r => !pendingOnly || r.Status == ReviewStatus.Pending)
+            .OrderByDescending(r => r.CreatedUtc)
+            .ToList();
+
+    /// <summary>
+    /// Decides a review.
+    /// </summary>
+    /// <param name="id">The review id.</param>
+    /// <param name="decision">Accepted, Kept or Locked.</param>
+    /// <returns>The decided review, or <c>null</c> when there is none.</returns>
+    public static ReviewRecord? DecideReview(string id, ReviewStatus decision)
+    {
+        var db = Db;
+        var review = db.Reviews.FindById(id);
+        if (review == null || decision == ReviewStatus.Pending)
+        {
+            return review;
+        }
+
+        var provenance = db.Provenance.FindById(id) ?? new ProvenanceRecord { Id = id, ItemKey = review.ItemKey, Field = review.Field };
+
+        if (decision == ReviewStatus.Accepted)
+        {
+            provenance.PinnedSource = review.ProposedSource;
+            provenance.Provisional = false;
+            provenance.PreferredSource = string.Empty;
+            provenance.DeclinedValue = string.Empty;
+            provenance.Locked = false;
+        }
+        else
+        {
+            provenance.PinnedSource = review.CurrentSource;
+            provenance.Provisional = false;
+            provenance.PreferredSource = string.Empty;
+            provenance.DeclinedValue = review.ProposedValue;
+            provenance.Locked = decision == ReviewStatus.Locked;
+        }
+
+        provenance.UpdatedUtc = DateTime.UtcNow;
+        db.Provenance.Upsert(provenance);
+
+        review.Status = decision;
+        review.DecidedUtc = DateTime.UtcNow;
+        db.Reviews.Update(review);
+        db.DecisionChanged();
+
+        if (decision == ReviewStatus.Accepted && !string.IsNullOrEmpty(review.ItemPath))
+        {
+            HostServices.Refresher?.Refresh(review.ItemPath, false);
+        }
+
+        return review;
+    }
+
+    /// <summary>
+    /// Lists the items nothing identified.
+    /// </summary>
+    /// <param name="includeIgnored">Whether to include the ones the owner set aside.</param>
+    /// <returns>The items, most recently tried first.</returns>
+    public static IReadOnlyList<UnmatchedRecord> GetUnmatched(bool includeIgnored)
+        => Db.Unmatched.FindAll()
+            .Where(u => includeIgnored || !u.Ignored)
+            .OrderByDescending(u => u.LastAttemptUtc)
+            .ToList();
+
+    /// <summary>
+    /// Searches the local titles dump.
+    /// </summary>
+    /// <param name="query">The title to search for.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The closest anime.</returns>
+    public static Task<List<CandidateRecord>> SearchTitles(string query, CancellationToken cancellationToken)
+        => string.IsNullOrWhiteSpace(query) ? Task.FromResult(new List<CandidateRecord>()) : Queues.Candidates(query, cancellationToken);
+
+    /// <summary>
+    /// Maps an unmatched item to an AniDB id.
+    /// </summary>
+    /// <param name="itemKey">The item key.</param>
+    /// <param name="animeIdOrUrl">The AniDB id, or a link to the anime on AniDB.</param>
+    /// <param name="applyNow">Whether to refresh it now rather than on the next queue run.</param>
+    /// <returns>The mapped id.</returns>
+    public static string Map(string itemKey, string animeIdOrUrl, bool applyNow)
+    {
+        var animeId = ParseAnimeId(animeIdOrUrl) ?? throw new ArgumentException("Not an AniDB id or link: " + animeIdOrUrl, nameof(animeIdOrUrl));
+        var unmatched = Queues.Map(itemKey, animeId);
+
+        if (applyNow && unmatched is { Path.Length: > 0 } && HostServices.Refresher?.Refresh(unmatched.Path, true) == true)
+        {
+            unmatched.PendingRefresh = false;
+            Db.Unmatched.Update(unmatched);
+        }
+
+        return animeId;
+    }
+
+    /// <summary>
+    /// Sets an unmatched item aside, or brings it back.
+    /// </summary>
+    /// <param name="itemKey">The item key.</param>
+    /// <param name="ignore">Whether to set it aside.</param>
+    /// <returns>The item, or <c>null</c>.</returns>
+    public static UnmatchedRecord? Ignore(string itemKey, bool ignore)
+    {
+        var db = Db;
+        var record = db.Unmatched.FindById(itemKey);
+        if (record == null)
+        {
+            return null;
+        }
+
+        record.Ignored = ignore;
+        db.Unmatched.Update(record);
+        db.DecisionChanged();
+
+        return record;
+    }
+
+    /// <summary>
+    /// Removes a mapping made by hand.
+    /// </summary>
+    /// <param name="itemKey">The item key.</param>
+    /// <returns><c>true</c> when there was one.</returns>
+    public static bool Unmap(string itemKey)
+    {
+        var removed = Db.Mappings.Delete(itemKey);
+        if (removed)
+        {
+            Db.DecisionChanged();
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Lists the mappings made by hand.
+    /// </summary>
+    /// <returns>The mappings.</returns>
+    public static IReadOnlyList<MappingRecord> GetMappings() => Db.Mappings.FindAll().OrderByDescending(m => m.CreatedUtc).ToList();
+
+    /// <summary>
+    /// Lists the items waiting for a paused source.
+    /// </summary>
+    /// <returns>The items.</returns>
+    public static IReadOnlyList<WaitingRecord> GetWaiting() => Db.Waiting.FindAll().OrderBy(w => w.AddedUtc).ToList();
+
+    /// <summary>
+    /// Gets which source supplied each field of an item.
+    /// </summary>
+    /// <param name="itemKey">The item key, such as <c>anidb:23</c>.</param>
+    /// <returns>The fields.</returns>
+    public static IReadOnlyList<ProvenanceRecord> GetProvenance(string itemKey)
+        => Db.Provenance.Find(p => p.ItemKey == itemKey).OrderBy(p => p.Field).ToList();
+
+    /// <summary>
+    /// Lists the fields a stand-in supplied.
+    /// </summary>
+    /// <returns>The fields.</returns>
+    public static IReadOnlyList<ProvenanceRecord> GetProvisional()
+        => Db.Provenance.Find(p => p.Provisional).OrderByDescending(p => p.UpdatedUtc).ToList();
+
+    /// <summary>
+    /// Lists the most recent requests.
+    /// </summary>
+    /// <param name="count">How many.</param>
+    /// <returns>The requests, newest first.</returns>
+    public static IReadOnlyList<RequestLogRecord> GetRequests(int count)
+        => Db.RequestLog.Query().OrderByDescending(r => r.Id).Limit(Math.Clamp(count, 1, 500)).ToList();
+
+    /// <summary>
+    /// Checks a source's client name or key with one request.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>What was found.</returns>
+    public static async Task<ClientTestResult> TestClient(string source, CancellationToken cancellationToken)
+    {
+        var db = Db;
+        var configuration = Plugin.Instance.Configuration;
+
+        // Each check is a real request, so they are spaced like any other.
+        if (db.ClientTests.FindById(source) is { } last && DateTime.UtcNow - last.AtUtc < _testGap)
+        {
+            return new ClientTestResult("throttled", "Checked " + (int)(DateTime.UtcNow - last.AtUtc).TotalSeconds + " seconds ago: " + last.Result + ". Wait a few minutes before checking again.");
+        }
+
+        ClientTestResult result;
+        string subject;
+
+        if (string.Equals(source, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
+        {
+            subject = configuration.AniDbClientName + "/" + configuration.AniDbClientVersion;
+            BlockStore.ClearCredentialBlocks(SourceIds.AniDb);
+            result = await TestAniDb(cancellationToken).ConfigureAwait(false);
+        }
+        else if (string.Equals(source, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
+        {
+            subject = Mask(configuration.MalClientId);
+            BlockStore.ClearCredentialBlocks(SourceIds.Mal);
+            result = await TestHttp(source, ct => string.IsNullOrWhiteSpace(configuration.MalClientId)
+                ? throw new InvalidOperationException("No MyAnimeList client id is set.")
+                : MalClient.Test(Plugin.Instance.GetHttpClient(), configuration.MalClientId, ct), cancellationToken).ConfigureAwait(false);
+        }
+        else if (string.Equals(source, SourceIds.AniList, StringComparison.OrdinalIgnoreCase))
+        {
+            subject = "public API";
+            result = await TestHttp(source, ct => AniListClient.GetById(Plugin.Instance.GetHttpClient(), "1", ct), cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            subject = source;
+            result = DelegatedProviders.IsInstalled(source)
+                ? new ClientTestResult("valid", source + " is installed and is asked through the server.")
+                : new ClientTestResult("unconfigured", source + " is not installed on this server.");
+        }
+
+        db.ClientTests.Upsert(new ClientTestRecord { Id = source, Result = result.Result, Message = result.Message, Subject = subject, AtUtc = DateTime.UtcNow });
+        db.Wrote();
+
+        return result;
+    }
+
+    /// <summary>
+    /// Downloads a fresh titles dump, within AniDB's once-a-day allowance.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>What happened.</returns>
+    public static Task<TitlesRefreshResult> RefreshTitles(ILogger logger, CancellationToken cancellationToken)
+        => TitlesDump.Refresh(Plugin.Instance.AppPaths, Plugin.Instance.GetHttpClient(), force: true, logger, cancellationToken);
+
+    /// <summary>
+    /// Imports the titles dump on disk again, after it was replaced by hand.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The dump's status.</returns>
+    public static async Task<TitlesDumpStatus> ReimportTitles(ILogger logger, CancellationToken cancellationToken)
+    {
+        await TitlesDump.EnsureImported(Plugin.Instance.AppPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return TitlesDump.GetStatus(Plugin.Instance.AppPaths);
+    }
+
+    /// <summary>
+    /// Writes the owner's decisions out as JSON. Holds no keys or client names.
+    /// </summary>
+    /// <returns>The JSON.</returns>
+    public static string Export() => JsonSerializer.Serialize(Db.Export(), _json);
+
+    /// <summary>
+    /// Merges exported decisions in.
+    /// </summary>
+    /// <param name="json">The JSON an export wrote.</param>
+    /// <returns>How many records were taken.</returns>
+    public static int Import(string json)
+    {
+        var decisions = JsonSerializer.Deserialize<DecisionsExport>(json, _json) ?? throw new ArgumentException("Not an AniMeta+ export.", nameof(json));
+
+        return Db.Import(decisions);
+    }
+
+    /// <summary>
+    /// Runs the queues now.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>What was done.</returns>
+    public static Task<QueueRunResult> RunQueues(ILogger logger, CancellationToken cancellationToken)
+        => QueueProcessor.Run(logger, null, cancellationToken);
+
+    /// <summary>
+    /// Reads an AniDB id from an id or a link to an anime on AniDB.
+    /// </summary>
+    /// <param name="value">The id or link.</param>
+    /// <returns>The id, or <c>null</c>.</returns>
+    internal static string? ParseAnimeId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var text = value.Trim();
+        if (text.All(char.IsDigit))
+        {
+            return text;
+        }
+
+        // anidb.net/anime/123, or the old animedb.pl?show=anime&aid=123.
+        foreach (var marker in new[] { "/anime/", "aid=" })
+        {
+            var at = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0)
+            {
+                var digits = new string(text[(at + marker.Length)..].TakeWhile(char.IsDigit).ToArray());
+                if (digits.Length > 0)
+                {
+                    return digits;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static (bool Available, string? Why) Availability(string id)
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        if (string.Equals(id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!configuration.AniDbConfigured)
+            {
+                return (false, "No AniDB client name is set.");
+            }
+
+            return AniDbSeriesProvider.IsClientUsable() ? (true, null) : (false, "AniDB rejected the client name.");
+        }
+
+        if (string.Equals(id, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
+        {
+            return MalClient.IsConfigured ? (true, null) : (false, "No MyAnimeList client id is set, and Jikan is off.");
+        }
+
+        if (SourceIds.IsDelegated(id))
+        {
+            return DelegatedProviders.IsInstalled(id) ? (true, null) : (false, id + " is not installed on this server.");
+        }
+
+        return (true, null);
+    }
+
+    private static async Task<ClientTestResult> TestAniDb(CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.AniDbConfigured)
+        {
+            return new ClientTestResult("unconfigured", "Enter the client name registered on AniDB first.");
+        }
+
+        try
+        {
+            await AniDbSeriesProvider.TestClient(Plugin.Instance.AppPaths, cancellationToken).ConfigureAwait(false);
+
+            return new ClientTestResult("valid", "AniDB accepted the client.");
+        }
+        catch (AniDbUnavailableException ex) when (ex.ClientRejected)
+        {
+            return new ClientTestResult("invalid", ex.Message);
+        }
+        catch (AniDbBannedException ex)
+        {
+            return new ClientTestResult("banned", ex.Message + " Bans are per IP address: a different client name does not lift one.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ClientTestResult("invalid", ex.Message);
+        }
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TaskCanceledException)
+        {
+            return new ClientTestResult("unreachable", ex.Message);
+        }
+    }
+
+    private static async Task<ClientTestResult> TestHttp(string source, Func<CancellationToken, Task> test, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await test(cancellationToken).ConfigureAwait(false);
+            BlockStore.RecordSuccess(source);
+
+            return new ClientTestResult("valid", source + " answered.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ClientTestResult("unconfigured", ex.Message);
+        }
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TaskCanceledException or KeyNotFoundException or JsonException)
+        {
+            var failure = BlockStore.Classify(ex);
+
+            return failure.Reason switch
+            {
+                BlockReason.AuthFailed => new ClientTestResult("invalid", source + " refused the key: " + ex.Message),
+                BlockReason.RateLimited => new ClientTestResult("banned", source + " is rate limiting: " + ex.Message),
+                _ => new ClientTestResult("unreachable", ex.Message)
+            };
+        }
+    }
+
+    private static string Mask(string? key)
+        => string.IsNullOrEmpty(key) ? string.Empty : key.Length <= 4 ? "****" : new string('*', key.Length - 4) + key[^4..];
+}

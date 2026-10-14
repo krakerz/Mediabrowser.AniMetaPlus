@@ -1,0 +1,21 @@
+AniMeta+ for Emby Server (4.10 or newer)
+========================================
+
+1. Copy AniMetaPlus.dll into Emby's plugins folder:
+     Linux package:  /var/lib/emby/plugins
+     Docker:         /config/plugins
+     Windows:        %AppData%\Emby-Server\programdata\plugins
+2. Restart Emby.
+3. Open Settings > AniMeta+:
+   - Clients & keys: enter your own AniDB client name (register one on anidb.net,
+     your profile, "Client registration") and press Test. AniDB is not asked
+     anything until a client name is set.
+   - Optional: a MyAnimeList client id, or turn on Jikan.
+4. In your anime library's settings: tick AniMeta+ as metadata and image
+   downloader for Series, Season and Episode, and untick TheTVDB and TheMovieDb.
+   AniMeta+ still uses them itself where its source order lists them.
+5. Optional: put AniDB's anime-titles.dat.gz in
+   <plugins>/configurations/AniMetaPlus/ so anime can be identified at once;
+   otherwise the "Refresh AniDB titles dump" task downloads it (at most once a day).
+
+Settings, blocks and mappings live in <plugins>/configurations/AniMetaPlus/.

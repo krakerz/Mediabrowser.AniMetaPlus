@@ -1,0 +1,68 @@
+name: Build
+on:
+  push:
+    branches: [main]
+    paths-ignore: [README.md, CHANGELOG.md, LICENSE, .gitignore, docs/**]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'src/*.targets', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Resolve version
+        id: version
+        run: echo "version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog section
+        run: |
+          scripts/release-notes.sh "${{ steps.version.outputs.version }}" > release-notes.md
+          test -s release-notes.md || { echo "no changelog section"; exit 1; }
+          {
+            echo ""
+            echo "---"
+            echo "[Full changelog](${{ github.server_url }}/${{ github.repository }}/blob/main/CHANGELOG.md)"
+          } >> release-notes.md
+
+      - name: Build
+        run: dotnet build AniMetaPlus.slnx -c Release
+
+      - name: Test
+        run: dotnet tests/AniMetaPlus.Tests/bin/Release/net10.0/AniMetaPlus.Tests.dll
+
+      - name: Package
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          mkdir -p dist/emby/AniMetaPlus dist/jellyfin/AniMetaPlus
+          cp src/AniMetaPlus.Emby/bin/Release/net8.0/merged/AniMetaPlus.dll dist/emby/AniMetaPlus/
+          cp packaging/INSTALL-emby.txt dist/emby/AniMetaPlus/INSTALL.txt
+          cp src/AniMetaPlus.Jellyfin/bin/Release/net10.0/merged/AniMetaPlus.dll dist/jellyfin/AniMetaPlus/
+          cp packaging/INSTALL-jellyfin.txt dist/jellyfin/AniMetaPlus/INSTALL.txt
+          (cd dist/emby && zip -r "../AniMetaPlus-Emby-v$v.zip" AniMetaPlus)
+          (cd dist/jellyfin && zip -r "../AniMetaPlus-Jellyfin-v$v.zip" AniMetaPlus)
+
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            dist/AniMetaPlus-Emby-v${{ steps.version.outputs.version }}.zip
+            dist/AniMetaPlus-Jellyfin-v${{ steps.version.outputs.version }}.zip

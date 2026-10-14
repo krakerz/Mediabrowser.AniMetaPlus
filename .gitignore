@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+# A local copy of AniDB's titles dump, for testing. Never committed: AniDB's data, and large.
+anidb-data/
+release-notes.md
+dist/
