@@ -4,6 +4,9 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+### Changed
+- License corrected to GPL-2.0 to match the upstream Jellyfin AniDB plugin
+
 ## [1.0.0] — 2026-10-14
 
 ### Added
