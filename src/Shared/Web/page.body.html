@@ -4,6 +4,9 @@
     .amp-tabs button.active { background: rgba(82,181,75,.25); border-color: #52b54b; }
     .amp-tab { display: none; }
     .amp-tab.active { display: block; }
+    .amp-subtabs button { font-size: .9em; }
+    .amp-sub { display: none; }
+    .amp-sub.active { display: block; }
     .amp-table { width: 100%; border-collapse: collapse; margin: .6em 0 1em; font-size: .92em; }
     .amp-table th, .amp-table td { text-align: left; padding: .45em .5em; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
     .amp-table input[type=number] { width: 6em; }
@@ -44,22 +47,34 @@
 
 <!-- Status -->
 <div class="amp-tab active" data-tab="status">
-    <div class="amp-cards" id="ampCards"></div>
-    <h3>Sources</h3>
-    <div class="amp-scroll"><table class="amp-table" id="ampSourceStatus"></table></div>
-    <h3>AniDB queue</h3>
-    <div id="ampAniDbQueue" class="amp-small"></div>
-    <h3>Waiting for a paused source</h3>
-    <div class="amp-scroll"><table class="amp-table" id="ampWaiting"></table></div>
-    <h3>Values a stand-in supplied</h3>
-    <div class="amp-scroll"><table class="amp-table" id="ampProvisional"></table></div>
     <div class="amp-actions">
         <button is="emby-button" type="button" class="raised" id="ampRunQueues"><span>Process queues now</span></button>
         <button is="emby-button" type="button" class="raised" id="ampRefreshStatus"><span>Refresh</span></button>
     </div>
     <div class="amp-result" id="ampQueueResult"></div>
-    <h3>Recent requests</h3>
-    <div class="amp-scroll"><table class="amp-table" id="ampRequests"></table></div>
+    <div class="amp-cards" id="ampCards"></div>
+    <div class="amp-tabs amp-subtabs">
+        <button type="button" data-sub="sources" class="active">Sources and AniDB queue</button>
+        <button type="button" data-sub="waiting">Waiting for a source <span id="ampCountWaiting"></span></button>
+        <button type="button" data-sub="provisional">Stand-in values <span id="ampCountProvisional"></span></button>
+        <button type="button" data-sub="requests">Recent requests <span id="ampCountRequests"></span></button>
+    </div>
+    <div class="amp-sub active" data-sub="sources">
+        <div class="amp-scroll"><table class="amp-table" id="ampSourceStatus"></table></div>
+        <h3>AniDB queue</h3>
+        <div id="ampAniDbQueue" class="amp-small"></div>
+    </div>
+    <div class="amp-sub" data-sub="waiting">
+        <p class="amp-small">Items that keep what they have until a paused source answers again.</p>
+        <div class="amp-scroll"><table class="amp-table" id="ampWaiting"></table></div>
+    </div>
+    <div class="amp-sub" data-sub="provisional">
+        <p class="amp-small">Values another source supplied while the preferred one could not be asked. They are replaced once it answers, or wait for review.</p>
+        <div class="amp-scroll"><table class="amp-table" id="ampProvisional"></table></div>
+    </div>
+    <div class="amp-sub" data-sub="requests">
+        <div class="amp-scroll"><table class="amp-table" id="ampRequests"></table></div>
+    </div>
 </div>
 
 <!-- Sources -->
@@ -125,12 +140,19 @@
 <!-- Unmatched -->
 <div class="amp-tab" data-tab="unmatched">
     <p class="amp-small">Items nothing could identify. Pick a guess, search the titles dump (Enter), search the titles dump, AniList and MyAnimeList together (one item, or all listed) for anime AniDB does not list yet, or paste an AniDB, AniList or MyAnimeList id or link. One AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB. "Map" applies on the next queue run; "Map now" refreshes the item at once.</p>
-    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowIgnored" /><span>Show items set aside</span></label>
-    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampSearchAllUnmatched"><span>Search all listed (titles dump, AniList, MyAnimeList)</span></button></div>
-    <div class="amp-result amp-small" id="ampSearchAllResult"></div>
-    <div id="ampUnmatched"></div>
-    <h3>Mapped by hand</h3>
-    <div class="amp-scroll"><table class="amp-table" id="ampMappings"></table></div>
+    <div class="amp-tabs amp-subtabs">
+        <button type="button" data-sub="list" class="active">Unmatched <span id="ampCountUnmatched"></span></button>
+        <button type="button" data-sub="mapped">Mapped by hand <span id="ampCountMapped"></span></button>
+    </div>
+    <div class="amp-sub active" data-sub="list">
+        <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampSearchAllUnmatched"><span>Search all listed (titles dump, AniList, MyAnimeList)</span></button></div>
+        <div class="amp-result amp-small" id="ampSearchAllResult"></div>
+        <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowIgnored" /><span>Show items set aside</span></label>
+        <div id="ampUnmatched"></div>
+    </div>
+    <div class="amp-sub" data-sub="mapped">
+        <div class="amp-scroll"><table class="amp-table" id="ampMappings"></table></div>
+    </div>
 </div>
 
 <!-- Review -->
@@ -155,6 +177,11 @@
 
 <!-- General -->
 <div class="amp-tab" data-tab="general">
+    <div class="amp-tabs amp-subtabs">
+        <button type="button" data-sub="settings" class="active">Settings</button>
+        <button type="button" data-sub="cache">Cached answers</button>
+    </div>
+    <div class="amp-sub active" data-sub="settings">
     <div class="selectContainer">
         <select is="emby-select" id="ampTitlePreference" label="Title language:">
             <option value="Localized">Library's metadata language</option>
@@ -175,11 +202,13 @@
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampPublishIds" /><span>Write the mapped TVDB and TMDB ids onto shows</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampUseAniBridge" /><span>Use the AniBridge mappings</span></label>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveGeneral"><span>Save</span></button></div>
+    </div>
 
-    <h3>Cached answers</h3>
+    <div class="amp-sub" data-sub="cache">
     <p class="amp-small">What AniDB, AniList and MyAnimeList answered is kept and reused, so that a refresh does not ask them again. <b>Reset</b> makes the next refresh or scan ask that source again; the old copies stay on disk, and AniDB's stay in use while AniDB is banned.</p>
     <div class="amp-scroll"><table class="amp-table" id="ampCache"></table></div>
     <div class="amp-result" id="ampCacheResult"></div>
+    </div>
 </div>
 
 <!-- Import/Export -->

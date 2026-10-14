@@ -91,8 +91,8 @@ function aniMetaPlusPage(host) {
             ['Unmatched', overview.Unmatched, 'unmatched'],
             ['Waiting for review', overview.PendingReviews, 'review'],
             ['Blocks in force', overview.ActiveBlocks, 'blocks'],
-            ['Waiting for a source', overview.Waiting, null],
-            ['Stand-in values', overview.Provisional, null],
+            ['Waiting for a source', overview.Waiting, 'status:waiting'],
+            ['Stand-in values', overview.Provisional, 'status:provisional'],
             ['Anime in titles dump', overview.Titles ? overview.Titles.AnimeCount : 0, 'titles']
         ];
         view.querySelector('#ampCards').innerHTML = cards.map(function (card) {
@@ -120,6 +120,10 @@ function aniMetaPlusPage(host) {
                 : 'not present')
             + '<br/>AniBridge: ' + (a.AniBridgeEntryCount || 0) + ' entries' + (a.AniBridgeCachedAtUtc ? ', cached ' + when(a.AniBridgeCachedAtUtc) : '')
             + '. Anime-Lists: ' + (a.AnimeListEntryCount || 0) + ' entries' + (a.AnimeListCachedAtUtc ? ', cached ' + when(a.AnimeListCachedAtUtc) : '') + '.';
+
+        view.querySelector('#ampCountWaiting').textContent = '(' + waiting.length + ')';
+        view.querySelector('#ampCountProvisional').textContent = '(' + provisional.length + ')';
+        view.querySelector('#ampCountRequests').textContent = '(' + requests.length + ')';
 
         view.querySelector('#ampWaiting').innerHTML = waiting.length
             ? '<tr><th>Item</th><th>Waits for</th><th>Since</th></tr>' + waiting.map(function (w) {
@@ -238,16 +242,21 @@ function aniMetaPlusPage(host) {
 
     // Unmatched
 
+    // What a search found for each item, kept across redraws of the list: searching a long list
+    // takes a while, and a reload must not throw the results away.
+    var searchedGuesses = {};
+
     function renderUnmatched(view, items, mappings) {
         view.querySelector('#ampUnmatched').innerHTML = items.length ? items.map(function (u) {
             var guesses = (u.Candidates || []).map(function (c) {
                 return '<option value="' + esc(c.AnimeId) + '">' + esc(c.Title) + ' (' + esc(c.AnimeId) + ', ' + c.Score + '%)</option>';
             }).join('');
+            var options = searchedGuesses[u.Id] || '<option value="">Guesses from the titles dump...</option>' + guesses;
             return '<div class="amp-card" data-key="' + esc(u.Id) + '" style="margin-bottom:1em">'
                 + '<div><b style="font-size:1.1em;display:inline">' + esc(u.Name) + '</b> ' + (u.Year ? '(' + u.Year + ') ' : '') + (u.Ignored ? badge('set aside') : '') + '</div>'
                 + '<div class="amp-small">' + esc(u.Path) + ' - tried ' + u.Attempts + 'x, last ' + when(u.LastAttemptUtc) + '</div>'
                 + '<div class="amp-row" style="margin-top:.5em">'
-                + '<div class="inputContainer"><select class="amp-guess"><option value="">Guesses from the titles dump...</option>' + guesses + '</select></div>'
+                + '<div class="inputContainer"><select class="amp-guess">' + options + '</select></div>'
                 + '<div class="inputContainer"><input type="text" class="amp-search" placeholder="Search the titles dump" value="' + esc(u.Name) + '" /></div>'
                 + '<div class="inputContainer"><input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></div>'
                 + '</div>'
@@ -258,6 +267,12 @@ function aniMetaPlusPage(host) {
                 + '</div>';
         }).join('') : '<p class="amp-muted">Everything is identified.</p>';
 
+        view.querySelector('#ampCountUnmatched').textContent = '(' + items.length + ')';
+        renderMappings(view, mappings);
+    }
+
+    function renderMappings(view, mappings) {
+        view.querySelector('#ampCountMapped').textContent = '(' + mappings.length + ')';
         view.querySelector('#ampMappings').innerHTML = mappings.length
             ? '<tr><th>Item</th><th>Mapped to</th><th>When</th><th></th></tr>' + mappings.map(function (m) {
                 return '<tr><td>' + esc(m.ItemName || m.Id) + '</td><td>' + esc(m.AnimeId) + '</td><td>' + when(m.CreatedUtc) + '</td><td><button type="button" is="emby-button" class="raised" data-unmap="' + esc(m.Id) + '">Remove</button></td></tr>';
@@ -276,7 +291,15 @@ function aniMetaPlusPage(host) {
         var act = button.getAttribute('data-act');
 
         if (act === 'ignore') {
-            post('Unmatched/Ignore', { ItemKey: key, Ignore: button.textContent !== 'Bring back' }).then(function () { loadAll(view); }, fail);
+            var ignore = button.textContent !== 'Bring back';
+            post('Unmatched/Ignore', { ItemKey: key, Ignore: ignore }).then(function () {
+                // Only this card changes; the rest keep what their searches found.
+                if (ignore && !view.querySelector('#ampShowIgnored').checked) {
+                    removeCard(view, card);
+                } else {
+                    button.textContent = ignore ? 'Bring back' : 'Set aside';
+                }
+            }, fail);
             return;
         }
 
@@ -294,8 +317,22 @@ function aniMetaPlusPage(host) {
         post('Unmatched/Map', null, { ItemKey: key, AnimeId: id, ApplyNow: act === 'mapnow' }).then(function (mapped) {
             var to = String(mapped || id);
             notify('Mapped to ' + (/^anilist:/.test(to) ? 'AniList ' + to.slice(8) : /^mal:/.test(to) ? 'MyAnimeList ' + to.slice(4) : 'AniDB ' + to) + (act === 'mapnow' ? '; refreshing' : '; applies on the next queue run'));
-            loadAll(view);
+
+            // A mapped item leaves the list for the mappings below; the other cards and what their
+            // searches found stay as they are.
+            removeCard(view, card);
+            get('Mappings').then(function (mappings) { renderMappings(view, mappings); });
         }, fail);
+    }
+
+    function removeCard(view, card) {
+        delete searchedGuesses[card.getAttribute('data-key')];
+        card.remove();
+        view.querySelector('#ampCountUnmatched').textContent = '(' + view.querySelectorAll('#ampUnmatched [data-key]').length + ')';
+
+        if (!view.querySelector('#ampUnmatched [data-key]')) {
+            view.querySelector('#ampUnmatched').innerHTML = '<p class="amp-muted">Everything is identified.</p>';
+        }
     }
 
     // Searches the titles dump, AniList and MyAnimeList for one card and fills its guesses. A
@@ -318,6 +355,7 @@ function aniMetaPlusPage(host) {
             });
             select.innerHTML = '<option value="">' + (local.length + online.length) + ' found (' + local.length + ' in the titles dump, ' + online.length + ' on AniList and MyAnimeList)...</option>'
                 + local.join('') + online.join('');
+            searchedGuesses[card.getAttribute('data-key')] = select.innerHTML;
 
             return local.length + online.length;
         });
@@ -363,6 +401,7 @@ function aniMetaPlusPage(host) {
             select.innerHTML = '<option value="">' + found.length + ' found...</option>' + found.map(function (c) {
                 return '<option value="' + esc(c.AnimeId) + '">' + esc(c.Title) + ' (' + esc(c.AnimeId) + ', ' + c.Score + '%)</option>';
             }).join('');
+            searchedGuesses[input.closest('[data-key]').getAttribute('data-key')] = select.innerHTML;
         }, fail);
     }
 
@@ -472,9 +511,21 @@ function aniMetaPlusPage(host) {
         }, fail);
     }
 
+    // "status:waiting" opens the Status tab at its Waiting section.
     function showTab(view, name) {
+        var parts = name.split(':');
         Array.prototype.forEach.call(view.querySelectorAll('[data-tab]'), function (el) {
-            el.classList.toggle('active', el.getAttribute('data-tab') === name);
+            el.classList.toggle('active', el.getAttribute('data-tab') === parts[0]);
+        });
+
+        if (parts[1]) {
+            showSub(view.querySelector('.amp-tab[data-tab="' + parts[0] + '"]'), parts[1]);
+        }
+    }
+
+    function showSub(tab, name) {
+        Array.prototype.forEach.call(tab.querySelectorAll('[data-sub]'), function (el) {
+            el.classList.toggle('active', el.getAttribute('data-sub') === name);
         });
     }
 
@@ -486,6 +537,12 @@ function aniMetaPlusPage(host) {
             var tab = e.target.closest('.amp-tabs button[data-tab], [data-goto]');
             if (tab) {
                 showTab(view, tab.getAttribute('data-tab') || tab.getAttribute('data-goto'));
+                return;
+            }
+
+            var sub = e.target.closest('.amp-subtabs button[data-sub]');
+            if (sub) {
+                showSub(sub.closest('.amp-tab'), sub.getAttribute('data-sub'));
                 return;
             }
 
