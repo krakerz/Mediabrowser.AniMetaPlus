@@ -189,7 +189,7 @@ public static class AniMetaApi
             Titles = TitlesDump.GetStatus(Plugin.Instance.AppPaths),
             Waiting = db.Waiting.Count(),
             PendingReviews = db.Reviews.Count(r => r.Status == ReviewStatus.Pending),
-            Unmatched = db.Unmatched.Count(u => !u.Ignored),
+            Unmatched = OpenUnmatched(db).Count(u => !u.Ignored),
             Provisional = db.Provenance.Count(p => p.Provisional),
             ActiveBlocks = BlockStore.List().Count
         };
@@ -332,15 +332,25 @@ public static class AniMetaApi
     }
 
     /// <summary>
-    /// Lists the items nothing identified.
+    /// Lists the items nothing identified, leaving out the ones the owner has mapped by hand:
+    /// those are listed with the mappings until the refresh that applies them clears them.
     /// </summary>
     /// <param name="includeIgnored">Whether to include the ones the owner set aside.</param>
     /// <returns>The items, most recently tried first.</returns>
     public static IReadOnlyList<UnmatchedRecord> GetUnmatched(bool includeIgnored)
-        => Db.Unmatched.FindAll()
+        => OpenUnmatched(Db)
             .Where(u => includeIgnored || !u.Ignored)
             .OrderByDescending(u => u.LastAttemptUtc)
             .ToList();
+
+    // Filtered in memory: LiteDB cannot always translate a lambda over these records into a
+    // query, and failed on the Ignored flag once, which took the whole status page down.
+    private static IEnumerable<UnmatchedRecord> OpenUnmatched(AniMetaDb db)
+    {
+        var mapped = db.Mappings.FindAll().Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+
+        return db.Unmatched.FindAll().Where(u => !mapped.Contains(u.Id));
+    }
 
     /// <summary>
     /// Searches the local titles dump.

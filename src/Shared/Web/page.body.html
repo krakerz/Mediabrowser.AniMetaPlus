@@ -18,6 +18,9 @@
     .amp-card b { display: block; font-size: 1.6em; }
     .amp-row { display: flex; gap: .6em; align-items: flex-start; flex-wrap: wrap; }
     .amp-row .inputContainer, .amp-row .selectContainer { flex: 1 1 14em; margin-bottom: .6em; }
+    /* A guess with a long title must not widen its row and push the others onto a new line. */
+    .amp-row .inputContainer { min-width: 0; }
+    .amp-row select:not(.emby-select), .amp-row input[type=text]:not(.emby-input) { width: 100%; box-sizing: border-box; }
     .amp-secret { display: flex; align-items: flex-end; gap: .4em; margin-bottom: 1.2em; }
     .amp-secret .inputContainer { flex-grow: 1; margin-bottom: 0; }
     .amp-small { font-size: .85em; opacity: .8; }
@@ -121,8 +124,10 @@
 
 <!-- Unmatched -->
 <div class="amp-tab" data-tab="unmatched">
-    <p class="amp-small">Items nothing could identify. Pick a guess, search the titles dump (Enter), search AniList and MyAnimeList for anime AniDB does not list yet, or paste an AniDB, AniList or MyAnimeList id or link. One AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB. "Map" applies on the next queue run; "Map now" refreshes the item at once.</p>
+    <p class="amp-small">Items nothing could identify. Pick a guess, search the titles dump (Enter), search the titles dump, AniList and MyAnimeList together (one item, or all listed) for anime AniDB does not list yet, or paste an AniDB, AniList or MyAnimeList id or link. One AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB. "Map" applies on the next queue run; "Map now" refreshes the item at once.</p>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowIgnored" /><span>Show items set aside</span></label>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampSearchAllUnmatched"><span>Search all listed (titles dump, AniList, MyAnimeList)</span></button></div>
+    <div class="amp-result amp-small" id="ampSearchAllResult"></div>
     <div id="ampUnmatched"></div>
     <h3>Mapped by hand</h3>
     <div class="amp-scroll"><table class="amp-table" id="ampMappings"></table></div>
