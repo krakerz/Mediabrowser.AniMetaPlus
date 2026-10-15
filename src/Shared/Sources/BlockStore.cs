@@ -114,6 +114,39 @@ public static class BlockStore
     }
 
     /// <summary>
+    /// Whether a failure only means the server is shutting down or restarting, which takes the
+    /// services a request needs away from under it: Jellyfin restarts inside its own process.
+    /// </summary>
+    /// <param name="exception">The failure.</param>
+    /// <returns><c>true</c> when it says nothing about the source.</returns>
+    public static bool IsShutdown(Exception exception)
+        => exception is ObjectDisposedException
+            || exception.InnerException is ObjectDisposedException
+            || exception.Message.Contains("Cannot access a disposed object", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Removes blocks earlier versions recorded for a failure that only meant the server was
+    /// restarting. Run at startup.
+    /// </summary>
+    /// <returns>How many were removed.</returns>
+    public static int RemoveShutdownBlocks()
+    {
+        var db = Db;
+        if (db is null)
+        {
+            return 0;
+        }
+
+        var stale = db.Blocks.FindAll().Where(b => b.Message?.Contains("Cannot access a disposed object", StringComparison.Ordinal) == true).Select(b => b.Id).ToList();
+        foreach (var id in stale)
+        {
+            db.Blocks.Delete(id);
+        }
+
+        return stale.Count;
+    }
+
+    /// <summary>
     /// Sorts an HTTP status.
     /// </summary>
     /// <param name="status">The status.</param>

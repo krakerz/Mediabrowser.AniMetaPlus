@@ -6,7 +6,7 @@ Easier: add the plugin repository in Dashboard > Plugins > Manage Repositories,
 and install AniMeta+ from the catalog; Jellyfin then offers updates itself.
 
 By hand:
-1. Create the folder <jellyfin config>/plugins/AniMetaPlus_2.1.0.0/ and copy
+1. Create the folder <jellyfin config>/plugins/AniMetaPlus_2.1.1.0/ and copy
    AniMetaPlus.dll into it. When updating, replace the DLL in the AniMetaPlus_*
    folder you already have instead of adding a second folder.
      Linux package:  /var/lib/jellyfin/plugins

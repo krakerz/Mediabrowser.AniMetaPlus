@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-10-15
+
+### Fixed
+- A server restart no longer leaves shows blocked from AniDB or other sources; such blocks from earlier versions are removed at startup
+- A show AniDB refused still gets images from AniList, MyAnimeList, TVDB and TMDB
+
 ## [2.1.0] — 2026-10-15
 
 ### Changed
