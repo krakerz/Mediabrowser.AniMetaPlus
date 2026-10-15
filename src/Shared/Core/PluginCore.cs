@@ -82,6 +82,12 @@ public static class PluginCore
         {
             var db = AniMetaDb.Get(paths, logger);
 
+            var shutdownBlocks = BlockStore.RemoveShutdownBlocks();
+            if (shutdownBlocks > 0)
+            {
+                logger.LogInformation("AniMeta+ removed {Count} blocks recorded only because the server was restarting", shutdownBlocks);
+            }
+
             if (db.GetState("migrated") == null)
             {
                 MigrateFromPredecessor(plugin, paths, logger);

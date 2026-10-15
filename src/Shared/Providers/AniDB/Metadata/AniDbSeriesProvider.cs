@@ -1024,7 +1024,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                 _refusedIds.TryRemove(seriesId, out _);
             }
-            catch (InvalidOperationException ex)
+            catch (InvalidOperationException ex) when (!BlockStore.IsShutdown(ex))
             {
                 _refusedIds[seriesId] = (DateTime.UtcNow, ex.Message);
                 BlockStore.Record(SourceIds.AniDb, new SourceFailure(BlockScope.Item, BlockReason.NotFound, ex.Message), ItemKeys.ForAnime(seriesId), string.Empty);

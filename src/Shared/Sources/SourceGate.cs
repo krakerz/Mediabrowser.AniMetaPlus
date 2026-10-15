@@ -92,7 +92,10 @@ public static class SourceGate
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            if (ex is SourceBlockedException)
+            // The server shutting down or restarting under a request: nothing the source did, and
+            // nothing to remember against it. Blocking on it once kept items away from a source
+            // for days after a mere restart.
+            if (ex is SourceBlockedException || BlockStore.IsShutdown(ex))
             {
                 throw;
             }

@@ -315,6 +315,16 @@ public class SourcesTests
         => Assert.Equal(expected, AniMetaApi.ParseMapping(input));
 
     [Fact]
+    public void AShutdownIsNotTheSourcesFault()
+    {
+        Assert.True(BlockStore.IsShutdown(new ObjectDisposedException("IServiceProvider")));
+        Assert.True(BlockStore.IsShutdown(new InvalidOperationException("Cannot access a disposed object.\nObject name: 'IServiceProvider'.")));
+        Assert.True(BlockStore.IsShutdown(new HttpRequestException("failed", new ObjectDisposedException("x"))));
+        Assert.False(BlockStore.IsShutdown(new InvalidOperationException("AniDB API error <error>No such anime</error>")));
+        Assert.False(BlockStore.IsShutdown(new HttpRequestException("Connection refused")));
+    }
+
+    [Fact]
     public void TitlesRefreshIsAtLeastThreeDays()
     {
         Assert.Equal(3, new PluginConfiguration { TitlesRefreshDays = 1 }.TitlesRefreshDays);

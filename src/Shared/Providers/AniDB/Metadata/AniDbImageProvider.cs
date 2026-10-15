@@ -100,6 +100,14 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
 
                 return list;
             }
+            catch (InvalidOperationException ex) when (!BlockStore.IsShutdown(ex))
+            {
+                // AniDB refused this one anime. Only its own image is missing; letting the refusal
+                // out would fail the whole lookup and take every other source's images with it.
+                AniDbSeriesProvider.Logger?.LogDebug("No AniDB image for anime {AnimeId}: {Message}", aniDbId, ex.Message);
+
+                return list;
+            }
             catch (Exception ex) when (ex is IOException or XmlException or UnauthorizedAccessException)
             {
                 // Nothing to offer rather than a failed refresh. The document is fetched again
