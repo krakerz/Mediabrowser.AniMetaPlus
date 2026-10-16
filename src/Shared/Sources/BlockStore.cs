@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -547,7 +548,7 @@ public static class BlockStore
     /// <returns>The first and the longest backoff.</returns>
     internal static (TimeSpan Initial, TimeSpan Maximum) Backoff(BlockReason reason, BlockScope scope) => reason switch
     {
-        BlockReason.Banned => (TimeSpan.FromMinutes(30), TimeSpan.FromHours(24)),
+        BlockReason.Banned => (AniDbSeriesProvider.InitialBanBackoff, AniDbSeriesProvider.MaximumBanBackoff),
         BlockReason.RateLimited => (TimeSpan.FromMinutes(1), TimeSpan.FromHours(2)),
         BlockReason.Unavailable => (TimeSpan.FromMinutes(5), TimeSpan.FromHours(6)),
         BlockReason.ServerError => (TimeSpan.FromMinutes(5), TimeSpan.FromHours(6)),

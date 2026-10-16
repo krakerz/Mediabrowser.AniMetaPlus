@@ -83,9 +83,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     // A ban is temporary, but its remaining time cannot be queried and runs from 15 minutes
     // to 24 hours. Probing a banned server extends the ban, so double the backoff after each
-    // consecutive ban and reset it once a request succeeds.
-    private static readonly TimeSpan _initialBanBackoff = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan _maximumBanBackoff = TimeSpan.FromHours(24);
+    // consecutive ban and reset it once a request succeeds: 45 minutes, 1.5, 3, 6 and 12 hours,
+    // then 24 hours at most.
+    internal static readonly TimeSpan InitialBanBackoff = TimeSpan.FromMinutes(45);
+    internal static readonly TimeSpan MaximumBanBackoff = TimeSpan.FromHours(24);
+    private static readonly TimeSpan _initialBanBackoff = InitialBanBackoff;
+    private static readonly TimeSpan _maximumBanBackoff = MaximumBanBackoff;
     private static readonly Lock _banLock = new();
 
     /// <summary>

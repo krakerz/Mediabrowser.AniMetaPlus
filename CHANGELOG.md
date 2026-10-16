@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-10-16
+
+### Changed
+- The first pause after an AniDB ban is 45 minutes instead of 30, still doubling up to 24 hours
+
 ## [2.1.1] — 2026-10-15
 
 ### Fixed

@@ -315,6 +315,15 @@ public class SourcesTests
         => Assert.Equal(expected, AniMetaApi.ParseMapping(input));
 
     [Fact]
+    public void AniDbBanPausesStartAt45MinutesAndStopAtADay()
+    {
+        var (initial, maximum) = BlockStore.Backoff(BlockReason.Banned, BlockScope.Source);
+
+        Assert.Equal(TimeSpan.FromMinutes(45), initial);
+        Assert.Equal(TimeSpan.FromHours(24), maximum);
+    }
+
+    [Fact]
     public void AShutdownIsNotTheSourcesFault()
     {
         Assert.True(BlockStore.IsShutdown(new ObjectDisposedException("IServiceProvider")));
