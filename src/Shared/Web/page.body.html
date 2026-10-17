@@ -63,6 +63,7 @@
         <button is="emby-button" type="button" class="raised" id="ampRefreshStatus"><span>Refresh</span></button>
     </div>
     <div class="amp-result" id="ampQueueResult"></div>
+    <div class="amp-result amp-small" id="ampPluginState"></div>
     <div class="amp-cards" id="ampCards"></div>
     <div class="amp-tabs amp-subtabs">
         <button type="button" data-sub="sources" class="active">Sources and AniDB queue</button>
@@ -190,6 +191,8 @@
 <div class="amp-tab" data-tab="images">
     <p class="amp-small">Posters the "Replace posters with AniDB's from cached answers" task replaced keep the previous one here until you acknowledge or revert them. <b>Acknowledge</b> keeps AniDB's poster and deletes the previous one. <b>Revert</b> puts the previous one back; later runs of the task skip reverted items.</p>
     <div class="amp-actions">
+        <button is="emby-button" type="button" class="raised" id="ampImgRefresh"><span>Refresh</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgSelectPage"><span>Select this page</span></button>
         <button is="emby-button" type="button" class="raised" id="ampImgSelectAll"><span>Select all</span></button>
         <button is="emby-button" type="button" class="raised" id="ampImgClear"><span>Clear selection</span></button>
         <button is="emby-button" type="button" class="raised" id="ampImgRevert"><span>Revert selected</span></button>

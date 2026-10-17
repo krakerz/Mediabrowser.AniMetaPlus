@@ -104,7 +104,7 @@ Layout:
 
 ### Settings
 
-- **Status**: ban and block state, request queue, and how fresh each mapping source is
+- **Status**: running AniMeta+ version and whether a restart is needed to load an update, ban and block state, request queue, and how fresh each mapping source is
 - **Sources**: enable sources, set the order per kind of data, and choose the mode for a blocked source
 - **Clients & keys**: AniDB client name, MyAnimeList client id, Jikan, and the Test buttons
 - **Titles dump**: location and state of the AniDB titles dump

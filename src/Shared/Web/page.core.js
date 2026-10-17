@@ -86,6 +86,56 @@ function aniMetaPlusPage(host) {
 
     // Status
 
+    function versionParts(version) {
+        return String(version || '').split('.').map(function (part) { return parseInt(part, 10) || 0; });
+    }
+
+    function compareVersions(a, b) {
+        var x = versionParts(a);
+        var y = versionParts(b);
+        for (var i = 0; i < Math.max(x.length, y.length); i++) {
+            if ((x[i] || 0) !== (y[i] || 0)) {
+                return (x[i] || 0) - (y[i] || 0);
+            }
+        }
+
+        return 0;
+    }
+
+    function shortVersion(version) {
+        var parts = String(version || '').split('.');
+        while (parts.length > 3 && parts[parts.length - 1] === '0') {
+            parts.pop();
+        }
+
+        return parts.join('.');
+    }
+
+    // What the server has installed can be newer than what it runs: an update only loads after a restart.
+    function renderPluginState(view, running) {
+        var line = view.querySelector('#ampPluginState');
+        Promise.all([
+            ApiClient.getInstalledPlugins().catch(function () { return []; }),
+            ApiClient.getSystemInfo().catch(function () { return {}; })
+        ]).then(function (results) {
+            var mine = (results[0] || []).filter(function (p) {
+                return String(p.Id || '').replace(/-/g, '').toLowerCase() === pluginId.replace(/-/g, '').toLowerCase();
+            });
+            var newest = mine.reduce(function (best, p) { return !best || compareVersions(p.Version, best) > 0 ? p.Version : best; }, '');
+            var waiting = mine.some(function (p) { return p.Status === 'Restart'; });
+            var pending = !!results[1].HasPendingRestart;
+            var text = 'AniMeta+ ' + shortVersion(running) + ' running';
+
+            if ((newest && compareVersions(newest, running) > 0) || waiting) {
+                line.innerHTML = badge('Restart needed', 'amp-warn') + ' ' + esc(text + '; ' + (newest && compareVersions(newest, running) > 0 ? shortVersion(newest) + ' is installed and' : 'an update') + ' loads after the server restarts.');
+            } else if (pending) {
+                line.innerHTML = badge('Restart pending', 'amp-warn') + ' ' + esc(text + '; the server is waiting for a restart to finish an update.');
+            } else {
+                line.innerHTML = badge('Up to date', 'amp-ok') + ' ' + esc(text + '; no restart needed.');
+            }
+        });
+    }
+
     function renderStatus(view, overview, waiting, provisional, requests) {
         var cards = [
             ['Unmatched', overview.Unmatched, 'unmatched'],
@@ -95,6 +145,7 @@ function aniMetaPlusPage(host) {
             ['Stand-in values', overview.Provisional, 'status:provisional'],
             ['Anime in titles dump', overview.Titles ? overview.Titles.AnimeCount : 0, 'titles']
         ];
+        renderPluginState(view, overview.PluginVersion);
         view.querySelector('#ampCards').innerHTML = cards.map(function (card) {
             return '<div class="amp-card"' + (card[2] ? ' data-goto="' + card[2] + '" style="cursor:pointer"' : '') + '><b>' + esc(card[1] || 0) + '</b>' + esc(card[0]) + '</div>';
         }).join('');
@@ -711,6 +762,21 @@ function aniMetaPlusPage(host) {
                 Array.prototype.forEach.call(grid.querySelectorAll('.amp-imgcheck'), function (box) { box.checked = true; });
                 renderImageToolbar(view);
             }, fail);
+        });
+
+        view.querySelector('#ampImgSelectPage').addEventListener('click', function () {
+            Array.prototype.forEach.call(grid.querySelectorAll('[data-img]'), function (card) {
+                var box = card.querySelector('.amp-imgcheck');
+                if (box) {
+                    imageState.selected[card.getAttribute('data-img')] = true;
+                    box.checked = true;
+                }
+            });
+            renderImageToolbar(view);
+        });
+
+        view.querySelector('#ampImgRefresh').addEventListener('click', function () {
+            loadImages(view);
         });
 
         view.querySelector('#ampImgClear').addEventListener('click', function () {
