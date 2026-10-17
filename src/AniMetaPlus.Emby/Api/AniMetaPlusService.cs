@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -237,6 +238,59 @@ public class ImportDecisions : IRequiresRequestStream, IReturn<int>
     public Stream RequestStream { get; set; } = Stream.Null;
 }
 
+/// <summary>Lists the replaced posters waiting for a decision, newest first.</summary>
+[Route("/AniMetaPlus/Images/Backups", "GET")]
+public class GetImageBackups : IReturn<ImageBackupPage>
+{
+    /// <summary>Gets or sets the first item to return.</summary>
+    public int Start { get; set; }
+
+    /// <summary>Gets or sets how many to return.</summary>
+    public int Limit { get; set; } = 24;
+}
+
+/// <summary>Gets the poster held for an item.</summary>
+[Route("/AniMetaPlus/Images/Backup", "GET")]
+public class GetImageBackup : IReturn<ImageBackupPreview>
+{
+    /// <summary>Gets or sets the item id.</summary>
+    public string Id { get; set; } = string.Empty;
+}
+
+/// <summary>Reports how the current or last revert run stands.</summary>
+[Route("/AniMetaPlus/Images/RevertStatus", "GET")]
+public class GetImageRevertStatus : IReturn<ImageJobStatus>
+{
+}
+
+/// <summary>Starts putting the previous posters back in the background.</summary>
+[Route("/AniMetaPlus/Images/Revert", "POST")]
+public class RevertImages : IReturn<ImageJobStatus>
+{
+    /// <summary>Gets or sets the item ids.</summary>
+    public List<string> Ids { get; set; } = [];
+
+    /// <summary>Gets or sets a value indicating whether to take every item waiting.</summary>
+    public bool All { get; set; }
+}
+
+/// <summary>Accepts AniDB's posters and deletes the previous ones.</summary>
+[Route("/AniMetaPlus/Images/Acknowledge", "POST")]
+public class AcknowledgeImages : IReturn<ImageDoneResult>
+{
+    /// <summary>Gets or sets the item ids.</summary>
+    public List<string> Ids { get; set; } = [];
+
+    /// <summary>Gets or sets a value indicating whether to take every item waiting.</summary>
+    public bool All { get; set; }
+}
+
+/// <summary>Forgets the reverted items, so that the next task run replaces their posters again.</summary>
+[Route("/AniMetaPlus/Images/ForgetReverted", "POST")]
+public class ForgetRevertedImages : IReturn<ImageDoneResult>
+{
+}
+
 #pragma warning restore SA1402
 
 /// <summary>
@@ -345,6 +399,36 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public async Task<object> Post(ReimportTitles request) => await AniMetaApi.ReimportTitles(_logger, CancellationToken.None).ConfigureAwait(false);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Get(GetImageBackups request) => AniMetaApi.GetImageBackups(request.Start, request.Limit);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Get(GetImageBackup request) => new ImageBackupPreview { DataUrl = AniMetaApi.GetImageBackup(request.Id) ?? string.Empty };
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(RevertImages request) => AniMetaApi.RevertImages(request.Ids, request.All, _logger);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Get(GetImageRevertStatus request) => AniMetaApi.GetRevertStatus();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(AcknowledgeImages request) => AniMetaApi.AcknowledgeImages(request.Ids, request.All);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(ForgetRevertedImages request) => AniMetaApi.ForgetRevertedImages();
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

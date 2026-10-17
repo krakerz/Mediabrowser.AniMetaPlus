@@ -54,6 +54,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     private const string PersonImageBaseUrl = "https://cdn.anidb.net/images/main/";
 
+    /// <summary>
+    /// The request log's name for downloads from AniDB's image server.
+    /// </summary>
+    internal const string ImageLogSource = "AniDB image";
+
     // AniDB bans a client that sends requests closer together than 2500ms, which is the
     // floor the configured interval is clamped to. A bucket limiter cannot express this: it
     // replenishes independently of when tokens are consumed, so an idle plugin holding a full
@@ -970,9 +975,50 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             return LocalOnlyImage.Response();
         }
 
-        await WaitForImageSlot(cancellationToken).ConfigureAwait(false);
-        return await Plugin.Instance.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
+        return await GetAniDbImage(url, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Downloads an image from AniDB's image server in its turn, and writes it to the request log.
+    /// </summary>
+    /// <param name="url">The image url.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server's image response.</returns>
+    internal static async Task<HostImageResponse> GetAniDbImage(string url, CancellationToken cancellationToken)
+    {
+        await WaitForImageSlot(cancellationToken).ConfigureAwait(false);
+
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            var response = await Plugin.Instance.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
+            LogImageRequest(url, (int)response.StatusCode, started);
+
+            return response;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            LogImageRequest(url, null, started, ex is TaskCanceledException ? "Timeout" : "Unreachable");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Writes an image download to the request log, under its own name so that it never counts
+    /// as an AniDB API request.
+    /// </summary>
+    /// <param name="url">The image url.</param>
+    /// <param name="status">The HTTP status, when there was one.</param>
+    /// <param name="started">When it was sent, as a <see cref="Stopwatch"/> timestamp.</param>
+    /// <param name="failure">How it failed, when it got no status.</param>
+    internal static void LogImageRequest(string url, int? status, long started, string? failure = null)
+        => SourceGate.LogOwnRequest(
+            ImageLogSource,
+            "image " + url[(url.LastIndexOf('/') + 1)..],
+            string.Empty,
+            failure ?? (status is >= 200 and < 300 ? "ok" : "HttpError"),
+            status,
+            started);
 
     /// <summary>
     /// Gets the path to the cached series data, downloading it when needed.

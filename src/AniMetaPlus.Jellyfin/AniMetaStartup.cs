@@ -20,7 +20,9 @@ public class AniMetaStartup(ILibraryManager libraryManager, IProviderManager pro
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        HostServices.Refresher = new HostLibrary(libraryManager, providerManager, fileSystem);
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem);
+        HostServices.Refresher = library;
+        HostServices.Images = library;
 
         return Task.CompletedTask;
     }

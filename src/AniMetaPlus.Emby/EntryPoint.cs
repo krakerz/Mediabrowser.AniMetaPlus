@@ -36,7 +36,9 @@ public class EntryPoint : IServerEntryPoint
 
         AniMetaPlus.Providers.AniDB.Metadata.AniDbSeriesProvider.RestoreBanState(plugin.Configuration);
         PluginCore.Initialize(plugin, plugin.AppPaths, new AniMetaPlus.Logging.PluginLog<Plugin>(plugin.LogManager));
-        HostServices.Refresher = new HostLibrary(_libraryManager, _providerManager, _fileSystem);
+        var library = new HostLibrary(_libraryManager, _providerManager, _fileSystem);
+        HostServices.Refresher = library;
+        HostServices.Images = library;
     }
 
     /// <inheritdoc />

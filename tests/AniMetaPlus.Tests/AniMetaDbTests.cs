@@ -8,6 +8,8 @@ using Xunit;
 
 namespace AniMetaPlus.Tests;
 
+// One collection: LiteDB maps a type for the first time through a shared mapper, which two databases opening at once race on.
+[Collection("AniMetaDb")]
 public sealed class AniMetaDbTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "animetaplus-db-" + Guid.NewGuid().ToString("N"));

@@ -102,6 +102,94 @@ public class MapResult
 }
 
 /// <summary>
+/// One replaced poster waiting for the owner's decision.
+/// </summary>
+public class ImageBackupItem
+{
+    /// <summary>Gets or sets the server's item id.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the item's name.</summary>
+    public string ItemName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the series name of a season, otherwise empty.</summary>
+    public string SeriesName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the kind: Series, Season or Movie.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets when the poster was replaced.</summary>
+    public DateTime ReplacedUtc { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the previous poster is held.</summary>
+    public bool HasBackup { get; set; }
+}
+
+/// <summary>
+/// One page of the replaced posters waiting for the owner's decision.
+/// </summary>
+public class ImageBackupPage
+{
+    /// <summary>Gets or sets how many are waiting in all.</summary>
+    public int TotalCount { get; set; }
+
+    /// <summary>Gets or sets how many items the owner reverted, which the task skips.</summary>
+    public int RevertedCount { get; set; }
+
+    /// <summary>Gets or sets the page.</summary>
+    public List<ImageBackupItem> Items { get; set; } = [];
+}
+
+/// <summary>
+/// A held poster, as a data address the settings page can show.
+/// </summary>
+public class ImageBackupPreview
+{
+    /// <summary>Gets or sets the data address, or empty when no backup is held.</summary>
+    public string DataUrl { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// The answer to reverting posters.
+/// </summary>
+public class ImageJobStatus
+{
+    /// <summary>Gets or sets a value indicating whether a run is going.</summary>
+    public bool Running { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether this request started the run, rather than finding one going.</summary>
+    public bool Started { get; set; }
+
+    /// <summary>Gets or sets how many items the run takes.</summary>
+    public int Total { get; set; }
+
+    /// <summary>Gets or sets how many were handled.</summary>
+    public int Done { get; set; }
+
+    /// <summary>Gets or sets how many could not be restored.</summary>
+    public int Failed { get; set; }
+
+    /// <summary>Gets or sets when the run started.</summary>
+    public DateTime? StartedUtc { get; set; }
+
+    /// <summary>Gets or sets when the run ended.</summary>
+    public DateTime? FinishedUtc { get; set; }
+
+    /// <summary>Copies the status.</summary>
+    /// <returns>The copy.</returns>
+    public ImageJobStatus Copy() => (ImageJobStatus)MemberwiseClone();
+}
+
+/// <summary>
+/// The answer to acknowledging or forgetting posters.
+/// </summary>
+public class ImageDoneResult
+{
+    /// <summary>Gets or sets how many were handled.</summary>
+    public int Done { get; set; }
+}
+
+/// <summary>
 /// What the settings page can ask of the plugin, the same on both servers. Each server's own
 /// endpoints only pass requests through to this.
 /// </summary>
@@ -434,6 +522,72 @@ public static class AniMetaApi
     /// </summary>
     /// <returns>The mappings.</returns>
     public static IReadOnlyList<MappingRecord> GetMappings() => Db.Mappings.FindAll().OrderByDescending(m => m.CreatedUtc).ToList();
+
+    /// <summary>
+    /// Lists the replaced posters waiting for a decision, newest first.
+    /// </summary>
+    /// <param name="start">The first item to return.</param>
+    /// <param name="limit">How many to return; 24 when not positive.</param>
+    /// <returns>The page.</returns>
+    public static ImageBackupPage GetImageBackups(int start, int limit)
+    {
+        var backups = PosterBackups.Current;
+        var pending = backups.ListPending();
+
+        return new ImageBackupPage
+        {
+            TotalCount = pending.Count,
+            RevertedCount = backups.CountReverted(),
+            Items = pending.Skip(Math.Max(start, 0)).Take(limit > 0 ? limit : 24).Select(r => new ImageBackupItem
+            {
+                Id = r.Id,
+                ItemName = r.ItemName ?? string.Empty,
+
+                // LiteDB reads an empty string back as null.
+                SeriesName = r.SeriesName ?? string.Empty,
+                Kind = r.Kind ?? string.Empty,
+                ReplacedUtc = r.ReplacedUtc,
+                HasBackup = !string.IsNullOrEmpty(r.BackupFile)
+            }).ToList()
+        };
+    }
+
+    /// <summary>
+    /// Reads the poster held for an item.
+    /// </summary>
+    /// <param name="id">The server's item id.</param>
+    /// <returns>The data address, or <c>null</c> when none is held.</returns>
+    public static string? GetImageBackup(string id) => PosterBackups.Current.ReadDataUrl(id);
+
+    /// <summary>
+    /// Starts putting the previous posters back in the background.
+    /// </summary>
+    /// <param name="ids">The item ids.</param>
+    /// <param name="all">Whether to take every item waiting.</param>
+    /// <param name="logger">The logger.</param>
+    /// <returns>The run's status; a run already going is reported rather than a new one started.</returns>
+    public static ImageJobStatus RevertImages(IEnumerable<string>? ids, bool all, ILogger logger)
+        => PosterRevertJob.Start(ids, all, HostServices.Images, logger);
+
+    /// <summary>
+    /// Reports how the current or last revert run stands.
+    /// </summary>
+    /// <returns>The status.</returns>
+    public static ImageJobStatus GetRevertStatus() => PosterRevertJob.Status;
+
+    /// <summary>
+    /// Accepts AniDB's posters and deletes the previous ones.
+    /// </summary>
+    /// <param name="ids">The item ids.</param>
+    /// <param name="all">Whether to take every item waiting.</param>
+    /// <returns>How many were handled.</returns>
+    public static ImageDoneResult AcknowledgeImages(IEnumerable<string>? ids, bool all) => new() { Done = PosterBackups.Current.Acknowledge(ids, all) };
+
+    /// <summary>
+    /// Forgets the reverted items, so that the next task run replaces their posters again.
+    /// </summary>
+    /// <returns>How many were forgotten.</returns>
+    public static ImageDoneResult ForgetRevertedImages() => new() { Done = PosterBackups.Current.ForgetReverted() };
 
     /// <summary>
     /// Lists the items waiting for a paused source.
