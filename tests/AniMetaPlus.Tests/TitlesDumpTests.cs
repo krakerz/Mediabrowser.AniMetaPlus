@@ -63,6 +63,44 @@ public class TitlesDumpTests
             });
     }
 
+    [Theory]
+    [InlineData("anime-titles.dat.gz")]
+    [InlineData("anime-titles.xml.gz")]
+    [InlineData("anime-titles.dat")]
+    public void DownloadKeepsTheDumpExtension(string name)
+    {
+        var download = Path.GetFileName(TitlesDump.DownloadPath(Path.Combine("data", name)));
+
+        Assert.EndsWith(name, download, StringComparison.Ordinal);
+        Assert.NotEqual(name, download);
+    }
+
+    // Every download used to be thrown away as "holds only 0 titles": the held file lost its .gz
+    // ending, so it was read without being unpacked.
+    [Fact]
+    public void CountsADownloadHeldUnderItsDownloadName()
+    {
+        var dump = FindLocalDump();
+        if (dump == null)
+        {
+            Assert.Skip("The local titles dump is not present.");
+        }
+
+        var folder = Path.Combine(Path.GetTempPath(), "animetaplus-dump-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var held = TitlesDump.DownloadPath(Path.Combine(folder, "anime-titles.dat.gz"));
+            File.Copy(dump, held);
+
+            Assert.True(TitlesDump.CountTitles(held) > 10000);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
     [Fact]
     public async Task ImportsTheLocalDumpWhenPresent()
     {
@@ -88,6 +126,24 @@ public class TitlesDumpTests
         finally
         {
             File.Delete(target);
+        }
+    }
+
+    [Fact]
+    public void CountsAnAlreadyUnpackedDumpUnderAGzName()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "animetaplus-dump-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var held = TitlesDump.DownloadPath(Path.Combine(folder, "anime-titles.dat.gz"));
+            File.WriteAllLines(held, ["# created", "1|1|x-jat|One", "1|4|en|One EN", "2|1|x-jat|Two"]);
+
+            Assert.Equal(3, TitlesDump.CountTitles(held));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
         }
     }
 
