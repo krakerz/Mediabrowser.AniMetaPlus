@@ -220,14 +220,177 @@ function aniMetaPlusPage(host) {
         });
         view.querySelector('#ampSources').innerHTML = rows;
 
-        view.querySelector('#ampPriorities').innerHTML = overview.Priorities.map(function (p) {
-            return '<div class="inputContainer"><label class="inputLabel">' + esc(kindNames[p.Kind] || p.Kind) + '</label>'
-                + '<input is="emby-input" type="text" data-kind="' + esc(p.Kind) + '" value="' + esc(p.Sources) + '" /></div>';
+        var defaults = {};
+        (overview.DefaultPriorities || []).forEach(function (p) { defaults[p.Kind] = p.Sources; });
+
+        var container = view.querySelector('#ampPriorities');
+        container.innerHTML = overview.Priorities.map(function (p) {
+            return '<div class="amp-order" data-kind="' + esc(p.Kind) + '" data-ids="' + esc(p.Sources) + '" data-default="' + esc(defaults[p.Kind] || '') + '">'
+                + '<div class="amp-order-head"><b>' + esc(kindNames[p.Kind] || p.Kind) + '</b>'
+                + (combinedKinds.indexOf(p.Kind) >= 0 ? badge('combined') : '')
+                + (defaults[p.Kind] ? '<button type="button" class="amp-order-reset" data-reset="1" title="Back to the default order">' + icons.reset + 'Default</button>' : '')
+                + '</div><div class="amp-order-chips"></div><div class="amp-order-spare"></div></div>';
+        }).join('');
+
+        Array.prototype.forEach.call(container.querySelectorAll('.amp-order'), renderOrder);
+    }
+
+    // Source order
+
+    var combinedKinds = ['Genres', 'Rating', 'People'];
+
+    function lucide(paths) {
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+    }
+
+    // Lucide chevron-left, chevron-right, x, plus, grip-vertical and rotate-ccw (ISC licence, lucide.dev).
+    var icons = {
+        left: lucide('<path d="m15 18-6-6 6-6"/>'),
+        right: lucide('<path d="m9 18 6-6-6-6"/>'),
+        x: lucide('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+        plus: lucide('<path d="M5 12h14"/><path d="M12 5v14"/>'),
+        grip: lucide('<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>'),
+        reset: lucide('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')
+    };
+
+    function orderIds(row) {
+        return (row.getAttribute('data-ids') || '').split(',').map(function (s) { return s.trim(); }).filter(function (id) {
+            return sourceIds.indexOf(id) >= 0;
+        }).filter(function (id, i, all) { return all.indexOf(id) === i; });
+    }
+
+    function setOrder(row, ids) {
+        row.setAttribute('data-ids', ids.join(','));
+        renderOrder(row);
+    }
+
+    function renderOrder(row) {
+        var ids = orderIds(row);
+        row.querySelector('.amp-order-chips').innerHTML = ids.map(function (id, i) {
+            return '<span class="amp-chip" data-source="' + esc(id) + '">'
+                + '<span class="amp-chip-grip">' + icons.grip + '</span><span class="amp-chip-pos">' + (i + 1) + '</span>' + esc(id)
+                + '<button type="button" class="amp-chip-btn" data-move="-1" title="Ask earlier"' + (i === 0 ? ' disabled' : '') + '>' + icons.left + '</button>'
+                + '<button type="button" class="amp-chip-btn" data-move="1" title="Ask later"' + (i === ids.length - 1 ? ' disabled' : '') + '>' + icons.right + '</button>'
+                + '<button type="button" class="amp-chip-btn" data-remove="1" title="Take out"' + (ids.length === 1 ? ' disabled' : '') + '>' + icons.x + '</button></span>';
+        }).join('');
+        row.querySelector('.amp-order-spare').innerHTML = sourceIds.filter(function (id) { return ids.indexOf(id) < 0; }).map(function (id) {
+            return '<button type="button" class="amp-chip-add" data-add="' + esc(id) + '">' + icons.plus + esc(id) + '</button>';
         }).join('');
     }
 
+    function wireOrder(view) {
+        var container = view.querySelector('#ampPriorities');
+        var dragged = null;
+
+        container.addEventListener('click', function (e) {
+            var button = e.target.closest('button');
+            var row = button && button.closest('.amp-order');
+            if (!row || button.disabled) {
+                return;
+            }
+
+            var ids = orderIds(row);
+            var chip = button.closest('.amp-chip');
+            var id = chip ? chip.getAttribute('data-source') : null;
+            var at = id ? ids.indexOf(id) : -1;
+
+            if (button.hasAttribute('data-move') && at >= 0) {
+                var to = at + parseInt(button.getAttribute('data-move'), 10);
+                ids.splice(to, 0, ids.splice(at, 1)[0]);
+            } else if (button.hasAttribute('data-remove') && at >= 0 && ids.length > 1) {
+                ids.splice(at, 1);
+            } else if (button.hasAttribute('data-add')) {
+                ids.push(button.getAttribute('data-add'));
+            } else if (button.hasAttribute('data-reset')) {
+                ids = (row.getAttribute('data-default') || '').split(',');
+            } else {
+                return;
+            }
+
+            setOrder(row, ids);
+        });
+
+        function clearMarks() {
+            Array.prototype.forEach.call(container.querySelectorAll('.amp-drop-before, .amp-drop-after'), function (c) {
+                c.classList.remove('amp-drop-before', 'amp-drop-after');
+            });
+        }
+
+        // Pointer events rather than HTML drag and drop: the host pages cancel native drags, and
+        // these work with touch as well.
+        var drag = null;
+
+        function targetAt(state, e) {
+            var under = document.elementFromPoint(e.clientX, e.clientY);
+            var chip = under && under.closest('.amp-chip');
+            return chip && chip !== state.chip && chip.closest('.amp-order') === state.row ? chip : null;
+        }
+
+        function after(chip, e) {
+            var box = chip.getBoundingClientRect();
+            return e.clientX > box.left + box.width / 2;
+        }
+
+        container.addEventListener('pointerdown', function (e) {
+            var chip = e.target.closest('.amp-chip');
+            if (!chip || e.target.closest('button') || e.button > 0) {
+                return;
+            }
+
+            drag = { chip: chip, row: chip.closest('.amp-order'), x: e.clientX, y: e.clientY, moving: false, pointer: e.pointerId };
+        });
+
+        container.addEventListener('pointermove', function (e) {
+            if (!drag || e.pointerId !== drag.pointer) {
+                return;
+            }
+
+            if (!drag.moving) {
+                if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 6) {
+                    return;
+                }
+
+                drag.moving = true;
+                drag.chip.classList.add('amp-dragging');
+                drag.chip.setPointerCapture(e.pointerId);
+            }
+
+            e.preventDefault();
+            clearMarks();
+            var chip = targetAt(drag, e);
+            if (chip) {
+                chip.classList.add(after(chip, e) ? 'amp-drop-after' : 'amp-drop-before');
+            }
+        });
+
+        function endDrag(e, drop) {
+            if (!drag || e.pointerId !== drag.pointer) {
+                return;
+            }
+
+            var done = drag;
+            drag = null;
+            done.chip.classList.remove('amp-dragging');
+            clearMarks();
+
+            var chip = done.moving && drop ? targetAt(done, e) : null;
+            if (!chip) {
+                return;
+            }
+
+            var ids = orderIds(done.row);
+            var moving = done.chip.getAttribute('data-source');
+            ids.splice(ids.indexOf(moving), 1);
+            var target = ids.indexOf(chip.getAttribute('data-source'));
+            ids.splice(after(chip, e) ? target + 1 : target, 0, moving);
+            setOrder(done.row, ids);
+        }
+
+        container.addEventListener('pointerup', function (e) { endDrag(e, true); });
+        container.addEventListener('pointercancel', function (e) { endDrag(e, false); });
+    }
+
     function saveSources(view) {
-        var unknown = [];
         withConfig(view, function (config) {
             config.Sources = Array.prototype.map.call(view.querySelectorAll('#ampSources tr[data-source]'), function (row) {
                 function field(name) {
@@ -245,19 +408,9 @@ function aniMetaPlusPage(host) {
                     TitlePreference: field('TitlePreference').value
                 };
             });
-            config.Priorities = Array.prototype.map.call(view.querySelectorAll('#ampPriorities input[data-kind]'), function (input) {
-                var ids = input.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
-                ids.forEach(function (id) {
-                    if (sourceIds.indexOf(id) < 0) {
-                        unknown.push(id);
-                    }
-                });
-                return { Kind: input.getAttribute('data-kind'), Sources: ids.join(',') };
+            config.Priorities = Array.prototype.map.call(view.querySelectorAll('#ampPriorities .amp-order[data-kind]'), function (row) {
+                return { Kind: row.getAttribute('data-kind'), Sources: orderIds(row).join(',') };
             });
-        }).then(function () {
-            if (unknown.length) {
-                notify('Unknown source ids are ignored: ' + unknown.join(', '));
-            }
         });
     }
 
@@ -522,6 +675,7 @@ function aniMetaPlusPage(host) {
 
     function renderGeneral(view, config) {
         view.querySelector('#ampTitlePreference').value = enumName(config.TitlePreference, titlePreferences) || 'Localized';
+        view.querySelector('#ampEpisodeTitlePreference').value = config.EpisodeTitlePreference || '';
         view.querySelector('#ampMaxGenres').value = config.MaxGenres;
         view.querySelector('#ampMinTagWeight').value = config.MinimumTagWeight;
         view.querySelector('#ampTagBlacklist').value = config.TagBlacklist || '';
@@ -943,6 +1097,7 @@ function aniMetaPlusPage(host) {
         });
 
         view.querySelector('#ampSaveSources').addEventListener('click', function () { saveSources(view); });
+        wireOrder(view);
 
         view.querySelector('#ampSaveAniDb').addEventListener('click', function () {
             withConfig(view, function (config) {
@@ -1001,6 +1156,7 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampSaveGeneral').addEventListener('click', function () {
             withConfig(view, function (config) {
                 config.TitlePreference = view.querySelector('#ampTitlePreference').value;
+                config.EpisodeTitlePreference = view.querySelector('#ampEpisodeTitlePreference').value;
                 config.MaxGenres = parseInt(view.querySelector('#ampMaxGenres').value, 10) || 0;
                 config.MinimumTagWeight = parseInt(view.querySelector('#ampMinTagWeight').value, 10) || 0;
                 config.TagBlacklist = view.querySelector('#ampTagBlacklist').value;

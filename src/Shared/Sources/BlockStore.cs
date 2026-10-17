@@ -150,6 +150,32 @@ public static class BlockStore
     }
 
     /// <summary>
+    /// Removes the not-found item blocks AniList and MyAnimeList carry under no kind. Earlier
+    /// versions filed failed title searches there, which also stopped the lookup by id. Run once.
+    /// </summary>
+    /// <returns>How many were removed.</returns>
+    public static int RemoveSearchBornBlocks()
+    {
+        var db = Db;
+        if (db is null)
+        {
+            return 0;
+        }
+
+        var found = db.Blocks.FindAll()
+            .Where(b => b.Scope == BlockScope.Item && b.Reason == BlockReason.NotFound && string.IsNullOrEmpty(b.Kind) && !b.Pinned && b.SetBy != "user"
+                && (b.Source == SourceIds.AniList || b.Source == SourceIds.Mal))
+            .Select(b => b.Id)
+            .ToList();
+        foreach (var id in found)
+        {
+            db.Blocks.Delete(id);
+        }
+
+        return found.Count;
+    }
+
+    /// <summary>
     /// Removes the never-expiring 401/403 blocks earlier versions recorded for sources without an
     /// owner-set credential, which nothing would ever have lifted. Run at startup.
     /// </summary>

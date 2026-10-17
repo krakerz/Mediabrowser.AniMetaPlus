@@ -105,14 +105,14 @@ Layout:
 ### Settings
 
 - **Status**: running AniMeta+ version and whether a restart is needed to load an update, ban and block state, request queue, and how fresh each mapping source is
-- **Sources**: enable sources, set the order per kind of data, and choose the mode for a blocked source
+- **Sources**: enable sources, drag sources into the order each kind of data is asked in, and choose the mode for a blocked source
 - **Clients & keys**: AniDB client name, MyAnimeList client id, Jikan, and the Test buttons
 - **Titles dump**: location and state of the AniDB titles dump
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
 - **Blocks**: remembered failures, with lift and pin
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
-- **General**: general plugin options
+- **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), plus the other plugin options
 - **Import/Export**: mappings, review decisions and pinned blocks (never keys)
 
 ### Source modes

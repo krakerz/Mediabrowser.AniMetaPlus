@@ -91,6 +91,21 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public TitlePreferenceType TitlePreference { get; set; }
 
+    /// <summary>
+    /// Gets or sets the language AniDB episode titles are taken in: a <see cref="TitlePreferenceType"/>
+    /// name, or empty to follow <see cref="TitlePreference"/>. Lets a show keep its romaji title
+    /// while its episodes read in the library's language.
+    /// </summary>
+    public string EpisodeTitlePreference { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets the language AniDB episode titles are taken in, after <see cref="EpisodeTitlePreference"/>
+    /// falls back to the show titles' language.
+    /// </summary>
+    [System.Xml.Serialization.XmlIgnore]
+    public TitlePreferenceType EpisodeTitles
+        => Enum.TryParse<TitlePreferenceType>(EpisodeTitlePreference, true, out var preference) ? preference : TitlePreference;
+
     public bool IgnoreSeason { get; set; }
 
     public int TitleSimilarityThreshold { get; set; }

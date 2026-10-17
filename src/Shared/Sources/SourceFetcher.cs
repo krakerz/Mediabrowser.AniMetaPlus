@@ -137,6 +137,10 @@ public static class SourceFetcher
         return SourceOutcome.Unconfigured;
     }
 
+    // A title search that found nothing is held back under its own kind, so it never stops the
+    // lookup by id another source supplies later.
+    private const string SearchKind = "search";
+
     private static TimeSpan MaxAge => RefreshScope.SourceMaxAge;
 
     private static async Task<SourceOutcome> FetchAniList(FetchContext context, CancellationToken cancellationToken)
@@ -144,6 +148,7 @@ public static class SourceFetcher
         var http = Plugin.Instance.GetHttpClient();
         string key;
         Func<CancellationToken, Task<AnimeRecord>> request;
+        var searching = false;
 
         if (context.Ids.TryGetValue(SourceIds.AniList, out var aniListId) && IsNumber(aniListId))
         {
@@ -162,17 +167,18 @@ public static class SourceFetcher
             var title = context.AnimeId is { } aid ? TitlesDump.MainTitle(Plugin.Instance.AppPaths, aid) : null;
             title ??= context.ItemName;
 
-            if (string.IsNullOrWhiteSpace(title))
+            if (string.IsNullOrWhiteSpace(title) || BlockStore.ItemBlock(SourceIds.AniList, context.ItemKey, SearchKind) != null)
             {
                 return SourceOutcome.Missing;
             }
 
             key = "search-" + title + "-" + context.Year?.ToString(CultureInfo.InvariantCulture);
             request = ct => AniListClient.Search(http, title, context.Year, ct);
+            searching = true;
         }
 
         var record = SourceCache.Read(SourceIds.AniList, key, MaxAge)
-            ?? await Run(SourceIds.AniList, context, key, request, cancellationToken).ConfigureAwait(false);
+            ?? await Run(SourceIds.AniList, context, key, request, cancellationToken, searching ? SearchKind : string.Empty).ConfigureAwait(false);
 
         Learn(context, record);
 
@@ -193,7 +199,7 @@ public static class SourceFetcher
             // Looked up by the name AniDB gives the anime, read from the local dump. Only for an
             // identified anime: a name search for anything else risks the wrong show.
             var title = context.AnimeId is { } aid ? TitlesDump.MainTitle(Plugin.Instance.AppPaths, aid) : null;
-            if (string.IsNullOrWhiteSpace(title))
+            if (string.IsNullOrWhiteSpace(title) || BlockStore.ItemBlock(SourceIds.Mal, context.ItemKey, SearchKind) != null)
             {
                 return SourceOutcome.Missing;
             }
@@ -207,7 +213,7 @@ public static class SourceFetcher
             }
             else
             {
-                malId = await SourceGate.Run(SourceIds.Mal, context.ItemKey, context.ItemName, string.Empty, searchKey, ct => MalClient.Search(http, title, context.Year, ct), cancellationToken).ConfigureAwait(false);
+                malId = await SourceGate.Run(SourceIds.Mal, context.ItemKey, context.ItemName, SearchKind, searchKey, ct => MalClient.Search(http, title, context.Year, ct), cancellationToken).ConfigureAwait(false);
                 SourceCache.Write(new AnimeRecord { Source = SourceIds.Mal, SourceId = malId, FetchedUtc = DateTime.UtcNow }, searchKey);
             }
 
@@ -295,9 +301,9 @@ public static class SourceFetcher
         return result?.Item is { } item ? (item, (IReadOnlyList<PersonInfo>)(result.People?.ToList() ?? [])) : null;
     }
 
-    private static async Task<AnimeRecord> Run(string source, FetchContext context, string key, Func<CancellationToken, Task<AnimeRecord>> request, CancellationToken cancellationToken)
+    private static async Task<AnimeRecord> Run(string source, FetchContext context, string key, Func<CancellationToken, Task<AnimeRecord>> request, CancellationToken cancellationToken, string kind = "")
     {
-        var record = await SourceGate.Run(source, context.ItemKey, context.ItemName, string.Empty, key, request, cancellationToken).ConfigureAwait(false);
+        var record = await SourceGate.Run(source, context.ItemKey, context.ItemName, kind, key, request, cancellationToken).ConfigureAwait(false);
         SourceCache.Write(record, key);
 
         return record;

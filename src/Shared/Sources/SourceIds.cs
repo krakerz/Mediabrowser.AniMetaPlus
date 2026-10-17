@@ -139,12 +139,12 @@ public static class SourceDefaults
     /// <returns>The source ids, first asked first.</returns>
     public static IReadOnlyList<string> Priority(DataKind kind) => kind switch
     {
-        DataKind.Titles => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal],
-        DataKind.Overview => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal, SourceIds.Tvdb],
-        DataKind.Genres => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal],
-        DataKind.Rating => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal],
-        DataKind.People => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal],
-        DataKind.Details => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Mal, SourceIds.Tvdb],
+        DataKind.Titles => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList],
+        DataKind.Overview => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList, SourceIds.Tvdb],
+        DataKind.Genres => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList],
+        DataKind.Rating => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList],
+        DataKind.People => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList],
+        DataKind.Details => [SourceIds.AniDb, SourceIds.Mal, SourceIds.AniList, SourceIds.Tvdb],
         DataKind.Episodes => [SourceIds.AniDb, SourceIds.Tvdb, SourceIds.Tmdb],
         DataKind.PrimaryImage => [SourceIds.AniDb, SourceIds.AniList, SourceIds.Tmdb, SourceIds.Tvdb],
         DataKind.BackdropImage => [SourceIds.Tmdb, SourceIds.Tvdb],
