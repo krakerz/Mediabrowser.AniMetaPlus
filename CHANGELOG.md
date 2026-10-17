@@ -4,14 +4,22 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-10-17
+
+### Added
+- Image overrides tab to compare, revert or acknowledge posters the AniDB poster task replaced; reverting runs in the background
+- Downloads from AniDB's image server show in Recent requests as "AniDB image"
+
+### Fixed
+- The poster replace task no longer stops on a season without its own folder when artwork is saved with the media
+- One poster that cannot be saved no longer ends the poster replace task for the rest
+
 ## [2.3.0] — 2026-10-17
 
 ### Added
 - Manual task "Fill missing posters from cached AniDB answers" that restores posters without asking the AniDB API
 - Manual task "Replace posters with AniDB's from cached answers" that sets every anime poster to AniDB's without asking the AniDB API
 - Setting to look up AniDB images from the cached answer, so image refreshes and Edit Images don't ask the AniDB API (on by default)
-- Image overrides tab to compare, revert or acknowledge posters the AniDB poster task replaced; reverting runs in the background
-- Downloads from AniDB's image server show in Recent requests as "AniDB image"
 
 ### Changed
 - Shows sent to AniDB per scan or queue run default to 20 instead of 25 (saved settings keep their value)
