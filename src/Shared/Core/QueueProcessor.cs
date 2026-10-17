@@ -59,7 +59,7 @@ public static class QueueProcessor
 
         bool Refresh(string path, bool replaceAll, bool toAniDb = false)
         {
-            if (budget <= 0 || (toAniDb && aniDbBudget <= 0) || refresher == null || string.IsNullOrEmpty(path))
+            if (budget <= 0 || (toAniDb && (aniDbBudget <= 0 || SourceGate.IsCapped(SourceIds.AniDb))) || refresher == null || string.IsNullOrEmpty(path))
             {
                 return false;
             }

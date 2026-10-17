@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Data;
@@ -57,7 +58,8 @@ public static class SourceGate
         {
             // Asked again: a request ahead in the queue may have been blocked meanwhile.
             ThrowIfBlocked(source, itemKey, kind);
-            lane.ThrowIfCapped(source, setting.MaxPerHour, setting.MaxPerDay);
+            var (perHour, perDay) = SourceDefaults.Caps(setting);
+            lane.ThrowIfCapped(source, perHour, perDay);
 
             var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), lane.NextTimestamp);
             while (remaining > TimeSpan.Zero)
@@ -184,8 +186,74 @@ public static class SourceGate
         var setting = Plugin.Instance.Configuration.GetSource(source);
         var lane = _lanes.GetOrAdd(source, _ => new Lane());
 
-        lane.ThrowIfCapped(source, setting.MaxPerHour, setting.MaxPerDay);
+        var (perHour, perDay) = SourceDefaults.Caps(setting);
+        lane.ThrowIfCapped(source, perHour, perDay);
         lane.Count();
+
+        if (string.Equals(source, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
+        {
+            SaveAniDbCounts(lane);
+        }
+    }
+
+    /// <summary>
+    /// Whether a source's hourly or daily cap is used up, so that work bound for it can wait
+    /// rather than be turned away.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <returns><c>true</c> when the next request would be refused.</returns>
+    public static bool IsCapped(string source)
+    {
+        var (perHour, perDay) = SourceDefaults.Caps(Plugin.Instance.Configuration.GetSource(source));
+        if (perHour <= 0 && perDay <= 0)
+        {
+            return false;
+        }
+
+        var (hour, day) = _lanes.GetOrAdd(source, _ => new Lane()).Totals();
+
+        return (perHour > 0 && hour >= perHour) || (perDay > 0 && day >= perDay);
+    }
+
+    // AniDB's counts outlive a restart: its caps are what keep a ban away, and a restart in the
+    // middle of a library refresh would otherwise hand it a fresh allowance.
+    private const string AniDbCountsState = "anidb-request-times";
+
+    /// <summary>
+    /// Puts back AniDB's request times from before the restart. Run at startup.
+    /// </summary>
+    public static void RestoreAniDbCounts()
+    {
+        try
+        {
+            var stored = AniMetaDb.Current.GetState(AniDbCountsState);
+            if (string.IsNullOrEmpty(stored))
+            {
+                return;
+            }
+
+            var times = stored.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => long.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks) ? new DateTime(ticks, DateTimeKind.Utc) : (DateTime?)null)
+                .OfType<DateTime>();
+
+            _lanes.GetOrAdd(SourceIds.AniDb, _ => new Lane()).Load(times);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Counting starts afresh; the hourly cap still applies from here on.
+        }
+    }
+
+    private static void SaveAniDbCounts(Lane lane)
+    {
+        try
+        {
+            AniMetaDb.Current.SetState(AniDbCountsState, string.Join(',', lane.Snapshot().Select(t => t.Ticks.ToString(CultureInfo.InvariantCulture))));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The count in memory still holds until the next restart.
+        }
     }
 
     /// <summary>
@@ -238,6 +306,30 @@ public static class SourceGate
             {
                 _sent.Enqueue(DateTime.UtcNow);
                 Trim();
+            }
+        }
+
+        public void Load(IEnumerable<DateTime> times)
+        {
+            lock (_sent)
+            {
+                var merged = _sent.Concat(times).Distinct().OrderBy(t => t).ToList();
+                _sent.Clear();
+                foreach (var at in merged)
+                {
+                    _sent.Enqueue(at);
+                }
+
+                Trim();
+            }
+        }
+
+        public IReadOnlyList<DateTime> Snapshot()
+        {
+            lock (_sent)
+            {
+                Trim();
+                return [.. _sent];
             }
         }
 
