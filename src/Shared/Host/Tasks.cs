@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Logging;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using AniMetaPlus.Titles;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
@@ -143,5 +146,147 @@ public class LibraryScanTask(ILibraryManager libraryManager, IProviderManager pr
         HostServices.Refresher ??= library;
 
         return LibraryScan.Run(library.ListAnimeItems(), logger, progress, cancellationToken);
+    }
+}
+
+/// <summary>
+/// Fills missing posters from the AniDB answers already cached, without asking the AniDB API.
+/// Manual only.
+/// </summary>
+public class CachedPosterTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, PluginLog<CachedPosterTask> logger) : AniMetaTask
+{
+    // Long enough for the server's queue to reach every item: posters download one per AniDB
+    // request interval.
+    private static readonly TimeSpan _cacheOnlyWindow = TimeSpan.FromHours(6);
+
+    /// <inheritdoc />
+    public override string Name => "Fill missing posters from cached AniDB answers";
+
+    /// <inheritdoc />
+    public override string Key => "AniMetaPlusCachedPosters";
+
+    /// <inheritdoc />
+    public override string Description => "Queues an image refresh for anime without a poster, reading AniDB's picture from the cached answer instead of asking the AniDB API. Anime with nothing cached are skipped. Posters come from AniDB's image server, one at a time. Run by hand.";
+
+    /// <inheritdoc />
+    public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
+
+    /// <inheritdoc />
+    protected override Task Run(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem);
+        HostServices.Refresher ??= library;
+
+        var paths = Plugin.Instance.AppPaths;
+        var queued = 0;
+        var skipped = 0;
+
+        foreach (var (item, animeId) in library.ListAniDbItems())
+        {
+            if (HostLibrary.HasPoster(item))
+            {
+                continue;
+            }
+
+            if (!AniDbSeriesProvider.HasCachedSeriesData(paths, animeId))
+            {
+                skipped++;
+                continue;
+            }
+
+            AniDbSeriesProvider.ReadCacheOnly(animeId, _cacheOnlyWindow);
+            library.QueueMissingImagesRefresh(item);
+            queued++;
+        }
+
+        logger.LogInformation("AniMeta+ cached posters: {Queued} items queued for an image refresh, {Skipped} without a cached AniDB answer skipped", queued, skipped);
+        progress.Report(100);
+
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Replaces every anime poster with AniDB's, named by the cached answer, without asking the
+/// AniDB API. Manual only.
+/// </summary>
+public class AniDbPosterOverrideTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, PluginLog<AniDbPosterOverrideTask> logger) : AniMetaTask
+{
+    /// <inheritdoc />
+    public override string Name => "Replace posters with AniDB's from cached answers";
+
+    /// <inheritdoc />
+    public override string Key => "AniMetaPlusOverridePosters";
+
+    /// <inheritdoc />
+    public override string Description => "Replaces the poster of every anime with the one AniDB names in its cached answer, without asking the AniDB API. Anime with nothing cached, or no AniDB picture, keep theirs. Posters come from AniDB's image server, one at a time. Other images are left alone. Run by hand.";
+
+    /// <inheritdoc />
+    public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
+
+    /// <inheritdoc />
+    protected override async Task Run(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem);
+        HostServices.Refresher ??= library;
+
+        var paths = Plugin.Instance.AppPaths;
+        var items = library.ListAniDbItems();
+        var replaced = 0;
+        var skipped = 0;
+        var failed = 0;
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress.Report(100.0 * i / Math.Max(items.Count, 1));
+
+            var (item, animeId) = items[i];
+            var url = AniDbSeriesProvider.HasCachedSeriesData(paths, animeId)
+                ? await ReadUrl(AniDbSeriesProvider.CachedSeriesDataPath(paths, animeId)).ConfigureAwait(false)
+                : null;
+
+            if (string.IsNullOrEmpty(url))
+            {
+                skipped++;
+                continue;
+            }
+
+            try
+            {
+                await AniDbSeriesProvider.WaitForImageSlot(cancellationToken).ConfigureAwait(false);
+
+                using var response = await Plugin.Instance.GetHttpClient().GetAsync(url, cancellationToken).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+
+                // Buffered: the server's image saving may read the stream more than once.
+                using var image = new MemoryStream();
+                await response.Content.CopyToAsync(image, cancellationToken).ConfigureAwait(false);
+                image.Position = 0;
+
+                await library.SavePoster(item, image, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg", cancellationToken).ConfigureAwait(false);
+                replaced++;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                failed++;
+                logger.LogWarning("AniMeta+ could not replace the poster of {Name} from {Url}: {Message}", item.Name, url, ex.Message);
+            }
+        }
+
+        logger.LogInformation("AniMeta+ AniDB posters: {Replaced} replaced, {Skipped} without a cached AniDB picture skipped, {Failed} failed", replaced, skipped, failed);
+        progress.Report(100);
+    }
+
+    private static async Task<string?> ReadUrl(string seriesDataPath)
+    {
+        try
+        {
+            return await AniDbImageProvider.FindImageUrl(seriesDataPath).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or System.Xml.XmlException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 }

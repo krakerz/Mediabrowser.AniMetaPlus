@@ -81,6 +81,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// </summary>
     private static readonly ConcurrentDictionary<string, (DateTime At, string Message)> _refusedIds = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Anime whose cached document is read whatever its age until the time given, so that the
+    /// cached-poster task's refreshes never reach the AniDB API.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, DateTime> _cacheOnlyUntil = new(StringComparer.Ordinal);
+
     // A ban is temporary, but its remaining time cannot be queried and runs from 15 minutes
     // to 24 hours. Probing a banned server extends the ban, so double the backoff after each
     // consecutive ban and reset it once a request succeeds: 45 minutes, 1.5, 3, 6 and 12 hours,
@@ -272,6 +278,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// Guarded by <see cref="_banLock"/>.
     /// </summary>
     private static DateTime _banUntilUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// When the latest ban was registered. Guarded by <see cref="_banLock"/>.
+    /// </summary>
+    private static DateTime _banRegisteredUtc = DateTime.MinValue;
 
     /// <summary>
     /// How long the next detected ban will be waited out for. Guarded by <see cref="_banLock"/>.
@@ -974,7 +985,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths, seriesId), "series.xml");
 
-        if (!NeedsDownload(seriesDataPath))
+        if (!NeedsDownload(seriesDataPath) || (IsCacheOnly(seriesId) && HasCopy(seriesDataPath)))
         {
             return seriesDataPath;
         }
@@ -1011,14 +1022,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             // remembered instead, and raised again without asking.
             if (_refusedIds.TryGetValue(seriesId, out var refusal) && DateTime.UtcNow - refusal.At < _retryAfterRefusal)
             {
-                throw new InvalidOperationException(refusal.Message);
+                return hasCopy ? seriesDataPath : throw new InvalidOperationException(refusal.Message);
             }
 
             // Also kept in the database, so that a refusal outlives a restart and shows on the
             // settings page, where it can be lifted by hand.
             if (BlockStore.ItemBlock(SourceIds.AniDb, ItemKeys.ForAnime(seriesId)) is { } stored)
             {
-                throw new InvalidOperationException(stored.Message);
+                return hasCopy ? seriesDataPath : throw new InvalidOperationException(stored.Message);
             }
 
             try
@@ -1027,18 +1038,28 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
                 _refusedIds.TryRemove(seriesId, out _);
             }
-            catch (InvalidOperationException ex) when (!BlockStore.IsShutdown(ex))
+            catch (AniDbBannedException ex) when (hasCopy)
+            {
+                // Blocked, capped or unreachable: an old answer beats none.
+                Logger?.LogDebug("AniDB could not be asked for anime {AnimeId}, so its cached answer is used: {Message}", seriesId, ex.Message);
+            }
+            catch (AniDbRefusedException ex)
             {
                 _refusedIds[seriesId] = (DateTime.UtcNow, ex.Message);
-                BlockStore.Record(SourceIds.AniDb, new SourceFailure(BlockScope.Item, BlockReason.NotFound, ex.Message), ItemKeys.ForAnime(seriesId), string.Empty);
+
+                // Held for days whatever the error: retrying sooner only spends AniDB requests.
+                var block = BlockStore.Record(SourceIds.AniDb, new SourceFailure(BlockScope.Item, BlockReason.NotFound, ex.Message), ItemKeys.ForAnime(seriesId), string.Empty);
 
                 Logger?.LogWarning(
                     "AniDB refused anime {AnimeId}: {Error}. Nothing more will be asked of that id for {RetryAfter}, so the rest of the show does not spend a request each on the same refusal",
                     seriesId,
                     ex.Message,
-                    _retryAfterRefusal);
+                    block?.ExpiresUtc is { } until ? until - DateTime.UtcNow : _retryAfterRefusal);
 
-                throw;
+                if (!hasCopy)
+                {
+                    throw;
+                }
             }
         }
         finally
@@ -1062,7 +1083,58 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             && IsClientUsable()
             && GetRemainingBanTime() <= TimeSpan.Zero
             && BlockStore.SourceBlock(SourceIds.AniDb) == null
-            && NeedsDownload(Path.Combine(GetSeriesDataPath(appPaths, animeId), "series.xml"));
+            && NeedsDownload(Path.Combine(GetSeriesDataPath(appPaths, animeId), "series.xml"))
+            && !(IsCacheOnly(animeId) && HasCachedSeriesData(appPaths, animeId));
+
+    /// <summary>
+    /// Whether an AniDB answer for the anime is on disk, however old.
+    /// </summary>
+    /// <param name="appPaths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns><c>true</c> when a cached document exists.</returns>
+    internal static bool HasCachedSeriesData(IApplicationPaths appPaths, string animeId)
+        => HasCopy(CachedSeriesDataPath(appPaths, animeId));
+
+    /// <summary>
+    /// Where the cached AniDB answer for an anime is kept.
+    /// </summary>
+    /// <param name="appPaths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns>The path of its series.xml.</returns>
+    internal static string CachedSeriesDataPath(IApplicationPaths appPaths, string animeId)
+        => Path.Combine(GetSeriesDataPath(appPaths, animeId), "series.xml");
+
+    /// <summary>
+    /// Makes lookups of the anime read its cached document, however old, rather than ask AniDB,
+    /// for the time given.
+    /// </summary>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <param name="window">How long.</param>
+    internal static void ReadCacheOnly(string animeId, TimeSpan window)
+        => _cacheOnlyUntil[animeId] = DateTime.UtcNow + window;
+
+    private static bool IsCacheOnly(string animeId)
+    {
+        if (!_cacheOnlyUntil.TryGetValue(animeId, out var until))
+        {
+            return false;
+        }
+
+        if (until > DateTime.UtcNow)
+        {
+            return true;
+        }
+
+        _cacheOnlyUntil.TryRemove(animeId, out _);
+        return false;
+    }
+
+    private static bool HasCopy(string seriesDataPath)
+    {
+        var fileInfo = new FileInfo(seriesDataPath);
+
+        return fileInfo.Exists && fileInfo.Length > 0;
+    }
 
     /// <summary>
     /// Whether the cached document of an anime has to be downloaded before it can be read.
@@ -1235,6 +1307,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     {
         lock (_banLock)
         {
+            // Requests already in flight when the ban began are refused too; they are the same
+            // ban, not a new one to double the backoff for.
+            if (_banActive && _banUntilUtc > DateTime.UtcNow && DateTime.UtcNow - _banRegisteredUtc < TimeSpan.FromMinutes(1))
+            {
+                return _banUntilUtc - DateTime.UtcNow;
+            }
+
+            _banRegisteredUtc = DateTime.UtcNow;
             var backoff = _currentBanBackoff;
             _banUntilUtc = DateTime.UtcNow + backoff;
 
@@ -1266,10 +1346,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <summary>
     /// Clears the ban state after AniDB served a valid response.
     /// </summary>
-    private static void RegisterSuccess()
+    private static void RegisterSuccess(DateTime requestedAtUtc)
     {
         lock (_banLock)
         {
+            // A request sent before the latest ban says nothing about whether it has lifted.
+            if (requestedAtUtc < _banRegisteredUtc)
+            {
+                return;
+            }
+
+            BlockStore.RecordSuccess(SourceIds.AniDb);
+
             // Every successful download lands here, so do nothing unless a ban was in
             // effect. Otherwise the configuration would be rewritten once per series.
             if (!_banActive && _banUntilUtc == DateTime.MinValue && _currentBanBackoff == _initialBanBackoff)
@@ -1288,8 +1376,6 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             _resumeLogged = false;
             PersistBanState();
         }
-
-        BlockStore.RecordSuccess(SourceIds.AniDb);
     }
 
     /// <summary>
@@ -1401,6 +1487,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             };
         }
 
+        if (!configuration.GetSource(SourceIds.AniDb).Enabled)
+        {
+            throw new AniDbUnavailableException("AniDB is turned off on the Sources tab, so it is not asked anything.")
+            {
+                RetryAfter = TimeSpan.MaxValue
+            };
+        }
+
         var client = ClientKey(configuration.AniDbClientName, configuration.AniDbClientVersion);
 
         if (string.Equals(configuration.AniDbRejectedClient, client, StringComparison.OrdinalIgnoreCase))
@@ -1425,6 +1519,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         return configuration is not null
             && configuration.AniDbConfigured
+            && configuration.GetSource(SourceIds.AniDb).Enabled
             && !string.Equals(configuration.AniDbRejectedClient, ClientKey(configuration.AniDbClientName, configuration.AniDbClientVersion), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -2013,6 +2108,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         await WaitForRequestSlot(cancellationToken).ConfigureAwait(false);
 
+        var requestedAtUtc = DateTime.UtcNow;
         var started = Stopwatch.GetTimestamp();
         var target = "anime " + aid;
         string text;
@@ -2099,7 +2195,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 };
             }
 
-            throw new InvalidOperationException("AniDB API error " + errorRegexMatch.Value);
+            throw new AniDbRefusedException("AniDB API error " + errorRegexMatch.Value);
         }
 
         // An empty body is how the API turns a request away once it has stopped answering, so
@@ -2116,15 +2212,45 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             };
         }
 
-        RegisterSuccess();
+        // A 200 that is not an anime document (a proxy or maintenance page) must not replace
+        // the cache or count as AniDB answering.
+        if (!IsAnimeDocument(text))
+        {
+            var failure = new SourceFailure(BlockScope.Source, BlockReason.Unavailable, "AniDB answered with something other than an anime document");
+            var block = BlockStore.Record(SourceIds.AniDb, failure);
 
-        // The payload is known good, so the previous cache may now be replaced.
+            throw new AniDbUnavailableException(failure.Message)
+            {
+                RetryAfter = block?.ExpiresUtc is { } until ? until - DateTime.UtcNow : TimeSpan.FromMinutes(5)
+            };
+        }
+
+        RegisterSuccess(requestedAtUtc);
+
+        // The payload is known good, so the previous cache may now be replaced. Written aside
+        // and moved in, without the token, so a cancelled refresh never leaves half a file.
         Directory.CreateDirectory(directory);
+        var partialPath = seriesDataPath + ".partial";
+        await File.WriteAllTextAsync(partialPath, text, new UTF8Encoding(false), CancellationToken.None).ConfigureAwait(false);
         DeleteXmlFiles(directory);
-        await File.WriteAllTextAsync(seriesDataPath, text, new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
+        File.Move(partialPath, seriesDataPath, true);
 
         await ExtractEpisodes(directory, seriesDataPath).ConfigureAwait(false);
         await ExtractCast(cachePath, seriesDataPath).ConfigureAwait(false);
+    }
+
+    private static bool IsAnimeDocument(string text)
+    {
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(text), new XmlReaderSettings { CheckCharacters = false, DtdProcessing = DtdProcessing.Ignore });
+
+            return reader.MoveToContent() == XmlNodeType.Element && reader.Name == "anime";
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
     }
 
     private static void DeleteXmlFiles(string path)
@@ -2236,6 +2362,11 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 catch (IOException)
                 {
                     // Another refresh is writing the same person; either copy will do.
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // A name with characters XML cannot hold; skip that person, not the anime.
+                    Logger?.LogDebug("The cast entry {Name} could not be cached: {Message}", person.Name, ex.Message);
                 }
             }
         }

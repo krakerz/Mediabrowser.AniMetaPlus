@@ -506,7 +506,7 @@ internal static partial class Equals_check
     {
         try
         {
-            return await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false);
+            return DecodeTextEntities(await File.ReadAllTextAsync(GetAnidbXml(), cancellationToken).ConfigureAwait(false));
         }
         catch (Exception)
         {
@@ -520,6 +520,18 @@ internal static partial class Equals_check
 
         return await ReadTitlesXml(1, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Turns the entities a title's text is escaped with back into characters, so names with an
+    /// apostrophe, ampersand or quote compare as written. The titles file is only ever matched by
+    /// pattern, never parsed, so the angle-bracket entities are left for the tags to stay intact.
+    /// </summary>
+    /// <param name="xml">The titles file.</param>
+    /// <returns>The file with its text entities decoded.</returns>
+    private static string DecodeTextEntities(string xml)
+        => xml.Replace("&apos;", "'", StringComparison.Ordinal)
+            .Replace("&quot;", "\"", StringComparison.Ordinal)
+            .Replace("&amp;", "&", StringComparison.Ordinal);
 
     /// <summary>
     /// Collects the AniDB ids whose entry fuzzily matches a name.

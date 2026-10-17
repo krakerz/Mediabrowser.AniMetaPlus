@@ -96,7 +96,9 @@ internal sealed class AniBridgeIndex
         // size of the file and no bookkeeping, where a document object model over it would cost
         // several times the file and hold every key this throws away.
         var bytes = File.ReadAllBytes(path);
-        var reader = new Utf8JsonReader(bytes, new JsonReaderOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+        // Utf8JsonReader rejects a byte order mark, which Notepad writes into a hand-edited overrides file.
+        var content = bytes.AsSpan(bytes.AsSpan().StartsWith("\uFEFF"u8) ? 3 : 0);
+        var reader = new Utf8JsonReader(content, new JsonReaderOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
 
         var spans = new Dictionary<string, List<AniBridgeSpan>>(StringComparer.Ordinal);
         var seriesKeys = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -613,6 +615,9 @@ internal sealed class AniBridgeIndex
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
+            // A value of another shape is stepped over, or the enclosing loops would end inside it and drop the rest of the file.
+            reader.Skip();
+
             return;
         }
 
@@ -703,6 +708,8 @@ internal sealed class AniBridgeIndex
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
+            reader.Skip();
+
             return;
         }
 
@@ -782,6 +789,8 @@ internal sealed class AniBridgeIndex
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
+            reader.Skip();
+
             return;
         }
 
@@ -827,6 +836,8 @@ internal sealed class AniBridgeIndex
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
+            reader.Skip();
+
             return;
         }
 

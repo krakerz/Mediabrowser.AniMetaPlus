@@ -53,7 +53,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
 
     private int _requestIntervalMs = MinimumRequestIntervalMs;
 
-    private int _aniDbShowsPerRun = 25;
+    private int _aniDbShowsPerRun = 20;
 
     private string _tagBlacklist = string.Empty;
 
@@ -81,6 +81,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
         PublishMappedIds = true;
         CastShowsCharacters = false;
         EnableSimilarItems = true;
+        AniDbImagesFromCache = true;
     }
 
     /// <summary>
@@ -119,7 +120,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets a value indicating whether the TVDB and TMDB ids the mapping sources file a
     /// show under are written onto it. They are what the image providers of those sites, and
     /// fanart, are keyed by, so filling them in is what lets those fetch artwork for a show this
-    /// plugin identified. Off by default: the id also arms the metadata providers of those sites
+    /// plugin identified. On by default, though the id also arms the metadata providers of those sites
     /// where they are enabled. An id already set is never replaced.
     /// </summary>
     public bool PublishMappedIds { get; set; }
@@ -173,6 +174,14 @@ public partial class PluginConfiguration : BasePluginConfiguration
     public bool EnableSimilarItems { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether AniDB images are looked up from the cached answer,
+    /// however old, whenever one exists, so an image refresh or the Edit Images dialog never asks
+    /// the AniDB API for it. An anime with nothing cached is still asked. The picture itself comes
+    /// from AniDB's image server either way, which the API ban does not cover.
+    /// </summary>
+    public bool AniDbImagesFromCache { get; set; }
+
+    /// <summary>
     /// Gets or sets the shortest gap, in milliseconds, between two AniDB requests. Clamped to
     /// at least <see cref="MinimumRequestIntervalMs"/>. AniDB counts requests per IP, so raise
     /// this to leave room for another client on the same address.
@@ -197,7 +206,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether the tags AniDB flags as 18+ content are kept.
-    /// They are dropped by default. Anime AniDB flags as adult are rated as such either way,
+    /// They are kept by default. Anime AniDB flags as adult are rated as such either way,
     /// which is what parental controls act on.
     /// </summary>
     public bool IncludeAdultTags { get; set; }

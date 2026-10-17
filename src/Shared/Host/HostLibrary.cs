@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Sources;
@@ -8,6 +11,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 #if JELLYFIN
 using Jellyfin.Data.Enums;
@@ -117,6 +121,83 @@ public sealed class HostLibrary : IHostRefresher
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Lists the anime library series, seasons and movies that carry an AniDB id.
+    /// </summary>
+    /// <returns>Each item with its AniDB id.</returns>
+    public IReadOnlyList<(BaseItem Item, string AnimeId)> ListAniDbItems()
+    {
+        var items = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+#if EMBY
+            IncludeItemTypes = ["Series", "Season", "Movie"],
+#else
+            IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Season, BaseItemKind.Movie],
+#endif
+            Recursive = true,
+            DtoOptions = new DtoOptions(true)
+        });
+
+        var result = new List<(BaseItem, string)>();
+
+        foreach (var item in items)
+        {
+            var animeId = item.GetProviderId(ProviderNames.AniDb);
+            if (!string.IsNullOrEmpty(animeId) && IsAnimeLibraryItem(item))
+            {
+                result.Add((item, animeId));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Whether an item has a poster.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <returns><c>true</c> when it has one.</returns>
+    public static bool HasPoster(BaseItem item) => item.HasImage(ImageType.Primary, 0);
+
+    /// <summary>
+    /// Queues an images-only refresh that fills the image types an item is missing; images
+    /// already in place are kept.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    public void QueueMissingImagesRefresh(BaseItem item)
+    {
+        var options = new MetadataRefreshOptions(new DirectoryService(_fileSystem))
+        {
+            MetadataRefreshMode = MetadataRefreshMode.ValidationOnly,
+            ImageRefreshMode = MetadataRefreshMode.FullRefresh
+        };
+
+#if EMBY
+        _providerManager.QueueRefresh(item.InternalId, options, RefreshPriority.Low);
+#else
+        _providerManager.QueueRefresh(item.Id, options, RefreshPriority.Low);
+#endif
+    }
+
+    /// <summary>
+    /// Replaces an item's poster with the image given, through the server's own image saving.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="image">The image.</param>
+    /// <param name="mimeType">Its media type.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    public async Task SavePoster(BaseItem item, Stream image, string mimeType, CancellationToken cancellationToken)
+    {
+#if EMBY
+        await _providerManager.SaveImage(item, _libraryManager.GetLibraryOptions(item), image, mimeType.AsMemory(), ImageType.Primary, null, [], new DirectoryService(_fileSystem), true, cancellationToken).ConfigureAwait(false);
+        item.UpdateToRepository(ItemUpdateType.ImageUpdate);
+#else
+        await _providerManager.SaveImage(item, image, mimeType, ImageType.Primary, null, cancellationToken).ConfigureAwait(false);
+        await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+#endif
     }
 
     /// <summary>

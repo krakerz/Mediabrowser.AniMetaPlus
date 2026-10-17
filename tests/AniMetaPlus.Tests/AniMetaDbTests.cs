@@ -81,6 +81,31 @@ public sealed class AniMetaDbTests : IDisposable
     }
 
     [Fact]
+    public void ImportTakesEnumNamesNullListsAndProvenanceDecisions()
+    {
+        const string json = """
+            {"Version":1,"Mappings":null,"Blocks":null,"Ignored":null,
+             "Reviews":[{"Id":"r1","Status":"Accepted"},{"Id":"r2","Status":2}],
+             "Provenance":[{"Id":"k|Overview","ItemKey":"k","Field":"Overview","PinnedSource":"AniDB","Locked":true,"DeclinedValue":"x"}]}
+            """;
+
+        using var db = AniMetaDb.Open(_folder, NullLogger.Instance);
+        var decisions = JsonSerializer.Deserialize<DecisionsExport>(json, AniMetaDb.ReadOptions)!;
+
+        Assert.Equal(3, db.Import(decisions));
+        Assert.Equal(ReviewStatus.Accepted, db.Reviews.FindById("r1").Status);
+        Assert.Equal((ReviewStatus)2, db.Reviews.FindById("r2").Status);
+
+        var provenance = db.Provenance.FindById("k|Overview");
+        Assert.True(provenance.Locked);
+        Assert.Equal("AniDB", provenance.PinnedSource);
+        Assert.Equal("k|Overview", Assert.Single(db.Export().Provenance).Id);
+
+        // An older export has no Provenance list at all.
+        Assert.Equal(0, db.Import(JsonSerializer.Deserialize<DecisionsExport>("{}", AniMetaDb.ReadOptions)!));
+    }
+
+    [Fact]
     public void SetsADamagedFileAsideAndRestoresDecisions()
     {
         using (var db = AniMetaDb.Open(_folder, NullLogger.Instance))

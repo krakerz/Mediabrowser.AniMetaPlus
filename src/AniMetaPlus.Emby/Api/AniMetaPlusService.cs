@@ -102,7 +102,7 @@ public class GetUnmatched : IReturn<UnmatchedRecord[]>
 
 /// <summary>Maps an unmatched item by hand.</summary>
 [Route("/AniMetaPlus/Unmatched/Map", "POST")]
-public class MapUnmatched : IReturn<string>
+public class MapUnmatched : IReturn<MapResult>
 {
     /// <summary>Gets or sets the item key.</summary>
     public string ItemKey { get; set; } = string.Empty;
@@ -310,7 +310,7 @@ public class AniMetaPlusService : IService
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
-    public object Post(MapUnmatched request) => AniMetaApi.Map(request.ItemKey, request.AnimeId, request.ApplyNow);
+    public object Post(MapUnmatched request) => new MapResult { AnimeId = AniMetaApi.Map(request.ItemKey, request.AnimeId, request.ApplyNow) };
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

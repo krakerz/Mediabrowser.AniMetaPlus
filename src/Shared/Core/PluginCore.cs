@@ -88,6 +88,12 @@ public static class PluginCore
                 logger.LogInformation("AniMeta+ removed {Count} blocks recorded only because the server was restarting", shutdownBlocks);
             }
 
+            var authBlocks = BlockStore.RemoveStuckAuthBlocks();
+            if (authBlocks > 0)
+            {
+                logger.LogInformation("AniMeta+ removed {Count} permanent blocks of sources that take no key", authBlocks);
+            }
+
             if (db.GetState("migrated") == null)
             {
                 MigrateFromPredecessor(plugin, paths, logger);
@@ -177,7 +183,7 @@ public static class PluginCore
 
                 return;
             }
-            catch (Exception ex) when (ex is System.Xml.XmlException or IOException or FormatException or InvalidCastException)
+            catch (Exception ex) when (ex is System.Xml.XmlException or IOException or FormatException or InvalidCastException or OverflowException)
             {
                 logger.LogWarning(ex, "The settings of the earlier plugin in {File} could not be read, so AniMeta+ starts from its defaults", name);
             }

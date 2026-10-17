@@ -151,14 +151,15 @@ internal static partial class AniDbSeasonResolver
     /// </summary>
     /// <param name="segments">The entries the season is filled from.</param>
     /// <param name="episodeNumber">The Jellyfin episode number.</param>
-    /// <returns>The segment holding the episode.</returns>
-    public static AniDbSeasonSegment PickSegment(IReadOnlyList<AniDbSeasonSegment> segments, int episodeNumber)
+    /// <returns>The segment holding the episode, or <c>null</c> when it falls before the segment it reaches, in a gap the mapping leaves between two ranges.</returns>
+    public static AniDbSeasonSegment? PickSegment(IReadOnlyList<AniDbSeasonSegment> segments, int episodeNumber)
     {
         foreach (var segment in segments)
         {
             if (segment.EpisodeCount <= 0 || episodeNumber < segment.FirstEpisodeNumber + segment.EpisodeCount)
             {
-                return segment;
+                // Before the segment's start it is in a gap, and counting back from the start would land on a neighbour's episode.
+                return episodeNumber < segment.FirstEpisodeNumber ? null : segment;
             }
         }
 
@@ -669,6 +670,7 @@ internal static partial class AniDbSeasonResolver
         // How many episodes of the entry at that position earlier seasons have already taken.
         var consumedInEntry = 0;
         var complete = true;
+        var nextNumber = 1;
 
         foreach (var season in layout?.Seasons ?? GetAssumedSeasons())
         {
@@ -676,6 +678,15 @@ internal static partial class AniDbSeasonResolver
             {
                 continue;
             }
+
+            // The layout lists only seasons that have episodes, so a season number skipped there still held an entry of the chain.
+            if (season.Number > nextNumber)
+            {
+                chainIndex += season.Number - nextNumber;
+                consumedInEntry = 0;
+            }
+
+            nextNumber = season.Number + 1;
 
             var segments = new List<AniDbSeasonSegment>();
             var covered = 0;

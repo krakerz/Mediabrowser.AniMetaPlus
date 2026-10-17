@@ -7,6 +7,7 @@ using AniMetaPlus.Core;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB.Metadata;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
@@ -56,10 +57,11 @@ public static class ImageMerge
         var link = string.IsNullOrEmpty(animeId) ? AniDbSeriesProvider.LinkFromIds(item.ProviderIds) : null;
         var context = new FetchContext
         {
-            ItemKey = !string.IsNullOrEmpty(animeId) ? ItemKeys.ForAnime(animeId) : link ?? ItemKeys.ForUnidentified("Series", item.Path, item.Name),
+            ItemKey = !string.IsNullOrEmpty(animeId) ? ItemKeys.ForAnime(animeId) : link ?? ItemKeys.ForUnidentified(item is Movie ? "Movie" : "Series", item.Path, item.Name),
             ItemName = item.Name ?? string.Empty,
             ItemPath = item.Path ?? string.Empty,
             AnimeId = animeId,
+            IsMovie = item is Movie,
             Year = item.ProductionYear
         };
 
