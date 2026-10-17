@@ -231,7 +231,7 @@ public static class TitlesDump
 
         var isXml = target.Name.EndsWith(".xml.gz", StringComparison.OrdinalIgnoreCase) || target.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
         var compressed = target.Name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
-        var temporary = target.FullName + ".download";
+        var temporary = DownloadPath(target.FullName);
 
         try
         {
@@ -539,7 +539,13 @@ public static class TitlesDump
     {
         Stream stream = File.OpenRead(path);
 
-        if (path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+        // Unpacked by what the file holds, not by its name: an HTTP client that already
+        // decompressed the download leaves plain text under a .gz name.
+        var first = stream.ReadByte();
+        var second = stream.ReadByte();
+        stream.Position = 0;
+
+        if (first == 0x1f && second == 0x8b)
         {
             stream = new GZipStream(stream, CompressionMode.Decompress);
         }
@@ -547,7 +553,22 @@ public static class TitlesDump
         return new StreamReader(stream, Encoding.UTF8);
     }
 
-    private static int CountTitles(string path)
+    /// <summary>
+    /// Where a download is held until it is checked. It keeps the dump's own extension, which is
+    /// what tells the reader whether to unpack it and how to parse it; an added ".download" suffix
+    /// made every download read as 0 titles.
+    /// </summary>
+    /// <param name="targetPath">The dump's path.</param>
+    /// <returns>The download's path, beside the dump.</returns>
+    internal static string DownloadPath(string targetPath)
+        => Path.Combine(Path.GetDirectoryName(targetPath) ?? string.Empty, ".download-" + Path.GetFileName(targetPath));
+
+    /// <summary>
+    /// Counts the titles in a dump, unpacking and parsing it as its extension says.
+    /// </summary>
+    /// <param name="path">The dump's path.</param>
+    /// <returns>How many titles it holds.</returns>
+    internal static int CountTitles(string path)
     {
         using var reader = OpenText(path);
 

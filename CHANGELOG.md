@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.7.1] — 2026-10-17
+
+### Fixed
+- Downloading the titles dump no longer fails with "The downloaded dump holds only 0 titles"
+
 ## [2.7.0] — 2026-10-17
 
 ### Added
