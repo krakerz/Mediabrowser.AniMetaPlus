@@ -60,28 +60,28 @@ public enum BlockReason
 public class BlockRecord
 {
     /// <summary>Gets or sets the key, built from source, scope, item and kind.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source id.</summary>
-    public string Source { get; set; } = string.Empty;
+    public string Source { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets what the block covers.</summary>
     public BlockScope Scope { get; set; }
 
     /// <summary>Gets or sets the item key, empty for a source-wide block.</summary>
-    public string ItemKey { get; set; } = string.Empty;
+    public string ItemKey { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name as it was when blocked, for the settings page.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the kind of data, empty for every kind.</summary>
-    public string Kind { get; set; } = string.Empty;
+    public string Kind { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets why.</summary>
     public BlockReason Reason { get; set; }
 
     /// <summary>Gets or sets what the source said.</summary>
-    public string Message { get; set; } = string.Empty;
+    public string Message { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the HTTP status, when there was one.</summary>
     public int? HttpStatus { get; set; }
@@ -132,19 +132,19 @@ public class BlockRecord
 public class ProvenanceRecord
 {
     /// <summary>Gets or sets the key, <c>itemKey|field</c>.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item key.</summary>
-    public string ItemKey { get; set; } = string.Empty;
+    public string ItemKey { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the field, a kind of data.</summary>
-    public string Field { get; set; } = string.Empty;
+    public string Field { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source that supplied it.</summary>
-    public string Source { get; set; } = string.Empty;
+    public string Source { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source it should have come from, when that one was blocked.</summary>
-    public string PreferredSource { get; set; } = string.Empty;
+    public string PreferredSource { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets a value indicating whether a stand-in supplied it, to be replaced.</summary>
     public bool Provisional { get; set; }
@@ -153,19 +153,19 @@ public class ProvenanceRecord
     /// Gets or sets the source this field is held to, ahead of the usual order: the stand-in while
     /// a review of its replacement is open, or whichever source the owner chose in a review.
     /// </summary>
-    public string PinnedSource { get; set; } = string.Empty;
+    public string PinnedSource { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets a value indicating whether the owner locked the field to its source.</summary>
     public bool Locked { get; set; }
 
     /// <summary>Gets or sets the value the owner kept the field over, so it is not proposed again.</summary>
-    public string DeclinedValue { get; set; } = string.Empty;
+    public string DeclinedValue { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's path, so that it can be found and refreshed again.</summary>
-    public string ItemPath { get; set; } = string.Empty;
+    public string ItemPath { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name, for the settings page.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets when it was written.</summary>
     public DateTime UpdatedUtc { get; set; }
@@ -185,19 +185,19 @@ public class ProvenanceRecord
 public class MappingRecord
 {
     /// <summary>Gets or sets the item key.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets whether it is a series or a movie.</summary>
     public string Kind { get; set; } = "Series";
 
     /// <summary>Gets or sets the AniDB id it is.</summary>
-    public string AnimeId { get; set; } = string.Empty;
+    public string AnimeId { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name when it was mapped.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets a note from the owner.</summary>
-    public string Note { get; set; } = string.Empty;
+    public string Note { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets when it was mapped.</summary>
     public DateTime CreatedUtc { get; set; }
@@ -209,10 +209,10 @@ public class MappingRecord
 public class CandidateRecord
 {
     /// <summary>Gets or sets the AniDB id.</summary>
-    public string AnimeId { get; set; } = string.Empty;
+    public string AnimeId { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the title that matched.</summary>
-    public string Title { get; set; } = string.Empty;
+    public string Title { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets how close it is, 0 to 100.</summary>
     public int Score { get; set; }
@@ -224,19 +224,19 @@ public class CandidateRecord
 public class UnmatchedRecord
 {
     /// <summary>Gets or sets the item key.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets whether it is a series or a movie.</summary>
     public string Kind { get; set; } = "Series";
 
     /// <summary>Gets or sets its name.</summary>
-    public string Name { get; set; } = string.Empty;
+    public string Name { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets its year, when known.</summary>
     public int? Year { get; set; }
 
     /// <summary>Gets or sets its path.</summary>
-    public string Path { get; set; } = string.Empty;
+    public string Path { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets a value indicating whether the owner mapped it and it waits for a refresh.</summary>
     public bool PendingRefresh { get; set; }
@@ -263,19 +263,19 @@ public class UnmatchedRecord
 public class WaitingRecord
 {
     /// <summary>Gets or sets the item key.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's path, so that it can be found and refreshed.</summary>
-    public string ItemPath { get; set; } = string.Empty;
+    public string ItemPath { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source it waits for.</summary>
-    public string Source { get; set; } = string.Empty;
+    public string Source { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets why it waits.</summary>
-    public string Reason { get; set; } = string.Empty;
+    public string Reason { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets when it started waiting.</summary>
     public DateTime AddedUtc { get; set; }
@@ -306,31 +306,31 @@ public enum ReviewStatus
 public class ReviewRecord
 {
     /// <summary>Gets or sets the key, <c>itemKey|field</c>.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item key.</summary>
-    public string ItemKey { get; set; } = string.Empty;
+    public string ItemKey { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's path, so that it can be found and refreshed.</summary>
-    public string ItemPath { get; set; } = string.Empty;
+    public string ItemPath { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the field, a kind of data.</summary>
-    public string Field { get; set; } = string.Empty;
+    public string Field { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the value the item has.</summary>
-    public string CurrentValue { get; set; } = string.Empty;
+    public string CurrentValue { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source of the value the item has.</summary>
-    public string CurrentSource { get; set; } = string.Empty;
+    public string CurrentSource { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the value proposed in its place.</summary>
-    public string ProposedValue { get; set; } = string.Empty;
+    public string ProposedValue { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the source of the proposed value.</summary>
-    public string ProposedSource { get; set; } = string.Empty;
+    public string ProposedSource { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the decision.</summary>
     public ReviewStatus Status { get; set; }
@@ -348,16 +348,16 @@ public class ReviewRecord
 public class ClientTestRecord
 {
     /// <summary>Gets or sets the source id.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the result: <c>valid</c>, <c>invalid</c>, <c>banned</c> or <c>unreachable</c>.</summary>
-    public string Result { get; set; } = string.Empty;
+    public string Result { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets what was found.</summary>
-    public string Message { get; set; } = string.Empty;
+    public string Message { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the client or key that was checked, masked.</summary>
-    public string Subject { get; set; } = string.Empty;
+    public string Subject { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets when it was checked.</summary>
     public DateTime AtUtc { get; set; }
@@ -372,16 +372,16 @@ public class RequestLogRecord
     public long Id { get; set; }
 
     /// <summary>Gets or sets the source id.</summary>
-    public string Source { get; set; } = string.Empty;
+    public string Source { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets what was asked for, without keys.</summary>
-    public string Target { get; set; } = string.Empty;
+    public string Target { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item key.</summary>
-    public string ItemKey { get; set; } = string.Empty;
+    public string ItemKey { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the outcome.</summary>
-    public string Outcome { get; set; } = string.Empty;
+    public string Outcome { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the HTTP status.</summary>
     public int? HttpStatus { get; set; }
@@ -399,10 +399,10 @@ public class RequestLogRecord
 public class StateRecord
 {
     /// <summary>Gets or sets the name.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the value.</summary>
-    public string Value { get; set; } = string.Empty;
+    public string Value { get; set => field = value ?? string.Empty; } = string.Empty;
 }
 
 /// <summary>
@@ -426,28 +426,28 @@ public enum ImageBackupState
 public class ImageBackupRecord
 {
     /// <summary>Gets or sets the server's item id.</summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the item's name.</summary>
-    public string ItemName { get; set; } = string.Empty;
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the series name of a season, otherwise empty.</summary>
-    public string SeriesName { get; set; } = string.Empty;
+    public string SeriesName { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the kind: Series, Season or Movie.</summary>
-    public string Kind { get; set; } = string.Empty;
+    public string Kind { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the backup's file name in the backup folder; empty when none is held.</summary>
-    public string BackupFile { get; set; } = string.Empty;
+    public string BackupFile { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the backup's media type.</summary>
-    public string BackupMimeType { get; set; } = string.Empty;
+    public string BackupMimeType { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the AniDB picture address that was applied.</summary>
-    public string AppliedUrl { get; set; } = string.Empty;
+    public string AppliedUrl { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the poster file's path, length and write time right after the replace.</summary>
-    public string AppliedStamp { get; set; } = string.Empty;
+    public string AppliedStamp { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets where the owner's decision stands.</summary>
     public ImageBackupState State { get; set; }

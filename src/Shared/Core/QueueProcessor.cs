@@ -33,6 +33,12 @@ public static class QueueProcessor
     /// </summary>
     public const int MaxRefreshesPerRun = 100;
 
+    // A stand-in whose source still has nothing for it would otherwise be refreshed every run,
+    // forever; once tried, it waits this long before the next try.
+    private static readonly TimeSpan _upgradeRetryGap = TimeSpan.FromHours(6);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _upgradeTried = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Runs the queues once.
     /// </summary>
@@ -110,7 +116,9 @@ public static class QueueProcessor
 
             if (string.IsNullOrEmpty(provenance.PreferredSource)
                 || BlockStore.SourceBlock(provenance.PreferredSource) != null
-                || (provenance.PreferredSource == SourceIds.AniDb && AniDbSeriesProvider.GetRemainingBanTime() > TimeSpan.Zero))
+                || BlockStore.ItemBlock(provenance.PreferredSource, provenance.ItemKey) != null
+                || (provenance.PreferredSource == SourceIds.AniDb && (AniDbSeriesProvider.GetRemainingBanTime() > TimeSpan.Zero || !AniDbSeriesProvider.IsClientUsable()))
+                || (_upgradeTried.TryGetValue(provenance.ItemPath, out var tried) && DateTime.UtcNow - tried < _upgradeRetryGap))
             {
                 continue;
             }
@@ -122,6 +130,7 @@ public static class QueueProcessor
             {
                 if (Refresh(provenance.ItemPath, false, provenance.PreferredSource == SourceIds.AniDb))
                 {
+                    _upgradeTried[provenance.ItemPath] = DateTime.UtcNow;
                     upgraded++;
                 }
             }

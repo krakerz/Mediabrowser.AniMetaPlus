@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-17
+
+### Added
+- Keep, Retry now and Keep all for stand-in values, and a column showing what holds each one back
+- AniDB blocks on a single anime show the anime's title on the Blocks tab
+
+### Fixed
+- A show with a stand-in value held for review no longer fails every refresh, which kept the stand-in and the rest of its AniMeta+ data from ever updating
+- Saving a review, ignore or unmap decision no longer fails with an error after it was stored
+- Stand-in values the preferred source has nothing for are no longer refreshed on every queue run; they are retried at most every 6 hours, and not at all while that source blocks the item
+
 ## [2.5.0] — 2026-10-17
 
 ### Added

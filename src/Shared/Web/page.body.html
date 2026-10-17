@@ -81,7 +81,8 @@
         <div class="amp-scroll"><table class="amp-table" id="ampWaiting"></table></div>
     </div>
     <div class="amp-sub" data-sub="provisional">
-        <p class="amp-small">Values another source supplied while the preferred one could not be asked. They are replaced once it answers, or wait for review.</p>
+        <p class="amp-small">Values another source supplied while the preferred one could not be asked. They are replaced once it answers, or wait for review. <b>Keep</b> accepts the stand-in and stops the retries; should the preferred source answer for it later, its value waits on the Review tab. The queue retries the others at most every 6 hours.</p>
+        <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampKeepAllStandIns"><span>Keep all</span></button></div>
         <div class="amp-scroll"><table class="amp-table" id="ampProvisional"></table></div>
     </div>
     <div class="amp-sub" data-sub="requests">
