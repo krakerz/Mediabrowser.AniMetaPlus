@@ -1,0 +1,165 @@
+[
+  {
+    "guid": "d9211a9c-1ad7-4203-bf8e-9078deb65469",
+    "name": "AniMeta+",
+    "overview": "Anime metadata from AniDB, AniList and MyAnimeList",
+    "description": "Anime metadata from AniDB, AniList and MyAnimeList, with the server's TVDB and TMDB providers as fallbacks.",
+    "owner": "krakerz",
+    "category": "Anime",
+    "imageUrl": "https://raw.githubusercontent.com/krakerz/Mediabrowser.AniMetaPlus/manifest/banner.jpg",
+    "versions": [
+      {
+        "version": "2.8.0.0",
+        "changelog": "### Changed\n- AniDB is held to 20 requests an hour and 150 a day unless other caps are set on the Sources tab; leaving them empty no longer means no cap\n- AniDB's request counts survive a server restart, so a restart no longer resets its caps\n- The library scan and the queue wait while AniDB's cap is used up instead of filling shows with stand-in values\n- The Sources status shows each source's caps next to its request counts",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.8.0/AniMetaPlus-Jellyfin-v2.8.0.zip",
+        "checksum": "46e2f9d7e1263b6b2b75962662663ebd",
+        "timestamp": "2026-10-17T11:52:16Z"
+      },
+      {
+        "version": "2.7.1.0",
+        "changelog": "### Fixed\n- Downloading the titles dump no longer fails with \"The downloaded dump holds only 0 titles\"",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.7.1/AniMetaPlus-Jellyfin-v2.7.1.zip",
+        "checksum": "09fa40755b10b0091221b52430bb96c3",
+        "timestamp": "2026-10-17T08:08:13Z"
+      },
+      {
+        "version": "2.7.0.0",
+        "changelog": "### Added\n- Episode title language setting, so a show can keep its romaji title while episode titles from every source follow another language\n\n### Changed\n- Source order is set with draggable source chips, arrows and a Default button instead of comma-separated text\n- Episodes follow the Episodes source order: sources placed before AniDB are asked first, and AniDB taken out of it is not asked\n- MyAnimeList comes before AniList in the default source order, so AniList is found by its MyAnimeList id rather than by title\n\n### Fixed\n- An AniList or MyAnimeList title search that found nothing no longer blocks the show's lookup by id; such blocks from earlier versions are removed once at startup",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.7.0/AniMetaPlus-Jellyfin-v2.7.0.zip",
+        "checksum": "f536143fb42c57d6068b7c8a4be1b837",
+        "timestamp": "2026-10-17T06:33:15Z"
+      },
+      {
+        "version": "2.6.0.0",
+        "changelog": "### Added\n- Keep, Retry now and Keep all for stand-in values, and a column showing what holds each one back\n- AniDB blocks on a single anime show the anime's title on the Blocks tab\n\n### Fixed\n- A show with a stand-in value held for review no longer fails every refresh, which kept the stand-in and the rest of its AniMeta+ data from ever updating\n- Saving a review, ignore or unmap decision no longer fails with an error after it was stored\n- Stand-in values the preferred source has nothing for are no longer refreshed on every queue run; they are retried at most every 6 hours, and not at all while that source blocks the item",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.6.0/AniMetaPlus-Jellyfin-v2.6.0.zip",
+        "checksum": "6d71aee7f1cf319c561f0a245a6769b9",
+        "timestamp": "2026-10-17T03:57:34Z"
+      },
+      {
+        "version": "2.5.0.0",
+        "changelog": "### Added\n- Status shows the running AniMeta+ version and whether the server needs a restart to load an installed update\n- Refresh and \"Select this page\" buttons on the Image overrides tab",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.5.0/AniMetaPlus-Jellyfin-v2.5.0.zip",
+        "checksum": "3a8dab326596e24786c4b345871ea2ce",
+        "timestamp": "2026-10-17T02:50:04Z"
+      },
+      {
+        "version": "2.4.0.0",
+        "changelog": "### Added\n- Image overrides tab to compare, revert or acknowledge posters the AniDB poster task replaced; reverting runs in the background\n- Downloads from AniDB's image server show in Recent requests as \"AniDB image\"\n\n### Fixed\n- The poster replace task no longer stops on a season without its own folder when artwork is saved with the media\n- One poster that cannot be saved no longer ends the poster replace task for the rest",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.4.0/AniMetaPlus-Jellyfin-v2.4.0.zip",
+        "checksum": "35983acd6b49a3a3bac872897835bfcc",
+        "timestamp": "2026-10-17T02:29:13Z"
+      },
+      {
+        "version": "2.3.0.0",
+        "changelog": "### Added\n- Manual task \"Fill missing posters from cached AniDB answers\" that restores posters without asking the AniDB API\n- Manual task \"Replace posters with AniDB's from cached answers\" that sets every anime poster to AniDB's without asking the AniDB API\n- Setting to look up AniDB images from the cached answer, so image refreshes and Edit Images don't ask the AniDB API (on by default)\n- Image overrides tab to compare, revert or acknowledge posters the AniDB poster task replaced; reverting runs in the background\n- Downloads from AniDB's image server show in Recent requests as \"AniDB image\"\n\n### Changed\n- Shows sent to AniDB per scan or queue run default to 20 instead of 25 (saved settings keep their value)\n- Shows mapped by hand count against the per-run AniDB limit\n- A 401 or 403 from AniList, Jikan, TVDB or TMDB blocks that source for hours instead of until lifted by hand; such old blocks are removed at startup\n\n### Fixed\n- Turning AniDB off on the Sources tab now stops all AniDB requests\n- The cached AniDB answer is used when AniDB is blocked, capped, unreachable or refuses the anime, instead of no AniDB data\n- A cancelled refresh or a non-XML answer no longer corrupts the cached AniDB answer\n- A cast name with unusual characters no longer marks the anime as refused by AniDB\n- Short AniDB or other source outages no longer escalate into blocks of several hours\n- A source's block is no longer lifted by an answer to a request sent before it\n- Concurrent requests during an AniDB ban no longer double the ban pause\n- Titles with \"&\" or quotes now match the titles dump\n- The titles index loads again after a failed or cancelled first load\n- The titles dump is not downloaded twice when the task and the Refresh button run together\n- Reimport titles now re-imports, also when the dump path points to an older file\n- Items waiting for review are no longer refreshed on every queue run when there is nothing to review\n- A failed refresh no longer counts as done in the queue\n- Episodes in a gap between mapped ranges no longer get a neighbouring episode's metadata\n- A missing season in the library no longer shifts later seasons onto the wrong AniDB entry\n- \"Opening 1\" no longer matches \"Opening 10\" and later\n- Mapping override files saved with a BOM, or with a misplaced list, are read in full\n- An unreadable mapping file no longer fails every refresh\n- Emby exports can be imported again, and exports keep Keep and Lock decisions\n- Mapping an item to AniList or MyAnimeList on Emby no longer shows \"Request failed\"\n- Saving a decision no longer fails after it was stored\n- Images for unidentified movies use the movie's own block and lookup",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.3.0/AniMetaPlus-Jellyfin-v2.3.0.zip",
+        "checksum": "71e246441da1ccf978ee76b5f4d0c2a7",
+        "timestamp": "2026-10-17T00:18:10Z"
+      },
+      {
+        "version": "2.2.0.0",
+        "changelog": "### Changed\n- The first pause after an AniDB ban is 45 minutes instead of 30, still doubling up to 24 hours",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.2.0/AniMetaPlus-Jellyfin-v2.2.0.zip",
+        "checksum": "4b9b702b0935bc40d72bf68bba5a893b",
+        "timestamp": "2026-10-16T02:05:48Z"
+      },
+      {
+        "version": "2.1.1.0",
+        "changelog": "### Fixed\n- A server restart no longer leaves shows blocked from AniDB or other sources; such blocks from earlier versions are removed at startup\n- A show AniDB refused still gets images from AniList, MyAnimeList, TVDB and TMDB",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.1.1/AniMetaPlus-Jellyfin-v2.1.1.zip",
+        "checksum": "7a5a957222ea1dd5096354fb6fb93611",
+        "timestamp": "2026-10-15T09:07:10Z"
+      },
+      {
+        "version": "2.1.0.0",
+        "changelog": "### Changed\n- Status, Unmatched and General are split into sub-tabs, with the Status buttons at the top\n\n### Fixed\n- Mapping or setting aside an unmatched item no longer reloads the list and loses the other items' search results",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.1.0/AniMetaPlus-Jellyfin-v2.1.0.zip",
+        "checksum": "aa2fea13675a6c3834c154e480005992",
+        "timestamp": "2026-10-14T23:41:56Z"
+      },
+      {
+        "version": "2.0.0.0",
+        "changelog": "### Changed\n- The Jellyfin build is for Jellyfin 10.11 instead of Jellyfin 12; Jellyfin 12 servers should stay on 1.6.0\n- The plugin repository lists each release with the Jellyfin version it was built for\n\n### Removed\n- Similar items on Jellyfin, which needs Jellyfin 12",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/2.0.0/AniMetaPlus-Jellyfin-v2.0.0.zip",
+        "checksum": "c42d0f959f35d5e386d6fb5cd2f81686",
+        "timestamp": "2026-10-14T17:15:17Z"
+      },
+      {
+        "version": "1.6.0.0",
+        "changelog": "### Added\n- Unmatched tab searches the titles dump, AniList and MyAnimeList together, for one item or for all listed at once\n\n### Changed\n- Shows mapped by hand are no longer listed as unmatched; they appear under Mapped by hand\n\n### Fixed\n- The Status page could fail to load while counting unmatched items",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.6.0/AniMetaPlus-Jellyfin-v1.6.0.zip",
+        "checksum": "9f9630c8248d0ae05426ff1e1f679276",
+        "timestamp": "2026-10-14T16:27:35Z"
+      },
+      {
+        "version": "1.5.0.0",
+        "changelog": "### Added\n- Unmatched tab searches AniList and MyAnimeList, showing which results AniDB lists\n- Shows can be mapped to an AniList or MyAnimeList entry and are filled from those when AniDB has no entry\n\n### Fixed\n- Unmatched entries for shows that already have an AniDB id are cleared by the next scan run\n- AniDB requests show in the Status counts and the request log\n- AniDB's gap and caps on the Sources tab are applied; the larger of the two AniDB gaps is used",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.5.0/AniMetaPlus-Jellyfin-v1.5.0.zip",
+        "checksum": "883fa27f73ab49f27012c4b45985679b",
+        "timestamp": "2026-10-14T15:17:45Z"
+      },
+      {
+        "version": "1.4.0.0",
+        "changelog": "### Added\n- Setting for how many shows one scan or queue run sends to AniDB, 25 by default\n\n### Changed\n- The scan task identifies the whole library each run; only shows needing a new AniDB answer count toward the per-run limit\n- Catch-up after an AniDB ban follows the same per-run limit\n- How long scans reuse a fetched answer can be set down to 3 days (7 by default)\n- Fetched answers are kept in the plugin's data folder instead of the server's cache folder, so cache cleanup no longer deletes them; existing ones are moved on first start\n\n### Fixed\n- On Jellyfin the scan task took every show for unidentified and kept refreshing already matched shows",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.4.0/AniMetaPlus-Jellyfin-v1.4.0.zip",
+        "checksum": "390b2d6afc1f0cca56ecd5db514e2c9c",
+        "timestamp": "2026-10-14T14:48:00Z"
+      },
+      {
+        "version": "1.3.0.0",
+        "changelog": "### Added\n- General tab shows how many AniDB, AniList and MyAnimeList answers are cached and until when, with a Reset button per source\n\n### Fixed\n- A refresh started by hand asks AniList and MyAnimeList again, and AniDB once its answer is a day old, instead of reusing week-old answers",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.3.0/AniMetaPlus-Jellyfin-v1.3.0.zip",
+        "checksum": "dbef71c6aaeaca7d927ba8decf1f0abf",
+        "timestamp": "2026-10-14T14:07:09Z"
+      },
+      {
+        "version": "1.2.1.0",
+        "changelog": "### Fixed\n- Shows AniDB never answered for are identified and filled from local data and the other sources while AniDB is banned\n- Episodes AniDB never answered for are filled from TVDB or TMDB while AniDB is banned",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.2.1/AniMetaPlus-Jellyfin-v1.2.1.zip",
+        "checksum": "037602e4ab6de26ffb32139f31946943",
+        "timestamp": "2026-10-14T13:08:36Z"
+      },
+      {
+        "version": "1.2.0.0",
+        "changelog": "### Added\n- Jellyfin plugin repository, so AniMeta+ installs and updates from Jellyfin's plugin catalog\n- Plugin banner in Emby's and Jellyfin's plugin lists",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.2.0/AniMetaPlus-Jellyfin-v1.2.0.zip",
+        "checksum": "162dd121c07e7d9552c5888bfcd2ecac",
+        "timestamp": "2026-10-14T12:38:45Z"
+      },
+      {
+        "version": "1.1.0.0",
+        "changelog": "### Added\n- Identify by AniDB, MyAnimeList or AniList id, each offered while that source is set up and its key accepted; Emby shows the fields in its Identify dialog\n- MyAnimeList and AniList links and id fields on shows and movies\n\n### Changed\n- License corrected to GPL-2.0 to match the upstream Jellyfin AniDB plugin\n- Identify searches the local titles dump only and shows a \"Local only\" poster; the refresh after a pick fetches the real data\n- AniDB titles dump is downloaded at most every 3 days, counted from the last attempt, including \"Download now\"\n- Per-source request gaps can no longer be set below their defaults\n- Images in the server's image picker are labelled by source, such as \"AniMeta+ (AniList)\"\n- A throttled client check says how long until the next one is allowed\n\n### Fixed\n- AniDB titles failed to load for title matching\n- A client check that found no key no longer holds up the next check\n- Episodes named without a season on Jellyfin go into season 1 instead of \"Season Unknown\"\n- Settings page fields, dropdowns, the show/hide button and lone buttons line up on Emby and Jellyfin",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.1.0/AniMetaPlus-Jellyfin-v1.1.0.zip",
+        "checksum": "21e2d1b4009de87e5fb3728ceac6e370",
+        "timestamp": "2026-10-14T12:15:15Z"
+      },
+      {
+        "version": "1.0.0.0",
+        "changelog": "### Added\n- Emby 4.10 support alongside Jellyfin, built from one shared codebase\n- AniList and MyAnimeList as metadata sources, plus the server's installed TVDB and TMDB providers as fallbacks\n- Per-kind source order for titles, overview, details, genres, rating, cast, episodes and each image type\n- Genres, rating and cast combined across sources\n- Local AniDB titles dump as the primary title source, refreshed only by a scheduled task and never more than once a day\n- AniDB client name and version settings, with AniDB turned off until a client name is set\n- Client and key test endpoint for AniDB, AniList and MyAnimeList\n- Remembered blocks for every failed request, per source or per item, with lift and pin\n- Pause, switch, and switch-with-review modes for a blocked source\n- Review list for replacing values a stand-in source supplied\n- Unmatched list with title search over the local dump and mapping by hand\n- Library scan that identifies from local data first and refreshes a batch at a time, newest first\n- Export and import of mappings, reviews and pinned blocks\n- Recent request log\n- Settings page on Emby and Jellyfin with status, sources, clients, titles dump, unmatched, review, blocks and backup tabs\n- Movies and seasons filled from the other sources where AniDB has nothing\n- MyAnimeList looked up by title when no id is known\n- Library scan, queue and titles dump scheduled tasks\n- Plugin ships as a single DLL per server\n\n### Changed\n- Renamed to AniMeta+ with a new plugin id; existing AniDB ids on items are kept\n- Settings and any active AniDB ban are taken over from the earlier AniDB plugin on first start\n- Adult tags are included by default\n- Mapped TVDB and TMDB ids are written onto shows by default\n\n### Fixed\n- AniDB server errors and timeouts no longer get retried immediately by every episode\n- AniDB titles dump title types are read correctly\n- Folder names with notes such as \"(Fall)\" or \"[BD]\" are identified\n- A source that does not answer no longer holds up a refresh for more than 20 seconds",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/krakerz/Mediabrowser.AniMetaPlus/releases/download/1.0.0/AniMetaPlus-Jellyfin-v1.0.0.zip",
+        "checksum": "2c2fe30c86dae5a8844f13166547e78e",
+        "timestamp": "2026-10-14T05:43:02Z"
+      }
+    ]
+  }
+]
