@@ -69,6 +69,8 @@ public class SourceBlockedException : Exception
 /// </summary>
 public static class BlockStore
 {
+    private static readonly TimeSpan SameFailureWindow = TimeSpan.FromSeconds(30);
+
     private static ILogger _logger = NullLogger.Instance;
 
     /// <summary>
@@ -100,7 +102,7 @@ public static class BlockStore
             case HttpRequestException request:
                 return new SourceFailure(BlockScope.Source, BlockReason.Unavailable, request.Message);
 
-            case TaskCanceledException or TimeoutException:
+            case OperationCanceledException or TimeoutException:
                 return new SourceFailure(BlockScope.Source, BlockReason.Unavailable, "The source did not answer in time.");
 
             case System.Xml.XmlException or System.Text.Json.JsonException or FormatException:
@@ -145,6 +147,31 @@ public static class BlockStore
         }
 
         return stale.Count;
+    }
+
+    /// <summary>
+    /// Removes the never-expiring 401/403 blocks earlier versions recorded for sources without an
+    /// owner-set credential, which nothing would ever have lifted. Run at startup.
+    /// </summary>
+    /// <returns>How many were removed.</returns>
+    public static int RemoveStuckAuthBlocks()
+    {
+        var db = Db;
+        if (db is null)
+        {
+            return 0;
+        }
+
+        var stuck = db.Blocks.FindAll()
+            .Where(b => b.Reason == BlockReason.AuthFailed && b.ExpiresUtc == null && !b.Pinned && b.SetBy != "user" && !HasOwnerCredential(b.Source))
+            .Select(b => b.Id)
+            .ToList();
+        foreach (var id in stuck)
+        {
+            db.Blocks.Delete(id);
+        }
+
+        return stuck.Count;
     }
 
     /// <summary>
@@ -264,6 +291,12 @@ public static class BlockStore
             return block;
         }
 
+        // Requests in flight together fail together: one stall is one failure, not a doubling per request.
+        if (block.LastSeenUtc > now - SameFailureWindow && block.IsActive(now))
+        {
+            return block;
+        }
+
         var (initial, maximum) = Backoff(failure.Reason, scope);
         var previous = block.ExpiresUtc is { } expires && expires > now - maximum && block.BackoffMinutes > 0
             ? TimeSpan.FromMinutes(block.BackoffMinutes)
@@ -283,8 +316,11 @@ public static class BlockStore
         block.BackoffMinutes = (int)Math.Ceiling(backoff.TotalMinutes);
         block.SetBy = "auto";
 
-        // A refused key or client is refused until it is changed, however long that takes.
-        block.ExpiresUtc = failure.Reason is BlockReason.AuthFailed or BlockReason.ClientRejected ? null : now + backoff;
+        // A refused key or client is refused until it is changed, however long that takes. A 401 or
+        // 403 from a source with no owner-set credential (a Cloudflare page, say) is only backed off.
+        var permanent = failure.Reason == BlockReason.ClientRejected
+            || (failure.Reason == BlockReason.AuthFailed && HasOwnerCredential(source));
+        block.ExpiresUtc = permanent ? null : now + backoff;
 
         if (!string.IsNullOrEmpty(itemName))
         {
@@ -358,13 +394,14 @@ public static class BlockStore
     /// Clears the automatic source-wide block of a source after it answered.
     /// </summary>
     /// <param name="source">The source id.</param>
-    public static void RecordSuccess(string source)
+    /// <param name="requestStartedUtc">When the request that answered was sent; a block recorded after that is newer than the answer and stays.</param>
+    public static void RecordSuccess(string source, DateTime? requestStartedUtc = null)
     {
         var db = Db;
         var id = BlockRecord.MakeId(source, BlockScope.Source, string.Empty, string.Empty);
         var block = db?.Blocks.FindById(id);
 
-        if (block != null && !block.Pinned && block.SetBy != "user")
+        if (block != null && !block.Pinned && block.SetBy != "user" && !(requestStartedUtc is { } started && block.LastSeenUtc > started))
         {
             db!.Blocks.Delete(id);
             db.Wrote();
@@ -524,6 +561,19 @@ public static class BlockStore
         return removed;
     }
 
+    // Whether the owner supplied a key or client name for the source, which a refusal then means is wrong.
+    private static bool HasOwnerCredential(string source)
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        return source switch
+        {
+            SourceIds.AniDb => configuration.AniDbConfigured,
+            SourceIds.Mal => !string.IsNullOrWhiteSpace(configuration.MalClientId),
+            _ => false
+        };
+    }
+
     private static AniMetaDb? Db
     {
         get
@@ -550,6 +600,7 @@ public static class BlockStore
     {
         BlockReason.Banned => (AniDbSeriesProvider.InitialBanBackoff, AniDbSeriesProvider.MaximumBanBackoff),
         BlockReason.RateLimited => (TimeSpan.FromMinutes(1), TimeSpan.FromHours(2)),
+        BlockReason.AuthFailed => (TimeSpan.FromHours(1), TimeSpan.FromHours(24)),
         BlockReason.Unavailable => (TimeSpan.FromMinutes(5), TimeSpan.FromHours(6)),
         BlockReason.ServerError => (TimeSpan.FromMinutes(5), TimeSpan.FromHours(6)),
         BlockReason.NotFound => (TimeSpan.FromDays(7), TimeSpan.FromDays(30)),

@@ -75,6 +75,7 @@ public static class SourceGate
         }
 
         var started = Stopwatch.GetTimestamp();
+        var startedUtc = DateTime.UtcNow;
 
         // A source that does not answer holds up the item's whole refresh, so it gets a bounded
         // wait rather than the client's default of 100 seconds.
@@ -85,7 +86,7 @@ public static class SourceGate
         {
             var result = await request(timeout.Token).ConfigureAwait(false);
 
-            BlockStore.RecordSuccess(source);
+            BlockStore.RecordSuccess(source, startedUtc);
             Log(source, target, itemKey, "ok", null, started);
 
             return result;

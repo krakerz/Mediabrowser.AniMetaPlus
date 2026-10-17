@@ -545,6 +545,11 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         var segment = AniDbSeasonResolver.PickSegment(segments, episodeNumber);
 
+        if (segment == null)
+        {
+            return (null, null, AniDbEpisodeKind.Regular);
+        }
+
         return (segment.AnimeId, segment.FirstEpisodeInEntry + (episodeNumber - segment.FirstEpisodeNumber), segment.Kind);
     }
 
@@ -683,10 +688,31 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
 
         var matches = specials
             .Where(special => special.Kind == AniDbEpisodeKind.Credits
-                && special.Titles.Any(title => Normalize(title).Contains(wanted + ordinal, StringComparison.Ordinal)))
+                && special.Titles.Any(title => ContainsNumbered(Normalize(title), wanted + ordinal)))
             .ToList();
 
         return matches.Count == 1 ? matches[0] : null;
+    }
+
+    /// <summary>
+    /// Whether a normalised title holds the name and number, with no further digit after it: "opening1" is in "opening1" but not in "opening10".
+    /// </summary>
+    /// <param name="normalized">The normalised title.</param>
+    /// <param name="wanted">The name and number to find.</param>
+    /// <returns><c>true</c> when the title holds exactly that number.</returns>
+    private static bool ContainsNumbered(string normalized, string wanted)
+    {
+        for (var at = normalized.IndexOf(wanted, StringComparison.Ordinal); at >= 0; at = normalized.IndexOf(wanted, at + 1, StringComparison.Ordinal))
+        {
+            var end = at + wanted.Length;
+
+            if (end >= normalized.Length || !char.IsAsciiDigit(normalized[end]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

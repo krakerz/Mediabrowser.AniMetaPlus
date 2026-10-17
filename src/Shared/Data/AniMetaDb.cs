@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 using System.Threading;
 using AniMetaPlus.Core;
@@ -37,6 +38,9 @@ public class DecisionsExport
 
     /// <summary>Gets or sets the items the owner chose to leave unmatched.</summary>
     public List<UnmatchedRecord> Ignored { get; set; } = [];
+
+    /// <summary>Gets or sets the fields the owner pinned, locked or kept; absent in older files.</summary>
+    public List<ProvenanceRecord> Provenance { get; set; } = [];
 }
 
 /// <summary>
@@ -128,6 +132,11 @@ public sealed class AniMetaDb : IDisposable
     public ILiteCollection<StateRecord> State => _db.GetCollection<StateRecord>("state");
 
     /// <summary>
+    /// Gets the options to read an export with: Emby writes enums by name and Jellyfin by number.
+    /// </summary>
+    public static JsonSerializerOptions ReadOptions { get; } = new() { Converters = { new JsonStringEnumConverter() } };
+
+    /// <summary>
     /// Gets the database, opening it on first use.
     /// </summary>
     /// <param name="paths">The server paths.</param>
@@ -166,7 +175,7 @@ public sealed class AniMetaDb : IDisposable
 
         try
         {
-            return new AniMetaDb(Connect(path), folder, logger);
+            return Create(path, folder, logger);
         }
         // A damaged file fails in whatever way the bytes it holds happen to lead to, not only
         // with LiteException, so anything short of running out of memory counts.
@@ -179,14 +188,14 @@ public sealed class AniMetaDb : IDisposable
             MoveAside(path + "-log", stamp);
             MoveAside(Path.ChangeExtension(path, null) + "-log.db", stamp);
 
-            var db = new AniMetaDb(Connect(path), folder, logger);
+            var db = Create(path, folder, logger);
             var decisions = Path.Combine(folder, DecisionsFileName);
 
             if (File.Exists(decisions))
             {
                 try
                 {
-                    db.Import(JsonSerializer.Deserialize<DecisionsExport>(File.ReadAllText(decisions), _json) ?? new DecisionsExport(), writeBackup: false);
+                    db.Import(JsonSerializer.Deserialize<DecisionsExport>(File.ReadAllText(decisions), ReadOptions) ?? new DecisionsExport(), writeBackup: false);
                 }
                 catch (Exception importException) when (importException is JsonException or IOException)
                 {
@@ -240,7 +249,7 @@ public sealed class AniMetaDb : IDisposable
             File.WriteAllText(partial, JsonSerializer.Serialize(Export(), _json));
             File.Move(partial, path, true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or LiteException)
         {
             _logger.LogWarning(ex, "Could not write the copy of your AniMeta+ decisions");
         }
@@ -254,9 +263,14 @@ public sealed class AniMetaDb : IDisposable
     {
         ExportedUtc = DateTime.UtcNow,
         Mappings = Mappings.FindAll().ToList(),
-        Blocks = Blocks.Find(b => b.Pinned || b.SetBy == "user").ToList(),
-        Reviews = Reviews.Find(r => r.Status != ReviewStatus.Pending).ToList(),
-        Ignored = Unmatched.Find(u => u.Ignored).ToList()
+
+        // In memory: a lambda query on a record can fail on its mapper member lookup.
+        Blocks = Blocks.FindAll().Where(b => b.Pinned || b.SetBy == "user").ToList(),
+        Reviews = Reviews.FindAll().Where(r => r.Status != ReviewStatus.Pending).ToList(),
+        Ignored = Unmatched.FindAll().Where(u => u.Ignored).ToList(),
+
+        // A pin on a stand-in while a review is open is not a decision, and goes with the review.
+        Provenance = Provenance.FindAll().Where(p => p.Locked || p.DeclinedValue.Length > 0 || (p.PinnedSource.Length > 0 && !p.Provisional)).ToList()
     };
 
     /// <summary>
@@ -269,10 +283,12 @@ public sealed class AniMetaDb : IDisposable
     {
         ArgumentNullException.ThrowIfNull(decisions);
 
-        var count = UpsertAll(Mappings, decisions.Mappings, m => m.Id)
-            + UpsertAll(Blocks, decisions.Blocks, b => b.Id)
-            + UpsertAll(Reviews, decisions.Reviews, r => r.Id)
-            + UpsertAll(Unmatched, decisions.Ignored, u => u.Id);
+        // Lists a hand-edited or older file leaves out come in as null.
+        var count = UpsertAll(Mappings, decisions.Mappings ?? [], m => m.Id)
+            + UpsertAll(Blocks, decisions.Blocks ?? [], b => b.Id)
+            + UpsertAll(Reviews, decisions.Reviews ?? [], r => r.Id)
+            + UpsertAll(Unmatched, decisions.Ignored ?? [], u => u.Id)
+            + ImportProvenance(decisions.Provenance ?? []);
 
         if (writeBackup)
         {
@@ -354,11 +370,70 @@ public sealed class AniMetaDb : IDisposable
             UtcDate = true
         };
 
-        // Touching a collection reads the header and the first pages, which is where a damaged
-        // file shows; better to find out here than on the first lookup.
-        _ = db.GetCollectionNames().ToList();
+        try
+        {
+            // Touching a collection reads the header and the first pages, which is where a damaged
+            // file shows; better to find out here than on the first lookup.
+            _ = db.GetCollectionNames().ToList();
 
-        return db;
+            return db;
+        }
+        catch
+        {
+            // Left open, it would hold the file and the damaged copy could not be moved aside.
+            db.Dispose();
+
+            throw;
+        }
+    }
+
+    private static AniMetaDb Create(string path, string folder, ILogger logger)
+    {
+        var db = Connect(path);
+
+        try
+        {
+            return new AniMetaDb(db, folder, logger);
+        }
+        catch
+        {
+            // The indexes are built here, and a damaged file can fail on them.
+            db.Dispose();
+
+            throw;
+        }
+    }
+
+    private int ImportProvenance(IEnumerable<ProvenanceRecord> records)
+    {
+        var count = 0;
+
+        foreach (var record in records)
+        {
+            if (string.IsNullOrEmpty(record.Id))
+            {
+                continue;
+            }
+
+            // Only the decision is taken over a row the server already has.
+            var existing = Provenance.FindById(record.Id);
+            if (existing == null)
+            {
+                Provenance.Upsert(record);
+            }
+            else
+            {
+                existing.PinnedSource = record.PinnedSource;
+                existing.Locked = record.Locked;
+                existing.DeclinedValue = record.DeclinedValue;
+                existing.Provisional = false;
+                Provenance.Update(existing);
+            }
+
+            count++;
+        }
+
+        return count;
     }
 
     private static int UpsertAll<T>(ILiteCollection<T> collection, IEnumerable<T> records, Func<T, string> key)

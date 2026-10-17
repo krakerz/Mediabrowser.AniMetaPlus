@@ -59,13 +59,14 @@ public static class QueueProcessor
             }
 
             // An item with several queued fields is refreshed once.
-            if (!refreshed.Add(path))
+            if (refreshed.Contains(path))
             {
                 return true;
             }
 
             if (refresher.Refresh(path, replaceAll))
             {
+                refreshed.Add(path);
                 budget--;
                 if (toAniDb)
                 {
@@ -134,7 +135,13 @@ public static class QueueProcessor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (Refresh(unmatched.Path, true))
+            // A newly mapped AniDB id sends the refresh to AniDB, so it is paced like the other AniDB refreshes.
+            var mappedId = Queues.MappedAnimeId(unmatched.Id);
+            var toAniDb = mappedId != null
+                && AniDbSeriesProvider.LinkParts(mappedId) is null
+                && AniDbSeriesProvider.WouldAskAniDb(Plugin.Instance.AppPaths, mappedId);
+
+            if (Refresh(unmatched.Path, true, toAniDb))
             {
                 unmatched.PendingRefresh = false;
                 db.Unmatched.Update(unmatched);

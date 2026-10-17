@@ -93,6 +93,15 @@ public class OverviewStatus
 public sealed record ClientTestResult(string Result, string Message);
 
 /// <summary>
+/// The answer to mapping an item by hand.
+/// </summary>
+public class MapResult
+{
+    /// <summary>Gets or sets the id the item was mapped to, with its source prefix when it is not AniDB.</summary>
+    public string AnimeId { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// What the settings page can ask of the plugin, the same on both servers. Each server's own
 /// endpoints only pass requests through to this.
 /// </summary>
@@ -527,7 +536,7 @@ public static class AniMetaApi
     /// <returns>The dump's status.</returns>
     public static async Task<TitlesDumpStatus> ReimportTitles(ILogger logger, CancellationToken cancellationToken)
     {
-        await TitlesDump.EnsureImported(Plugin.Instance.AppPaths, logger, cancellationToken).ConfigureAwait(false);
+        await TitlesDump.EnsureImported(Plugin.Instance.AppPaths, logger, cancellationToken, force: true).ConfigureAwait(false);
 
         return TitlesDump.GetStatus(Plugin.Instance.AppPaths);
     }
@@ -545,7 +554,7 @@ public static class AniMetaApi
     /// <returns>How many records were taken.</returns>
     public static int Import(string json)
     {
-        var decisions = JsonSerializer.Deserialize<DecisionsExport>(json, _json) ?? throw new ArgumentException("Not an AniMeta+ export.", nameof(json));
+        var decisions = JsonSerializer.Deserialize<DecisionsExport>(json, AniMetaDb.ReadOptions) ?? throw new ArgumentException("Not an AniMeta+ export.", nameof(json));
 
         return Db.Import(decisions);
     }

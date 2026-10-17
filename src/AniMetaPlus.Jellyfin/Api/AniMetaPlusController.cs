@@ -112,13 +112,13 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
 
     /// <summary>Maps an unmatched item by hand.</summary>
     /// <param name="request">The mapping.</param>
-    /// <returns>The AniDB id mapped to.</returns>
+    /// <returns>The id mapped to.</returns>
     [HttpPost("Unmatched/Map")]
-    public ActionResult<string> Map([FromBody] MapRequest request)
+    public ActionResult<MapResult> Map([FromBody] MapRequest request)
     {
         try
         {
-            return AniMetaApi.Map(request.ItemKey, request.AnimeId, request.ApplyNow);
+            return new MapResult { AnimeId = AniMetaApi.Map(request.ItemKey, request.AnimeId, request.ApplyNow) };
         }
         catch (ArgumentException ex)
         {

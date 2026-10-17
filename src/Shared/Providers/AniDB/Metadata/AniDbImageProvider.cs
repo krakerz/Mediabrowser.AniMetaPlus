@@ -90,7 +90,10 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
 
             try
             {
-                var seriesDataPath = await AniDbSeriesProvider.GetSeriesData(_appPaths, aniDbId, cancellationToken).ConfigureAwait(false);
+                // The picture name rarely changes, so a cached answer of any age will do when asked to.
+                var seriesDataPath = Plugin.Instance.Configuration.AniDbImagesFromCache && AniDbSeriesProvider.HasCachedSeriesData(_appPaths, aniDbId)
+                    ? AniDbSeriesProvider.CachedSeriesDataPath(_appPaths, aniDbId)
+                    : await AniDbSeriesProvider.GetSeriesData(_appPaths, aniDbId, cancellationToken).ConfigureAwait(false);
                 imageUrl = await FindImageUrl(seriesDataPath).ConfigureAwait(false);
             }
             catch (AniDbBannedException ex)
@@ -145,7 +148,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
         return item is Series || item is Season || item is Movie;
     }
 
-    private static async Task<string?> FindImageUrl(string seriesDataPath)
+    internal static async Task<string?> FindImageUrl(string seriesDataPath)
     {
         var settings = new XmlReaderSettings
         {

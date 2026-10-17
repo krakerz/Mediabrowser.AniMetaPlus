@@ -195,6 +195,7 @@
     <div class="inputContainer"><input is="emby-input" id="ampRequestInterval" type="number" min="2500" step="100" label="AniDB request interval (ms, at least 2500; the larger of this and AniDB's gap on the Sources tab is used):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampAniDbPerRun" type="number" min="1" label="Shows sent to AniDB per scan or queue run (hourly; cached and local ones do not count):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxCacheAge" type="number" min="3" label="Days scans and tasks reuse a fetched answer (at least 3, 7 recommended; a refresh by hand asks again sooner):" /></div>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImagesFromCache" /><span>Look up AniDB images from the cached answer when there is one (no AniDB API request; uncached anime are still asked)</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportGenres" /><span>Import genres</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportTags" /><span>Import tags</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportRating" /><span>Import community rating</span></label>

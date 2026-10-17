@@ -4,6 +4,42 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-10-17
+
+### Added
+- Manual task "Fill missing posters from cached AniDB answers" that restores posters without asking the AniDB API
+- Manual task "Replace posters with AniDB's from cached answers" that sets every anime poster to AniDB's without asking the AniDB API
+- Setting to look up AniDB images from the cached answer, so image refreshes and Edit Images don't ask the AniDB API (on by default)
+
+### Changed
+- Shows sent to AniDB per scan or queue run default to 20 instead of 25 (saved settings keep their value)
+- Shows mapped by hand count against the per-run AniDB limit
+- A 401 or 403 from AniList, Jikan, TVDB or TMDB blocks that source for hours instead of until lifted by hand; such old blocks are removed at startup
+
+### Fixed
+- Turning AniDB off on the Sources tab now stops all AniDB requests
+- The cached AniDB answer is used when AniDB is blocked, capped, unreachable or refuses the anime, instead of no AniDB data
+- A cancelled refresh or a non-XML answer no longer corrupts the cached AniDB answer
+- A cast name with unusual characters no longer marks the anime as refused by AniDB
+- Short AniDB or other source outages no longer escalate into blocks of several hours
+- A source's block is no longer lifted by an answer to a request sent before it
+- Concurrent requests during an AniDB ban no longer double the ban pause
+- Titles with "&" or quotes now match the titles dump
+- The titles index loads again after a failed or cancelled first load
+- The titles dump is not downloaded twice when the task and the Refresh button run together
+- Reimport titles now re-imports, also when the dump path points to an older file
+- Items waiting for review are no longer refreshed on every queue run when there is nothing to review
+- A failed refresh no longer counts as done in the queue
+- Episodes in a gap between mapped ranges no longer get a neighbouring episode's metadata
+- A missing season in the library no longer shifts later seasons onto the wrong AniDB entry
+- "Opening 1" no longer matches "Opening 10" and later
+- Mapping override files saved with a BOM, or with a misplaced list, are read in full
+- An unreadable mapping file no longer fails every refresh
+- Emby exports can be imported again, and exports keep Keep and Lock decisions
+- Mapping an item to AniList or MyAnimeList on Emby no longer shows "Request failed"
+- Saving a decision no longer fails after it was stored
+- Images for unidentified movies use the movie's own block and lookup
+
 ## [2.2.0] — 2026-10-16
 
 ### Changed

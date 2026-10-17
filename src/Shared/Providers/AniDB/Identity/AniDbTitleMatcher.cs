@@ -163,19 +163,18 @@ public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbT
 
     private async Task Load(CancellationToken cancellationToken)
     {
-        if (_titles == null)
-        {
-            _titles = new Dictionary<string, TitleInfo>(StringComparer.OrdinalIgnoreCase);
-        }
-        else
-        {
-            _titles.Clear();
-        }
-
         try
         {
             await _downloader.Load(cancellationToken).ConfigureAwait(false);
-            await ReadTitlesFile().ConfigureAwait(false);
+
+            // Built aside and published whole, so readers never see it half filled and a failure leaves it unloaded for the next call to retry.
+            var titles = new Dictionary<string, TitleInfo>(StringComparer.OrdinalIgnoreCase);
+            await ReadTitlesFile(titles).ConfigureAwait(false);
+            _titles = titles;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -183,15 +182,9 @@ public sealed class AniDbTitleMatcher(ILogger<AniDbTitleMatcher> logger, IAniDbT
         }
     }
 
-    private async Task ReadTitlesFile()
+    private async Task ReadTitlesFile(Dictionary<string, TitleInfo> titles)
     {
         _logger.LogDebug("Loading AniDB titles");
-
-        var titles = _titles;
-        if (titles == null)
-        {
-            return;
-        }
 
         var titlesFile = _downloader.TitlesFilePath;
 

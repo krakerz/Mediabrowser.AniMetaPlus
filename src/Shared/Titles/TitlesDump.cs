@@ -58,6 +58,7 @@ public static class TitlesDump
 
     private static readonly TimeSpan _minimumDownloadGap = TimeSpan.FromDays(Configuration.PluginConfiguration.MinimumTitlesRefreshDays);
     private static readonly SemaphoreSlim _gate = new(1, 1);
+    private static readonly SemaphoreSlim _refreshGate = new(1, 1);
     private static int _animeCount;
     private static Dictionary<string, string>? _mainTitles;
 
@@ -84,14 +85,15 @@ public static class TitlesDump
         => Path.Combine(PluginPaths.CacheFolder(paths), "titles.xml");
 
     /// <summary>
-    /// Makes sure the imported copy reflects the dump on disk, importing it when it is missing
-    /// or older than the dump. Never downloads anything.
+    /// Makes sure the imported copy reflects the dump on disk, importing it when it is missing,
+    /// older than the dump, or made from another file. Never downloads anything.
     /// </summary>
     /// <param name="paths">The server paths.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="force">Whether to import even when the imported copy looks current.</param>
     /// <returns><c>true</c> when an imported copy is available to read.</returns>
-    public static async Task<bool> EnsureImported(IApplicationPaths paths, ILogger logger, CancellationToken cancellationToken)
+    public static async Task<bool> EnsureImported(IApplicationPaths paths, ILogger logger, CancellationToken cancellationToken, bool force = false)
     {
         var source = new FileInfo(SourcePath(paths));
         var imported = new FileInfo(ImportedPath(paths));
@@ -109,7 +111,7 @@ public static class TitlesDump
             return imported.Exists;
         }
 
-        if (imported.Exists && imported.Length > 0 && imported.LastWriteTimeUtc >= source.LastWriteTimeUtc)
+        if (!force && IsCurrent(source, imported))
         {
             return true;
         }
@@ -118,12 +120,13 @@ public static class TitlesDump
         try
         {
             imported.Refresh();
-            if (imported.Exists && imported.Length > 0 && imported.LastWriteTimeUtc >= source.LastWriteTimeUtc)
+            if (!force && IsCurrent(source, imported))
             {
                 return true;
             }
 
             var count = await Import(source.FullName, imported.FullName, cancellationToken).ConfigureAwait(false);
+            File.WriteAllText(StampPath(imported.FullName), Stamp(source));
             _animeCount = count;
             _mainTitles = null;
             AniDbTitleMatcher.Invalidate();
@@ -144,6 +147,29 @@ public static class TitlesDump
         }
     }
 
+    private static string StampPath(string importedPath) => importedPath + ".source";
+
+    // Which file, and how big, the imported copy was made from: its time alone cannot tell that
+    // the path was pointed at an older file.
+    private static string Stamp(FileInfo source) => source.FullName + "|" + source.Length.ToString(CultureInfo.InvariantCulture);
+
+    private static bool IsCurrent(FileInfo source, FileInfo imported)
+    {
+        if (!imported.Exists || imported.Length == 0 || imported.LastWriteTimeUtc < source.LastWriteTimeUtc)
+        {
+            return false;
+        }
+
+        try
+        {
+            return File.ReadAllText(StampPath(imported.FullName)) == Stamp(source);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Downloads a fresh dump when one is due, or when asked to. Refuses whenever the dump on
     /// disk is less than a day old, however it is asked.
@@ -155,6 +181,20 @@ public static class TitlesDump
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>What happened.</returns>
     public static async Task<TitlesRefreshResult> Refresh(IApplicationPaths paths, HttpClient httpClient, bool force, ILogger logger, CancellationToken cancellationToken)
+    {
+        // One at a time, so that the task and the button cannot both pass the gap check and download.
+        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await RefreshCore(paths, httpClient, force, logger, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private static async Task<TitlesRefreshResult> RefreshCore(IApplicationPaths paths, HttpClient httpClient, bool force, ILogger logger, CancellationToken cancellationToken)
     {
         var configuration = Plugin.Instance.Configuration;
         var target = new FileInfo(SourcePath(paths));
@@ -189,20 +229,21 @@ public static class TitlesDump
             return new TitlesRefreshResult(false, "Automatic refresh of the titles dump is turned off.");
         }
 
-        var directory = target.DirectoryName;
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
         var isXml = target.Name.EndsWith(".xml.gz", StringComparison.OrdinalIgnoreCase) || target.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
         var compressed = target.Name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
         var temporary = target.FullName + ".download";
 
-        File.WriteAllText(AttemptPath(paths), DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-
         try
         {
+            var directory = target.DirectoryName;
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            // Written before asking, and nothing is asked when it cannot be written.
+            File.WriteAllText(AttemptPath(paths), DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+
             using (var response = await httpClient.GetAsync(isXml ? XmlUrl : DatUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
@@ -231,7 +272,7 @@ public static class TitlesDump
 
             File.Move(temporary, target.FullName, true);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException or UnauthorizedAccessException)
         {
             TryDelete(temporary);
             logger.LogWarning(ex, "Downloading the AniDB titles dump failed. The dump already on disk stays in use");
@@ -311,21 +352,26 @@ public static class TitlesDump
                     using var reader = XmlReader.Create(path, new XmlReaderSettings { IgnoreComments = true, CheckCharacters = false });
                     string? aid = null;
 
-                    while (reader.Read())
+                    var more = reader.Read();
+
+                    while (more)
                     {
-                        if (reader.NodeType != XmlNodeType.Element)
+                        if (reader.NodeType == XmlNodeType.Element)
                         {
-                            continue;
+                            if (reader.Name == "anime")
+                            {
+                                aid = reader.GetAttribute("aid");
+                            }
+                            else if (reader.Name == "title" && aid != null && reader.GetAttribute("type") == "main")
+                            {
+                                // Already on the node after the title: reading on would skip it.
+                                titles[aid] = reader.ReadElementContentAsString();
+                                more = !reader.EOF;
+                                continue;
+                            }
                         }
 
-                        if (reader.Name == "anime")
-                        {
-                            aid = reader.GetAttribute("aid");
-                        }
-                        else if (reader.Name == "title" && aid != null && reader.GetAttribute("type") == "main")
-                        {
-                            titles[aid] = reader.ReadElementContentAsString();
-                        }
+                        more = reader.Read();
                     }
                 }
                 catch (Exception ex) when (ex is XmlException or IOException)

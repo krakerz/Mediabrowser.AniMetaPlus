@@ -78,3 +78,19 @@ public class AniDbUnavailableException : AniDbBannedException
     /// </summary>
     public bool ClientRejected { get; init; }
 }
+
+/// <summary>
+/// AniDB answered a request for one anime with an error document: an id it does not know, or
+/// another refusal of that request alone.
+/// </summary>
+public class AniDbRefusedException : InvalidOperationException
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AniDbRefusedException"/> class.
+    /// </summary>
+    /// <param name="message">What AniDB said.</param>
+    public AniDbRefusedException(string message)
+        : base(message)
+    {
+    }
+}

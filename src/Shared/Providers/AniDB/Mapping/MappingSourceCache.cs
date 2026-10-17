@@ -124,7 +124,7 @@ internal sealed class MappingSourceCache<TIndex>(
 
             Reload(path, logger);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _failedAtUtc = DateTime.UtcNow;
 
@@ -171,7 +171,7 @@ internal sealed class MappingSourceCache<TIndex>(
 
             return _error == null ? outcome : MappingSourceCheck.Failed;
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _failedAtUtc = DateTime.UtcNow;
 
@@ -234,7 +234,7 @@ internal sealed class MappingSourceCache<TIndex>(
             _checkedAtUtc = DateTime.UtcNow;
             _sourceWrittenAtUtc = file.LastWriteTimeUtc;
         }
-        catch (Exception ex) when (ex is XmlException or JsonException)
+        catch (Exception ex) when (ex is XmlException or JsonException or UnauthorizedAccessException)
         {
             _error = ex.Message;
 
@@ -411,7 +411,8 @@ internal sealed class MappingSourceCache<TIndex>(
 
             return downloaded ? MappingSourceCheck.Updated : MappingSourceCheck.Unchanged;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or JsonException)
+        // The caller's own cancellation is not a failed download: it propagates, and sets no pause that would suppress retries.
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && (ex is HttpRequestException or IOException or TaskCanceledException or JsonException))
         {
             if (!cached)
             {

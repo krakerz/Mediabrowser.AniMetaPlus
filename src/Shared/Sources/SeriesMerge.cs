@@ -235,14 +235,27 @@ public static class SeriesMerge
         var outcome = await get(preferred).ConfigureAwait(false);
         if (outcome is not { State: SourceState.Ok, Record: { } record } || !Has(kind, record))
         {
+            // It answers but has nothing for the field: nothing will ever be proposed, so the stand-in stands.
+            if (outcome.State == SourceState.Ok)
+            {
+                Settle(db, provenance, kind, context);
+            }
+
             return;
         }
 
         var proposed = Describe(kind, record, context);
         var current = Describe(kind, outcomes.TryGetValue(chosen, out var c) && c.Record != null ? c.Record : null, context, result.Item);
 
-        if (string.Equals(proposed, current, StringComparison.Ordinal)
-            || string.Equals(proposed, provenance.DeclinedValue, StringComparison.Ordinal))
+        if (string.Equals(proposed, current, StringComparison.Ordinal))
+        {
+            // Nothing to review, so the field is settled rather than left to be refreshed every run.
+            Settle(db, provenance, kind, context);
+
+            return;
+        }
+
+        if (string.Equals(proposed, provenance.DeclinedValue, StringComparison.Ordinal))
         {
             return;
         }
@@ -275,6 +288,20 @@ public static class SeriesMerge
             context.ItemName,
             kind,
             chosen);
+    }
+
+    private static void Settle(AniMetaDb db, ProvenanceRecord provenance, DataKind kind, FetchContext context)
+    {
+        // Only a stand-in still waiting for review; a pending review is left to be decided.
+        if (!provenance.Provisional || db.Reviews.Exists(r => r.Id == ProvenanceRecord.MakeId(context.ItemKey, kind.ToString())))
+        {
+            return;
+        }
+
+        provenance.Provisional = false;
+        provenance.PreferredSource = string.Empty;
+        provenance.PinnedSource = string.Empty;
+        db.Provenance.Upsert(provenance);
     }
 
     private static void Record(
