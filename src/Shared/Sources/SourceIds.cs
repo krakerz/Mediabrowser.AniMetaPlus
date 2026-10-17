@@ -85,6 +85,32 @@ public enum DataKind
 public static class SourceDefaults
 {
     /// <summary>
+    /// AniDB's hourly cap when none is set. AniDB bans a client for bursts well short of what the
+    /// 2.5 s gap alone allows: a library refresh sent 256 requests in an hour or two and was banned.
+    /// </summary>
+    public const int AniDbDefaultPerHour = 20;
+
+    /// <summary>
+    /// AniDB's daily cap when none is set.
+    /// </summary>
+    public const int AniDbDefaultPerDay = 150;
+
+    /// <summary>
+    /// Gets the caps a source's requests are held to: the ones set, or for AniDB its defaults
+    /// where none is set, since AniDB is never safe to ask without one.
+    /// </summary>
+    /// <param name="setting">The source's settings.</param>
+    /// <returns>The hourly and daily caps; zero means none.</returns>
+    public static (int PerHour, int PerDay) Caps(SourceSetting setting)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        return string.Equals(setting.Id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase)
+            ? (setting.MaxPerHour > 0 ? setting.MaxPerHour : AniDbDefaultPerHour, setting.MaxPerDay > 0 ? setting.MaxPerDay : AniDbDefaultPerDay)
+            : (setting.MaxPerHour, setting.MaxPerDay);
+    }
+
+    /// <summary>
     /// Gets the default settings of a source.
     /// </summary>
     /// <param name="id">The source id.</param>

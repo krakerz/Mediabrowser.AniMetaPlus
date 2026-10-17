@@ -4,6 +4,14 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-10-17
+
+### Changed
+- AniDB is held to 20 requests an hour and 150 a day unless other caps are set on the Sources tab; leaving them empty no longer means no cap
+- AniDB's request counts survive a server restart, so a restart no longer resets its caps
+- The library scan and the queue wait while AniDB's cap is used up instead of filling shows with stand-in values
+- The Sources status shows each source's caps next to its request counts
+
 ## [2.7.1] — 2026-10-17
 
 ### Fixed

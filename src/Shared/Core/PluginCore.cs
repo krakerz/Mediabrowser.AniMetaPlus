@@ -96,6 +96,8 @@ public static class PluginCore
                 logger.LogInformation("AniMeta+ removed {Count} AniList and MyAnimeList not-found blocks so those shows get one more lookup", searchBlocks);
             }
 
+            SourceGate.RestoreAniDbCounts();
+
             var authBlocks = BlockStore.RemoveStuckAuthBlocks();
             if (authBlocks > 0)
             {

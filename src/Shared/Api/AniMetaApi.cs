@@ -45,6 +45,12 @@ public class SourceStatus
     /// <summary>Gets or sets the requests sent in the last day.</summary>
     public int LastDay { get; set; }
 
+    /// <summary>Gets or sets the hourly cap in force; zero means none.</summary>
+    public int CapPerHour { get; set; }
+
+    /// <summary>Gets or sets the daily cap in force; zero means none.</summary>
+    public int CapPerDay { get; set; }
+
     /// <summary>Gets or sets the last check of its client or key.</summary>
     public ClientTestRecord? LastTest { get; set; }
 }
@@ -333,6 +339,8 @@ public static class AniMetaApi
                 Block = BlockStore.SourceBlock(id),
                 LastHour = count.LastHour,
                 LastDay = count.LastDay,
+                CapPerHour = SourceDefaults.Caps(setting).PerHour,
+                CapPerDay = SourceDefaults.Caps(setting).PerDay,
                 LastTest = db.ClientTests.FindById(id)
             });
         }

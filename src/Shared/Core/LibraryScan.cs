@@ -7,6 +7,7 @@ using AniMetaPlus.Data;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB.Mapping;
 using AniMetaPlus.Providers.AniDB.Metadata;
+using AniMetaPlus.Sources;
 using Microsoft.Extensions.Logging;
 
 namespace AniMetaPlus.Core;
@@ -126,7 +127,8 @@ public static class LibraryScan
             // whatever the limit. One that would ask AniDB waits for a later run once the limit is
             // reached; it is identified again then, which costs nothing either.
             var asks = AniDbSeriesProvider.WouldAskAniDb(paths, animeId);
-            if (asks && askingAniDb >= aniDbLimit)
+            // A used-up AniDB cap lifts within the hour, so those wait too rather than take stand-ins.
+            if (asks && (askingAniDb >= aniDbLimit || SourceGate.IsCapped(SourceIds.AniDb)))
             {
                 deferred++;
 

@@ -157,7 +157,7 @@ function aniMetaPlusPage(host) {
                 : !source.Available ? badge(source.Unavailable || 'Unavailable', 'amp-warn')
                 : badge('Ready', 'amp-ok');
             var test = source.LastTest ? esc(source.LastTest.Result) + ' <span class="amp-small">' + when(source.LastTest.AtUtc) + '</span>' : '';
-            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>' + source.LastHour + ' / ' + source.LastDay + '</td><td>' + test + '</td></tr>';
+            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>' + source.LastHour + ' / ' + source.LastDay + (source.CapPerHour || source.CapPerDay ? ' <span class="amp-muted">of ' + (source.CapPerHour || 'any') + ' / ' + (source.CapPerDay || 'any') + '</span>' : '') + '</td><td>' + test + '</td></tr>';
         });
         view.querySelector('#ampSourceStatus').innerHTML = rows;
 
@@ -211,8 +211,8 @@ function aniMetaPlusPage(host) {
                     return '<option value="' + m + '"' + (m === mode ? ' selected' : '') + '>' + modeNames[m] + '</option>';
                 }).join('') + '</select></td>'
                 + '<td><input type="number" min="' + esc(s.MinimumRequestIntervalMs || 0) + '" step="50" data-field="RequestIntervalMs" title="At least ' + esc(s.MinimumRequestIntervalMs || 0) + ' ms" value="' + esc(s.RequestIntervalMs) + '" /></td>'
-                + '<td><input type="number" min="0" data-field="MaxPerHour" value="' + esc(s.MaxPerHour) + '" /></td>'
-                + '<td><input type="number" min="0" data-field="MaxPerDay" value="' + esc(s.MaxPerDay) + '" /></td>'
+                + '<td><input type="number" min="0" data-field="MaxPerHour" value="' + esc(s.MaxPerHour || '') + '" placeholder="' + (s.DefaultMaxPerHour || 'none') + '" /></td>'
+                + '<td><input type="number" min="0" data-field="MaxPerDay" value="' + esc(s.MaxPerDay || '') + '" placeholder="' + (s.DefaultMaxPerDay || 'none') + '" /></td>'
                 + '<td><input type="checkbox" data-field="IncludeInRating"' + (s.IncludeInRating ? ' checked' : '') + ' /></td>'
                 + '<td><select data-field="TitlePreference"><option value="">Global</option>' + titlePreferences.map(function (t) {
                     return '<option value="' + t + '"' + (t === s.TitlePreference ? ' selected' : '') + '>' + t + '</option>';

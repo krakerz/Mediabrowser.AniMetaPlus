@@ -65,14 +65,27 @@ public class SourceSetting
     public int MinimumRequestIntervalMs => SourceDefaults.MinimumRequestIntervalMs(Id);
 
     /// <summary>
-    /// Gets or sets how many requests the source may be sent per hour. Zero means no cap.
+    /// Gets or sets how many requests the source may be sent per hour. Zero means no cap, or for
+    /// AniDB its default cap.
     /// </summary>
     public int MaxPerHour { get; set; }
 
     /// <summary>
-    /// Gets or sets how many requests the source may be sent per day. Zero means no cap.
+    /// Gets or sets how many requests the source may be sent per day. Zero means no cap, or for
+    /// AniDB its default cap.
     /// </summary>
     public int MaxPerDay { get; set; }
+
+    /// <summary>
+    /// Gets the hourly cap that applies when none is set, for the settings page. Read-only, so it
+    /// is not written into the configuration file.
+    /// </summary>
+    public int DefaultMaxPerHour => SourceDefaults.Caps(new SourceSetting { Id = Id }).PerHour;
+
+    /// <summary>
+    /// Gets the daily cap that applies when none is set, for the settings page.
+    /// </summary>
+    public int DefaultMaxPerDay => SourceDefaults.Caps(new SourceSetting { Id = Id }).PerDay;
 
     /// <summary>
     /// Gets or sets a value indicating whether the source's score counts towards the rating.
