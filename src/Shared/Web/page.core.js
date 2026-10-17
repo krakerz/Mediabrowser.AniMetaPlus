@@ -183,8 +183,11 @@ function aniMetaPlusPage(host) {
             : '<tr><td class="amp-muted">Nothing is waiting.</td></tr>';
 
         view.querySelector('#ampProvisional').innerHTML = provisional.length
-            ? '<tr><th>Item</th><th>Field</th><th>Supplied by</th><th>Instead of</th></tr>' + provisional.map(function (p) {
-                return '<tr><td>' + esc(p.ItemName) + '</td><td>' + esc(kindNames[p.Field] || p.Field) + '</td><td>' + esc(p.Source) + '</td><td>' + esc(p.PreferredSource) + '</td></tr>';
+            ? '<tr><th>Item</th><th>Field</th><th>Supplied by</th><th>Instead of</th><th>Held by</th><th></th></tr>' + provisional.map(function (p) {
+                var held = p.HeldBy ? esc(p.HeldBy) + (p.HeldUntilUtc ? ' (until ' + when(p.HeldUntilUtc) + ')' : '') : '<span class="amp-muted">Nothing known; retried on the next queue run</span>';
+                return '<tr><td>' + esc(p.ItemName) + '</td><td>' + esc(kindNames[p.Field] || p.Field) + '</td><td>' + esc(p.Source) + '</td><td>' + esc(p.PreferredSource) + '</td><td class="amp-small">' + held + '</td>'
+                    + '<td><span class="amp-actions"><button is="emby-button" type="button" class="raised" data-standin-keep="' + esc(p.Id) + '"><span>Keep</span></button>'
+                    + '<button is="emby-button" type="button" class="raised" data-standin-retry="' + esc(p.Id) + '"><span>Retry now</span></button></span></td></tr>';
             }).join('')
             : '<tr><td class="amp-muted">None.</td></tr>';
 
@@ -905,6 +908,32 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampShowIgnored').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampShowExpired').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampRefreshStatus').addEventListener('click', function () { loadAll(view); });
+
+        view.querySelector('#ampProvisional').addEventListener('click', function (e) {
+            var keep = e.target.closest('[data-standin-keep]');
+            var retry = e.target.closest('[data-standin-retry]');
+            if (keep) {
+                post('Provisional/Keep', null, { Ids: [keep.getAttribute('data-standin-keep')], All: false }).then(function () {
+                    notify('Kept the stand-in value');
+                    loadAll(view);
+                }, fail);
+            } else if (retry) {
+                post('Provisional/Retry', { Id: retry.getAttribute('data-standin-retry') }).then(function (r) {
+                    notify(r.Done ? 'Refresh queued; reload the page in a moment' : 'The item was not found');
+                }, fail);
+            }
+        });
+
+        view.querySelector('#ampKeepAllStandIns').addEventListener('click', function () {
+            if (!window.confirm('Keep every stand-in value and stop waiting for the preferred sources?')) {
+                return;
+            }
+
+            post('Provisional/Keep', null, { Ids: [], All: true }).then(function (r) {
+                notify('Kept ' + r.Done + ' stand-in values');
+                loadAll(view);
+            }, fail);
+        });
 
         view.querySelector('#ampRunQueues').addEventListener('click', function () {
             post('Queues/Run').then(function (r) {

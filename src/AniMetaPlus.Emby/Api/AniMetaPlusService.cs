@@ -182,9 +182,28 @@ public class GetProvenance : IReturn<ProvenanceRecord[]>
     public string ItemKey { get; set; } = string.Empty;
 }
 
+/// <summary>Keeps stand-in values, so they stop waiting for the preferred source.</summary>
+[Route("/AniMetaPlus/Provisional/Keep", "POST")]
+public class KeepStandIns : IReturn<ImageDoneResult>
+{
+    /// <summary>Gets or sets the provenance ids.</summary>
+    public List<string> Ids { get; set; } = [];
+
+    /// <summary>Gets or sets a value indicating whether to keep every stand-in.</summary>
+    public bool All { get; set; }
+}
+
+/// <summary>Refreshes a stand-in's item now.</summary>
+[Route("/AniMetaPlus/Provisional/Retry", "POST")]
+public class RetryStandIn : IReturn<ImageDoneResult>
+{
+    /// <summary>Gets or sets the provenance id.</summary>
+    public string Id { get; set; } = string.Empty;
+}
+
 /// <summary>Lists the fields a stand-in supplied.</summary>
 [Route("/AniMetaPlus/Provisional", "GET")]
-public class GetProvisional : IReturn<ProvenanceRecord[]>
+public class GetProvisional : IReturn<StandInItem[]>
 {
 }
 
@@ -444,6 +463,16 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public object Get(GetProvisional request) => AniMetaApi.GetProvisional();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(KeepStandIns request) => AniMetaApi.KeepStandIns(request.Ids, request.All);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(RetryStandIn request) => AniMetaApi.RetryStandIn(request.Id);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

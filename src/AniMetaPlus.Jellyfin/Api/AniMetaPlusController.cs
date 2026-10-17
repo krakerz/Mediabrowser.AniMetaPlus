@@ -234,7 +234,19 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     /// <summary>Lists the fields a stand-in supplied.</summary>
     /// <returns>The fields.</returns>
     [HttpGet("Provisional")]
-    public IReadOnlyList<ProvenanceRecord> GetProvisional() => AniMetaApi.GetProvisional();
+    public IReadOnlyList<StandInItem> GetProvisional() => AniMetaApi.GetProvisional();
+
+    /// <summary>Keeps stand-in values, so they stop waiting for the preferred source.</summary>
+    /// <param name="request">The provenance ids, or all.</param>
+    /// <returns>How many were kept.</returns>
+    [HttpPost("Provisional/Keep")]
+    public ImageDoneResult KeepStandIns([FromBody] ImageSelectionRequest request) => AniMetaApi.KeepStandIns(request.Ids, request.All);
+
+    /// <summary>Refreshes a stand-in's item now.</summary>
+    /// <param name="id">The provenance id.</param>
+    /// <returns>Whether a refresh was queued.</returns>
+    [HttpPost("Provisional/Retry")]
+    public ImageDoneResult RetryStandIn([FromQuery] string id) => AniMetaApi.RetryStandIn(id);
 
     /// <summary>Lists the most recent requests.</summary>
     /// <param name="count">How many.</param>

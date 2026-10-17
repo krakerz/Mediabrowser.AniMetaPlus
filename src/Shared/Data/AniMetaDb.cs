@@ -364,13 +364,19 @@ public sealed class AniMetaDb : IDisposable
         }
     }
 
+    // LiteDB stores an empty string as null by default, and the records' code reads their
+    // strings as never null; a stand-in pinned to its source then failed every refresh.
+    private static readonly BsonMapper _mapper = new() { EmptyStringToNull = false };
+
     private static LiteDatabase Connect(string path)
     {
-        var db = new LiteDatabase(new ConnectionString
-        {
-            Filename = path,
-            Connection = ConnectionType.Direct
-        })
+        var db = new LiteDatabase(
+            new ConnectionString
+            {
+                Filename = path,
+                Connection = ConnectionType.Direct
+            },
+            _mapper)
         {
             UtcDate = true
         };

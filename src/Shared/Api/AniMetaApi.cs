@@ -96,6 +96,18 @@ public class OverviewStatus
 public sealed record ClientTestResult(string Result, string Message);
 
 /// <summary>
+/// A stand-in value, with what holds back the source it stands in for.
+/// </summary>
+public class StandInItem : ProvenanceRecord
+{
+    /// <summary>Gets or sets why the preferred source has not replaced it, when something is known to hold it back.</summary>
+    public string HeldBy { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets when that hold ends, when it does.</summary>
+    public DateTime? HeldUntilUtc { get; set; }
+}
+
+/// <summary>
 /// The answer to mapping an item by hand.
 /// </summary>
 public class MapResult
@@ -329,7 +341,18 @@ public static class AniMetaApi
     /// </summary>
     /// <param name="includeExpired">Whether to include lapsed blocks.</param>
     /// <returns>The blocks, newest first.</returns>
-    public static IReadOnlyList<BlockRecord> GetBlocks(bool includeExpired) => BlockStore.List(includeExpired);
+    public static IReadOnlyList<BlockRecord> GetBlocks(bool includeExpired)
+    {
+        var blocks = BlockStore.List(includeExpired);
+
+        // A block on one AniDB anime is recorded where only its id is known; the titles dump names it.
+        foreach (var block in blocks.Where(b => string.IsNullOrEmpty(b.ItemName) && b.ItemKey.StartsWith("anidb:", StringComparison.Ordinal)))
+        {
+            block.ItemName = TitlesDump.MainTitle(Plugin.Instance.AppPaths, block.ItemKey["anidb:".Length..]) ?? string.Empty;
+        }
+
+        return blocks;
+    }
 
     /// <summary>
     /// Lifts a block. An AniDB ban lifted by hand clears the plugin's own record of it too.
@@ -611,8 +634,90 @@ public static class AniMetaApi
     /// Lists the fields a stand-in supplied.
     /// </summary>
     /// <returns>The fields.</returns>
-    public static IReadOnlyList<ProvenanceRecord> GetProvisional()
-        => Db.Provenance.Find(p => p.Provisional).OrderByDescending(p => p.UpdatedUtc).ToList();
+    public static IReadOnlyList<StandInItem> GetProvisional()
+    {
+        var items = new List<StandInItem>();
+
+        foreach (var p in Db.Provenance.FindAll().Where(p => p.Provisional).OrderByDescending(p => p.UpdatedUtc))
+        {
+            var item = new StandInItem
+            {
+                Id = p.Id,
+                ItemKey = p.ItemKey,
+                Field = p.Field,
+                Source = p.Source,
+                PreferredSource = p.PreferredSource,
+                Provisional = p.Provisional,
+                PinnedSource = p.PinnedSource,
+                Locked = p.Locked,
+                DeclinedValue = p.DeclinedValue,
+                ItemPath = p.ItemPath,
+                ItemName = p.ItemName,
+                UpdatedUtc = p.UpdatedUtc
+            };
+
+            var block = string.IsNullOrEmpty(p.PreferredSource)
+                ? null
+                : BlockStore.SourceBlock(p.PreferredSource) ?? BlockStore.ItemBlock(p.PreferredSource, p.ItemKey);
+            if (block != null)
+            {
+                item.HeldBy = block.Reason + (string.IsNullOrEmpty(block.Message) ? string.Empty : ": " + block.Message);
+                item.HeldUntilUtc = block.ExpiresUtc;
+            }
+            else if (p.PreferredSource == SourceIds.AniDb && !AniDbSeriesProvider.IsClientUsable())
+            {
+                item.HeldBy = "AniDB cannot be asked (no usable client name, or turned off)";
+            }
+
+            items.Add(item);
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Keeps stand-in values: they stop waiting for the preferred source and stay pinned to the
+    /// one that supplied them. Should the preferred source answer for the field later, its value
+    /// is offered for review rather than taken.
+    /// </summary>
+    /// <param name="ids">The provenance ids; ignored when <paramref name="all"/> is set.</param>
+    /// <param name="all">Whether to keep every stand-in.</param>
+    /// <returns>How many were kept.</returns>
+    public static ImageDoneResult KeepStandIns(IEnumerable<string>? ids, bool all)
+    {
+        var db = Db;
+        var wanted = all ? null : new HashSet<string>(ids ?? [], StringComparer.Ordinal);
+        var done = 0;
+
+        foreach (var p in db.Provenance.FindAll().Where(p => p.Provisional && (wanted == null || wanted.Contains(p.Id))).ToList())
+        {
+            p.Provisional = false;
+            p.PinnedSource = p.Source;
+            p.PreferredSource = string.Empty;
+            p.UpdatedUtc = DateTime.UtcNow;
+            db.Provenance.Upsert(p);
+            done++;
+        }
+
+        if (done > 0)
+        {
+            db.DecisionChanged();
+        }
+
+        return new ImageDoneResult { Done = done };
+    }
+
+    /// <summary>
+    /// Refreshes the item of a stand-in now, whatever the queue's pacing says.
+    /// </summary>
+    /// <param name="id">The provenance id.</param>
+    /// <returns>Whether a refresh was queued.</returns>
+    public static ImageDoneResult RetryStandIn(string id)
+    {
+        var p = Db.Provenance.FindById(id);
+
+        return new ImageDoneResult { Done = p != null && HostServices.Refresher?.Refresh(p.ItemPath, false) == true ? 1 : 0 };
+    }
 
     /// <summary>
     /// Lists the most recent requests.

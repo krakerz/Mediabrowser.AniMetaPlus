@@ -25,6 +25,30 @@ public sealed class AniMetaDbTests : IDisposable
         }
     }
 
+    // A stand-in pinned to its source failed every refresh once its empty DeclinedValue came back null.
+    [Fact]
+    public void EmptyStringsComeBackEmptyNotNull()
+    {
+        using (var db = AniMetaDb.Open(_folder, NullLogger.Instance))
+        {
+            db.Provenance.Upsert(new ProvenanceRecord { Id = "anidb:1|Overview", ItemKey = "anidb:1", Field = "Overview", Source = "AniList", PinnedSource = "AniList", Provisional = true });
+        }
+
+        using (var db = AniMetaDb.Open(_folder, NullLogger.Instance))
+        {
+            var record = db.Provenance.FindById("anidb:1|Overview");
+
+            Assert.Equal(string.Empty, record.DeclinedValue);
+            Assert.Equal(string.Empty, record.PreferredSource);
+            Assert.Equal("AniList", record.PinnedSource);
+
+            Assert.NotNull(db.Export());
+        }
+
+        // Rows earlier versions stored as null are set to null when read; the setter makes them empty.
+        Assert.Equal(string.Empty, new ProvenanceRecord { DeclinedValue = null! }.DeclinedValue);
+    }
+
     [Fact]
     public void KeepsUtcTimesAndRoundTripsBlocks()
     {
