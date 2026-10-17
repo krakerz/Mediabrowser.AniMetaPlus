@@ -12,6 +12,22 @@
     .amp-table input[type=number] { width: 6em; }
     .amp-table input[type=number], .amp-table select, .amp-row select:not(.emby-select), .amp-row input[type=text]:not(.emby-input) { background: rgba(128,128,128,.12); color: inherit; border: 1px solid rgba(128,128,128,.45); border-radius: .25em; padding: .3em .4em; font: inherit; }
     .amp-table select option, .amp-row select:not(.emby-select) option { color: #000; }
+    .amp-order { padding: .6em 0; border-bottom: 1px solid rgba(128,128,128,.25); }
+    .amp-order-head { display: flex; align-items: center; gap: .6em; margin-bottom: .3em; }
+    .amp-order-chips, .amp-order-spare { display: flex; flex-wrap: wrap; gap: .4em; align-items: center; min-height: 2em; }
+    .amp-order-spare { margin-top: .3em; }
+    .amp-chip { display: inline-flex; align-items: center; gap: .25em; padding: .25em .35em .25em .5em; border: 1px solid rgba(82,181,75,.7); background: rgba(82,181,75,.16); border-radius: 1.2em; cursor: grab; user-select: none; touch-action: none; }
+    .amp-chip.amp-dragging { opacity: .35; }
+    .amp-chip.amp-drop-before { box-shadow: -3px 0 0 #52b54b; }
+    .amp-chip.amp-drop-after { box-shadow: 3px 0 0 #52b54b; }
+    .amp-chip-pos { font-size: .75em; min-width: 1.3em; height: 1.3em; border-radius: 50%; background: rgba(82,181,75,.55); display: inline-flex; align-items: center; justify-content: center; }
+    .amp-chip-grip { display: inline-flex; opacity: .55; }
+    .amp-chip-btn, .amp-chip-add, .amp-order-reset { display: inline-flex; align-items: center; gap: .2em; background: transparent; color: inherit; border: 0; padding: .1em; cursor: pointer; border-radius: .3em; font: inherit; }
+    .amp-chip-btn:hover:not([disabled]), .amp-order-reset:hover { background: rgba(128,128,128,.25); }
+    .amp-chip-btn[disabled] { opacity: .25; cursor: default; }
+    .amp-chip-add { padding: .25em .6em; border: 1px dashed rgba(128,128,128,.6); border-radius: 1.2em; opacity: .8; }
+    .amp-chip-add:hover { opacity: 1; border-color: #52b54b; }
+    .amp-order-reset { font-size: .85em; opacity: .75; margin-left: auto; }
     .amp-badge { display: inline-block; padding: .1em .5em; border-radius: 1em; font-size: .85em; background: rgba(128,128,128,.25); }
     .amp-ok { background: rgba(82,181,75,.3); }
     .amp-bad { background: rgba(204,51,51,.35); }
@@ -96,7 +112,7 @@
     <div class="amp-scroll"><table class="amp-table" id="ampSources"></table></div>
     <p class="amp-small"><b>Pause</b>: the item keeps what it has and waits. <b>Switch</b>: the next source fills in, and is replaced once this one answers again. <b>Switch + review</b>: the next source fills in, and the replacement waits for your review. Bans are per IP address. The gap between requests never goes below each source's default.</p>
     <h3>Source order</h3>
-    <p class="amp-small">First listed is asked first. Genres, rating and cast combine every source listed. Ids: AniDB, AniList, MyAnimeList, TheTVDB, TheMovieDb.</p>
+    <p class="amp-small">The first source is asked first. Drag a source, or use its arrows, to change the order; the cross takes it out and the dashed buttons add one back. Rows marked "combined" take something from every source listed.</p>
     <div id="ampPriorities"></div>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveSources"><span>Save</span></button></div>
 </div>
@@ -223,6 +239,15 @@
             <option value="JapaneseRomaji">Japanese, in romaji</option>
             <option value="Japanese">Japanese</option>
         </select>
+    </div>
+    <div class="selectContainer">
+        <select is="emby-select" id="ampEpisodeTitlePreference" label="Episode title language:">
+            <option value="">Same as show titles</option>
+            <option value="Localized">Library's metadata language</option>
+            <option value="JapaneseRomaji">Japanese, in romaji</option>
+            <option value="Japanese">Japanese</option>
+        </select>
+        <div class="fieldDescription">Applies to episodes from every source. Romaji titles come only from AniDB; TheTVDB and TheMovieDb episodes keep the library's language then.</div>
     </div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>

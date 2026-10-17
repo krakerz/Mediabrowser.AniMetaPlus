@@ -88,6 +88,14 @@ public static class PluginCore
                 logger.LogInformation("AniMeta+ removed {Count} blocks recorded only because the server was restarting", shutdownBlocks);
             }
 
+            // Searches used to block the item outright; from 2.7.0 only further searches. One fresh try each.
+            if (db.GetState("search-blocks-split") == null)
+            {
+                var searchBlocks = BlockStore.RemoveSearchBornBlocks();
+                db.SetState("search-blocks-split", "1");
+                logger.LogInformation("AniMeta+ removed {Count} AniList and MyAnimeList not-found blocks so those shows get one more lookup", searchBlocks);
+            }
+
             var authBlocks = BlockStore.RemoveStuckAuthBlocks();
             if (authBlocks > 0)
             {

@@ -4,6 +4,19 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-10-17
+
+### Added
+- Episode title language setting, so a show can keep its romaji title while episode titles from every source follow another language
+
+### Changed
+- Source order is set with draggable source chips, arrows and a Default button instead of comma-separated text
+- Episodes follow the Episodes source order: sources placed before AniDB are asked first, and AniDB taken out of it is not asked
+- MyAnimeList comes before AniList in the default source order, so AniList is found by its MyAnimeList id rather than by title
+
+### Fixed
+- An AniList or MyAnimeList title search that found nothing no longer blocks the show's lookup by id; such blocks from earlier versions are removed once at startup
+
 ## [2.6.0] — 2026-10-17
 
 ### Added

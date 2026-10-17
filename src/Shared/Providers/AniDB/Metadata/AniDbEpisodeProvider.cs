@@ -59,6 +59,21 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         ArgumentNullException.ThrowIfNull(info);
         RefreshScope.Enter(info);
 
+        // Sources placed ahead of AniDB in the episode order are asked first; AniDB taken out of
+        // the order is not asked at all.
+        var order = Plugin.Instance.Configuration.GetPriority(DataKind.Episodes);
+        var aniDbAt = order.ToList().FindIndex(s => string.Equals(s, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase));
+        var ahead = aniDbAt < 0 ? order : order.Take(aniDbAt).ToList();
+
+        if (ahead.Count > 0)
+        {
+            var first = await GetDelegatedMetadata(info, ahead, SourceState.Missing, cancellationToken).ConfigureAwait(false);
+            if (first != null || aniDbAt < 0)
+            {
+                return first ?? new MetadataResult<Episode>();
+            }
+        }
+
         SourceState aniDbState;
         MetadataResult<Episode> aniDb;
 
@@ -80,7 +95,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             return aniDb;
         }
 
-        return await GetFallbackMetadata(info, aniDbState, cancellationToken).ConfigureAwait(false) ?? aniDb;
+        return await GetFallbackMetadata(info, aniDbState, order.Skip(aniDbAt + 1).ToList(), cancellationToken).ConfigureAwait(false) ?? aniDb;
     }
 
     /// <summary>
@@ -90,9 +105,10 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
     /// </summary>
     /// <param name="info">The lookup info.</param>
     /// <param name="aniDbState">How AniDB stood.</param>
+    /// <param name="sources">The sources after AniDB in the episode order.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The result, or <c>null</c> when no source had the episode.</returns>
-    private async Task<MetadataResult<Episode>?> GetFallbackMetadata(EpisodeInfo info, SourceState aniDbState, CancellationToken cancellationToken)
+    private async Task<MetadataResult<Episode>?> GetFallbackMetadata(EpisodeInfo info, SourceState aniDbState, IReadOnlyList<string> sources, CancellationToken cancellationToken)
     {
         var configuration = Plugin.Instance.Configuration;
 
@@ -106,6 +122,15 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             return null;
         }
 
+        return await GetDelegatedMetadata(info, sources, aniDbState, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Asks the server's own TVDB and TMDB providers, in the order given, for the episode.
+    /// </summary>
+    private async Task<MetadataResult<Episode>?> GetDelegatedMetadata(EpisodeInfo info, IReadOnlyList<string> sources, SourceState aniDbState, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
         var seriesId = info.SeriesProviderIds.GetValueOrDefault(ProviderNames.AniDb);
 
         // The series folder sits above the season folder, or holds the files itself.
@@ -117,7 +142,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             + FormattableString.Invariant($":s{info.ParentIndexNumber}e{info.IndexNumber}");
         var name = FormattableString.Invariant($"{seriesName} S{info.ParentIndexNumber}E{info.IndexNumber}");
 
-        foreach (var source in configuration.GetPriority(DataKind.Episodes))
+        foreach (var source in sources)
         {
             if (!SourceIds.IsDelegated(source) || !configuration.GetSource(source).Enabled)
             {
@@ -132,6 +157,8 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
                 {
                     _logger.LogDebug("{Episode} read from {Source}, AniDB having {State}", name, source, aniDbState);
 
+                    await ApplyJapaneseTitle(source, info, result, itemKey, name, cancellationToken).ConfigureAwait(false);
+
                     return result;
                 }
             }
@@ -142,6 +169,44 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Asks the source again in Japanese, for the title alone, when episode titles are wanted in
+    /// Japanese. The rest of the episode stays in the library's language. Neither delegated source
+    /// has romaji titles, so a romaji preference leaves their title as it came.
+    /// </summary>
+    private async Task ApplyJapaneseTitle(string source, EpisodeInfo info, MetadataResult<Episode> result, string itemKey, string name, CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance.Configuration.EpisodeTitles != TitlePreferenceType.Japanese
+            || result.Item == null
+            || string.Equals(info.MetadataLanguage, "ja", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var language = info.MetadataLanguage;
+        info.MetadataLanguage = "ja";
+
+        try
+        {
+            var japanese = await DelegatedProviders.GetMetadata<Episode, EpisodeInfo>(source, info, itemKey, name, DataKind.Episodes.ToString(), cancellationToken).ConfigureAwait(false);
+            var title = japanese?.Item?.Name;
+
+            // A source without a Japanese title answers with the file name or nothing.
+            if (!string.IsNullOrWhiteSpace(title) && !string.Equals(title, Path.GetFileNameWithoutExtension(info.Path), StringComparison.OrdinalIgnoreCase))
+            {
+                result.Item.Name = title;
+            }
+        }
+        catch (SourceBlockedException ex)
+        {
+            _logger.LogDebug("The Japanese title of {Episode} could not be read from {Source}: {Message}", name, source, ex.Message);
+        }
+        finally
+        {
+            info.MetadataLanguage = language;
+        }
     }
 
     private async Task<MetadataResult<Episode>> GetAniDbMetadata(EpisodeInfo info, CancellationToken cancellationToken)
@@ -859,7 +924,7 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             }
         }
 
-        var title = titles.Localize(Plugin.Instance.Configuration.TitlePreference, preferredMetadataLanguage)?.Name;
+        var title = titles.Localize(Plugin.Instance.Configuration.EpisodeTitles, preferredMetadataLanguage)?.Name;
         if (!string.IsNullOrEmpty(title))
         {
             episode.Name = Plugin.Instance.Configuration.AniDbReplaceGraves
