@@ -83,6 +83,9 @@ public class OverviewStatus
 
     /// <summary>Gets or sets the source order of every kind of data, defaults filled in.</summary>
     public List<KindPriority> Priorities { get; set; } = [];
+
+    /// <summary>Gets or sets the version of the plugin the server is running, which an update installed since only replaces after a restart.</summary>
+    public string PluginVersion { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -288,7 +291,8 @@ public static class AniMetaApi
             PendingReviews = db.Reviews.Count(r => r.Status == ReviewStatus.Pending),
             Unmatched = OpenUnmatched(db).Count(u => !u.Ignored),
             Provisional = db.Provenance.Count(p => p.Provisional),
-            ActiveBlocks = BlockStore.List().Count
+            ActiveBlocks = BlockStore.List().Count,
+            PluginVersion = typeof(Plugin).Assembly.GetName().Version?.ToString() ?? string.Empty
         };
 
         foreach (var kind in Enum.GetValues<DataKind>())

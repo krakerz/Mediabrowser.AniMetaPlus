@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-17
+
+### Added
+- Status shows the running AniMeta+ version and whether the server needs a restart to load an installed update
+- Refresh and "Select this page" buttons on the Image overrides tab
+
 ## [2.4.0] — 2026-10-17
 
 ### Added
