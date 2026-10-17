@@ -31,6 +31,16 @@
     .amp-muted { opacity: .6; }
     .amp-result { margin: .4em 0 1em; }
     .amp-scroll { overflow-x: auto; }
+    .amp-imggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18em, 1fr)); gap: .8em; margin: .8em 0; }
+    .amp-imgcard { padding: .8em; border-radius: .4em; background: rgba(128,128,128,.12); min-width: 0; }
+    .amp-imgcard label { display: flex; align-items: center; gap: .5em; cursor: pointer; }
+    .amp-imgname { font-weight: 600; overflow-wrap: anywhere; }
+    .amp-imgpair { display: flex; gap: .6em; margin: .6em 0; }
+    .amp-imgpair figure { flex: 1 1 0; min-width: 0; margin: 0; text-align: center; }
+    .amp-imgpair img, .amp-imgbox { display: block; width: 100%; height: 11em; object-fit: contain; border-radius: .25em; background: rgba(128,128,128,.15); }
+    .amp-imgpair img { cursor: zoom-in; }
+    .amp-imgbox { display: flex; align-items: center; justify-content: center; font-size: .85em; opacity: .7; }
+    .amp-imgpair figcaption { margin-top: .2em; font-size: .85em; opacity: .8; }
 </style>
 
 <div class="amp-tabs">
@@ -41,6 +51,7 @@
     <button type="button" data-tab="unmatched">Unmatched</button>
     <button type="button" data-tab="review">Review</button>
     <button type="button" data-tab="blocks">Blocks</button>
+    <button type="button" data-tab="images">Image overrides</button>
     <button type="button" data-tab="general">General</button>
     <button type="button" data-tab="backup">Import/Export</button>
 </div>
@@ -173,6 +184,26 @@
         <div class="inputContainer"><input is="emby-input" id="ampBlockKind" type="text" label="Kind (empty for all):" /></div>
     </div>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampAddBlock"><span>Block</span></button></div>
+</div>
+
+<!-- Image overrides -->
+<div class="amp-tab" data-tab="images">
+    <p class="amp-small">Posters the "Replace posters with AniDB's from cached answers" task replaced keep the previous one here until you acknowledge or revert them. <b>Acknowledge</b> keeps AniDB's poster and deletes the previous one. <b>Revert</b> puts the previous one back; later runs of the task skip reverted items.</p>
+    <div class="amp-actions">
+        <button is="emby-button" type="button" class="raised" id="ampImgSelectAll"><span>Select all</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgClear"><span>Clear selection</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgRevert"><span>Revert selected</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgAck"><span>Acknowledge selected</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgForget" style="display:none"><span id="ampImgForgetText">Forget reverted</span></button>
+    </div>
+    <div class="amp-small" id="ampImgSelected"></div>
+    <div class="amp-result" id="ampImgJob"></div>
+    <div class="amp-imggrid" id="ampImages"></div>
+    <div class="amp-actions">
+        <button is="emby-button" type="button" class="raised" id="ampImgPrev"><span>Previous</span></button>
+        <button is="emby-button" type="button" class="raised" id="ampImgNext"><span>Next</span></button>
+        <span class="amp-small" id="ampImgPage"></span>
+    </div>
 </div>
 
 <!-- General -->

@@ -42,8 +42,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
             return LocalOnlyImage.Response();
         }
 
-        await AniDbSeriesProvider.WaitForImageSlot(cancellationToken).ConfigureAwait(false);
-        return await Plugin.Instance.GetImageResponse(url, cancellationToken).ConfigureAwait(false);
+        return await AniDbSeriesProvider.GetAniDbImage(url, cancellationToken).ConfigureAwait(false);
     }
 
 #if EMBY

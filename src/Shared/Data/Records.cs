@@ -404,3 +404,54 @@ public class StateRecord
     /// <summary>Gets or sets the value.</summary>
     public string Value { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// Where a poster the AniDB poster task replaced stands.
+/// </summary>
+public enum ImageBackupState
+{
+    /// <summary>The previous poster is held, waiting for the owner to revert or acknowledge.</summary>
+    Pending,
+
+    /// <summary>The owner accepted AniDB's poster, or there was no previous poster to hold.</summary>
+    Acknowledged,
+
+    /// <summary>The owner went back to the previous poster; the task leaves the item alone.</summary>
+    Reverted
+}
+
+/// <summary>
+/// A poster replaced by the AniDB poster task, and the previous one kept beside it.
+/// </summary>
+public class ImageBackupRecord
+{
+    /// <summary>Gets or sets the server's item id.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the item's name.</summary>
+    public string ItemName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the series name of a season, otherwise empty.</summary>
+    public string SeriesName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the kind: Series, Season or Movie.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the backup's file name in the backup folder; empty when none is held.</summary>
+    public string BackupFile { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the backup's media type.</summary>
+    public string BackupMimeType { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the AniDB picture address that was applied.</summary>
+    public string AppliedUrl { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the poster file's path, length and write time right after the replace.</summary>
+    public string AppliedStamp { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets where the owner's decision stands.</summary>
+    public ImageBackupState State { get; set; }
+
+    /// <summary>Gets or sets when the poster was replaced.</summary>
+    public DateTime ReplacedUtc { get; set; }
+}

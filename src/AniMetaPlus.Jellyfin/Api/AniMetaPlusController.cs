@@ -49,6 +49,18 @@ public class MapRequest
 }
 
 /// <summary>
+/// The replaced posters to revert or acknowledge.
+/// </summary>
+public class ImageSelectionRequest
+{
+    /// <summary>Gets or sets the item ids.</summary>
+    public List<string> Ids { get; set; } = [];
+
+    /// <summary>Gets or sets a value indicating whether to take every item waiting.</summary>
+    public bool All { get; set; }
+}
+
+/// <summary>
 /// The settings page's endpoints on Jellyfin. Each passes straight through to
 /// <see cref="AniMetaApi"/>, which Emby's endpoints use too.
 /// </summary>
@@ -170,6 +182,43 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     /// <returns>The dump's status.</returns>
     [HttpPost("Titles/Reimport")]
     public Task<TitlesDumpStatus> ReimportTitles(CancellationToken cancellationToken) => AniMetaApi.ReimportTitles(logger, cancellationToken);
+
+    /// <summary>Lists the replaced posters waiting for a decision, newest first.</summary>
+    /// <param name="start">The first item to return.</param>
+    /// <param name="limit">How many to return.</param>
+    /// <returns>The page.</returns>
+    [HttpGet("Images/Backups")]
+    public ImageBackupPage GetImageBackups([FromQuery] int start = 0, [FromQuery] int limit = 24) => AniMetaApi.GetImageBackups(start, limit);
+
+    /// <summary>Gets the poster held for an item.</summary>
+    /// <param name="id">The item id.</param>
+    /// <returns>The poster as a data address.</returns>
+    [HttpGet("Images/Backup")]
+    public ActionResult<ImageBackupPreview> GetImageBackup([FromQuery] string id)
+        => AniMetaApi.GetImageBackup(id) is { } dataUrl ? new ImageBackupPreview { DataUrl = dataUrl } : NotFound();
+
+    /// <summary>Starts putting the previous posters back in the background.</summary>
+    /// <param name="request">The items.</param>
+    /// <returns>The run's status.</returns>
+    [HttpPost("Images/Revert")]
+    public ImageJobStatus RevertImages([FromBody] ImageSelectionRequest request)
+        => AniMetaApi.RevertImages(request.Ids, request.All, logger);
+
+    /// <summary>Reports how the current or last revert run stands.</summary>
+    /// <returns>The status.</returns>
+    [HttpGet("Images/RevertStatus")]
+    public ImageJobStatus GetRevertStatus() => AniMetaApi.GetRevertStatus();
+
+    /// <summary>Accepts AniDB's posters and deletes the previous ones.</summary>
+    /// <param name="request">The items.</param>
+    /// <returns>How many were handled.</returns>
+    [HttpPost("Images/Acknowledge")]
+    public ImageDoneResult AcknowledgeImages([FromBody] ImageSelectionRequest request) => AniMetaApi.AcknowledgeImages(request.Ids, request.All);
+
+    /// <summary>Forgets the reverted items, so that the next task run replaces their posters again.</summary>
+    /// <returns>How many were forgotten.</returns>
+    [HttpPost("Images/ForgetReverted")]
+    public ImageDoneResult ForgetRevertedImages() => AniMetaApi.ForgetRevertedImages();
 
     /// <summary>Lists the items waiting for a paused source.</summary>
     /// <returns>The items.</returns>

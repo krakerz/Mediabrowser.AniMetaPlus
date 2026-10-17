@@ -483,6 +483,257 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampUseAniBridge').checked = !!config.UseAniBridgeMappings;
     }
 
+    // Image overrides
+
+    var imageSize = 24;
+    var imageState = { page: 0, total: 0, reverted: 0, selected: {}, token: 0, watching: false, running: false };
+
+    function selectedImages() {
+        return Object.keys(imageState.selected);
+    }
+
+    function renderImageToolbar(view) {
+        var count = selectedImages().length;
+        view.querySelector('#ampImgSelected').textContent = count + ' selected of ' + imageState.total;
+        view.querySelector('#ampImgForget').style.display = imageState.reverted > 0 ? '' : 'none';
+        view.querySelector('#ampImgForgetText').textContent = 'Forget ' + imageState.reverted + ' reverted';
+    }
+
+    function renderImages(view, page) {
+        imageState.total = page.TotalCount;
+        imageState.reverted = page.RevertedCount || 0;
+
+        var pages = Math.max(1, Math.ceil(page.TotalCount / imageSize));
+        view.querySelector('#ampImgPage').textContent = 'Page ' + (imageState.page + 1) + ' of ' + pages;
+        view.querySelector('#ampImgPrev').disabled = imageState.page <= 0;
+        view.querySelector('#ampImgNext').disabled = imageState.page + 1 >= pages;
+
+        // One tag per load keeps a replaced poster from showing from the browser's cache.
+        var tag = String(Date.now());
+        view.querySelector('#ampImages').innerHTML = page.Items.length ? page.Items.map(function (item) {
+            var now = ApiClient.getImageUrl(item.Id, { type: 'Primary', maxHeight: 240, tag: tag });
+            var full = ApiClient.getImageUrl(item.Id, { type: 'Primary', tag: tag });
+            return '<div class="amp-imgcard" data-img="' + esc(item.Id) + '">'
+                + '<label><input type="checkbox" class="amp-imgcheck"' + (imageState.selected[item.Id] ? ' checked' : '') + ' /><span class="amp-imgname">' + esc(item.SeriesName || item.ItemName) + '</span></label>'
+                + '<div class="amp-small">' + esc(item.Kind) + (item.SeriesName ? ' - ' + esc(item.ItemName) : '') + ' - replaced ' + when(item.ReplacedUtc) + '</div>'
+                + '<div class="amp-imgpair">'
+                + '<figure><div class="amp-imgbox" data-old="1">' + (item.HasBackup ? 'Loading...' : 'None') + '</div><figcaption>Previous</figcaption></figure>'
+                + '<figure><img src="' + esc(now) + '" data-full="' + esc(full) + '" alt="" /><figcaption>Now (AniDB)</figcaption></figure>'
+                + '</div>'
+                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-img-act="Revert">Revert</button>'
+                + '<button type="button" is="emby-button" class="raised" data-img-act="Acknowledge">Acknowledge</button></div>'
+                + '</div>';
+        }).join('') : '<p class="amp-muted">No replaced posters are waiting for a decision.</p>';
+
+        renderImageToolbar(view);
+
+        // The previous posters come as data addresses, only for the page on show.
+        var token = ++imageState.token;
+        page.Items.filter(function (item) { return item.HasBackup; }).forEach(function (item) {
+            get('Images/Backup', { Id: item.Id }).then(function (preview) {
+                var box = token === imageState.token && view.querySelector('.amp-imgcard[data-img="' + item.Id + '"] .amp-imgbox[data-old]');
+                if (box && preview && preview.DataUrl) {
+                    var image = document.createElement('img');
+                    image.src = preview.DataUrl;
+                    image.setAttribute('data-full', preview.DataUrl);
+                    image.alt = '';
+                    box.replaceWith(image);
+                } else if (box) {
+                    box.textContent = 'Missing';
+                }
+            }, function () {
+                var box = token === imageState.token && view.querySelector('.amp-imgcard[data-img="' + item.Id + '"] .amp-imgbox[data-old]');
+                if (box) {
+                    box.textContent = 'Missing';
+                }
+            });
+        });
+    }
+
+    function loadImages(view) {
+        return get('Images/Backups', { Start: imageState.page * imageSize, Limit: imageSize }).then(function (page) {
+            // The last page can empty out once its items are decided.
+            if (imageState.page > 0 && !page.Items.length && page.TotalCount > 0) {
+                imageState.page = Math.ceil(page.TotalCount / imageSize) - 1;
+                return loadImages(view);
+            }
+
+            if (!page.TotalCount) {
+                imageState.page = 0;
+            }
+
+            renderImages(view, page);
+            setImagesBusy(view, imageState.running);
+
+            // A revert started earlier, perhaps from another visit, may still be going.
+            if (!imageState.watching) {
+                watchRevert(view);
+            }
+        }, fail);
+    }
+
+    function setImagesBusy(view, busy) {
+        view.querySelectorAll('#ampImgRevert, #ampImgAck, [data-img-act]').forEach(function (button) {
+            button.disabled = busy;
+        });
+    }
+
+    // Reverting runs on the server in the background; this follows it until it ends.
+    function watchRevert(view) {
+        imageState.watching = true;
+        get('Images/RevertStatus').then(function (s) {
+            var line = view.querySelector('#ampImgJob');
+            var wasRunning = imageState.running;
+            imageState.running = !!s.Running;
+            setImagesBusy(view, imageState.running);
+
+            if (s.Running) {
+                line.textContent = 'Putting previous posters back: ' + (s.Done + s.Failed) + ' of ' + s.Total + (s.Failed ? ' (' + s.Failed + ' failed)' : '') + '. You can leave this page; it carries on.';
+                if (document.body.contains(view)) {
+                    setTimeout(function () { watchRevert(view); }, 1500);
+                    return;
+                }
+            } else if (wasRunning) {
+                line.textContent = 'Put the previous poster back on ' + s.Done + ' items' + (s.Failed ? ', ' + s.Failed + ' failed' : '') + '.';
+                imageState.watching = false;
+                loadImages(view);
+                return;
+            }
+
+            imageState.watching = false;
+        }, function () {
+            imageState.watching = false;
+        });
+    }
+
+    function decideImages(view, kind, ids) {
+        if (!ids.length) {
+            notify('Nothing selected');
+            return;
+        }
+
+        var text = kind === 'Revert'
+            ? 'Put the previous poster back on ' + ids.length + ' items? The task skips them from then on.'
+            : "Keep AniDB's poster on " + ids.length + ' items and delete the previous ones?';
+        if (ids.length > 1 && !window.confirm(text)) {
+            return;
+        }
+
+        host.showLoading();
+        post('Images/' + kind, null, { Ids: ids, All: false }).then(function (r) {
+            host.hideLoading();
+            ids.forEach(function (id) { delete imageState.selected[id]; });
+
+            if (kind === 'Revert') {
+                // Started in the background; the status line follows it.
+                notify(r.Started ? 'Putting back ' + r.Total + ' posters' : r.Running ? 'A revert is already running' : 'Nothing to put back');
+                imageState.running = !!r.Running;
+                if (!imageState.watching) {
+                    watchRevert(view);
+                }
+
+                return;
+            }
+
+            notify('Acknowledged ' + r.Done);
+            return loadImages(view);
+        }, fail);
+    }
+
+    function showImage(source) {
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+        var image = document.createElement('img');
+        image.src = source;
+        image.style.cssText = 'max-width:95vw;max-height:95vh;object-fit:contain';
+        overlay.appendChild(image);
+
+        function close() {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey);
+        }
+
+        function onKey(e) {
+            if (e.key === 'Escape') {
+                close();
+            }
+        }
+
+        overlay.addEventListener('click', close);
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
+    }
+
+    function wireImages(view) {
+        var grid = view.querySelector('#ampImages');
+
+        grid.addEventListener('change', function (e) {
+            var box = e.target.closest('.amp-imgcheck');
+            if (box) {
+                var id = box.closest('[data-img]').getAttribute('data-img');
+                if (box.checked) {
+                    imageState.selected[id] = true;
+                } else {
+                    delete imageState.selected[id];
+                }
+
+                renderImageToolbar(view);
+            }
+        });
+
+        grid.addEventListener('click', function (e) {
+            var button = e.target.closest('button[data-img-act]');
+            if (button) {
+                decideImages(view, button.getAttribute('data-img-act'), [button.closest('[data-img]').getAttribute('data-img')]);
+                return;
+            }
+
+            var image = e.target.closest('.amp-imgpair img');
+            if (image) {
+                showImage(image.getAttribute('data-full') || image.src);
+            }
+        });
+
+        view.querySelector('#ampImgPrev').addEventListener('click', function () {
+            imageState.page = Math.max(0, imageState.page - 1);
+            loadImages(view);
+        });
+
+        view.querySelector('#ampImgNext').addEventListener('click', function () {
+            imageState.page++;
+            loadImages(view);
+        });
+
+        view.querySelector('#ampImgSelectAll').addEventListener('click', function () {
+            // Every id, across pages: the list holds no pictures, so it is cheap to fetch whole.
+            get('Images/Backups', { Start: 0, Limit: 100000 }).then(function (all) {
+                all.Items.forEach(function (item) { imageState.selected[item.Id] = true; });
+                Array.prototype.forEach.call(grid.querySelectorAll('.amp-imgcheck'), function (box) { box.checked = true; });
+                renderImageToolbar(view);
+            }, fail);
+        });
+
+        view.querySelector('#ampImgClear').addEventListener('click', function () {
+            imageState.selected = {};
+            Array.prototype.forEach.call(grid.querySelectorAll('.amp-imgcheck'), function (box) { box.checked = false; });
+            renderImageToolbar(view);
+        });
+
+        view.querySelector('#ampImgRevert').addEventListener('click', function () { decideImages(view, 'Revert', selectedImages()); });
+        view.querySelector('#ampImgAck').addEventListener('click', function () { decideImages(view, 'Acknowledge', selectedImages()); });
+
+        view.querySelector('#ampImgForget').addEventListener('click', function () {
+            if (!window.confirm('Forget the ' + imageState.reverted + " reverted items? The next run of the task replaces their posters with AniDB's again.")) {
+                return;
+            }
+
+            post('Images/ForgetReverted').then(function (r) {
+                notify('Forgot ' + r.Done);
+                loadImages(view);
+            }, fail);
+        });
+    }
+
     function loadAll(view) {
         host.showLoading();
         return Promise.all([
@@ -521,6 +772,10 @@ function aniMetaPlusPage(host) {
 
         if (parts[1]) {
             showSub(view.querySelector('.amp-tab[data-tab="' + parts[0] + '"]'), parts[1]);
+        }
+
+        if (parts[0] === 'images') {
+            loadImages(view);
         }
     }
 
@@ -711,8 +966,14 @@ function aniMetaPlusPage(host) {
             }, fail);
         });
 
+        wireImages(view);
+
         view.addEventListener('viewshow', function () {
             loadAll(view);
+
+            if (view.querySelector('.amp-tab[data-tab="images"]').classList.contains('active')) {
+                loadImages(view);
+            }
         });
     };
 }

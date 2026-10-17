@@ -127,6 +127,11 @@ public sealed class AniMetaDb : IDisposable
     public ILiteCollection<RequestLogRecord> RequestLog => _db.GetCollection<RequestLogRecord>("requests");
 
     /// <summary>
+    /// Gets the posters the AniDB poster task replaced.
+    /// </summary>
+    public ILiteCollection<ImageBackupRecord> ImageBackups => _db.GetCollection<ImageBackupRecord>("imagebackups");
+
+    /// <summary>
     /// Gets the named values kept between runs.
     /// </summary>
     public ILiteCollection<StateRecord> State => _db.GetCollection<StateRecord>("state");
