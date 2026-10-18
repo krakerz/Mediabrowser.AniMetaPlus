@@ -110,6 +110,7 @@
 <div class="amp-tab" data-tab="sources">
     <p class="amp-small">Untick TheTVDB and TheMovieDb in the anime library's settings and tick only AniMeta+. They stay installed, and AniMeta+ asks them itself where they are listed below. A provider ticked below AniMeta+ in the library fills fields AniMeta+ left empty, with its own data.</p>
     <div class="amp-scroll"><table class="amp-table" id="ampSources"></table></div>
+    <div class="amp-result" id="ampSourceEstimates"></div>
     <p class="amp-small"><b>Pause</b>: the item keeps what it has and waits. <b>Switch</b>: the next source fills in, and is replaced once this one answers again. <b>Switch + review</b>: the next source fills in, and the replacement waits for your review. Bans are per IP address. The gap between requests never goes below each source's default.</p>
     <h3>Source order</h3>
     <p class="amp-small">The first source is asked first. Drag a source, or use its arrows, to change the order; the cross takes it out and the dashed buttons add one back. Rows marked "combined" take something from every source listed.</p>
@@ -248,6 +249,14 @@
             <option value="Japanese">Japanese</option>
         </select>
         <div class="fieldDescription">Applies to episodes from every source. Romaji titles come only from AniDB; TheTVDB and TheMovieDb episodes keep the library's language then.</div>
+    </div>
+    <div class="selectContainer">
+        <select is="emby-select" id="ampSeasonDetails" label="Season details:">
+            <option value="AniDB">From the AniDB entry each season maps to</option>
+            <option value="Delegated">From TheTVDB / TheMovieDb (in the Episodes source order)</option>
+            <option value="Plain">None: plain "Season 1", "Season 2", nothing fetched</option>
+        </select>
+        <div class="fieldDescription">Name, overview, dates and poster of each season. Episodes still map to AniDB either way. A season already renamed changes only on a "Replace all metadata" refresh.</div>
     </div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>

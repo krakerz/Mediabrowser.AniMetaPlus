@@ -157,7 +157,9 @@ function aniMetaPlusPage(host) {
                 : !source.Available ? badge(source.Unavailable || 'Unavailable', 'amp-warn')
                 : badge('Ready', 'amp-ok');
             var test = source.LastTest ? esc(source.LastTest.Result) + ' <span class="amp-small">' + when(source.LastTest.AtUtc) + '</span>' : '';
-            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>' + source.LastHour + ' / ' + source.LastDay + (source.CapPerHour || source.CapPerDay ? ' <span class="amp-muted">of ' + (source.CapPerHour || 'any') + ' / ' + (source.CapPerDay || 'any') + '</span>' : '') + '</td><td>' + test + '</td></tr>';
+            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>' + source.LastHour + ' / ' + source.LastDay + (source.CapPerHour || source.CapPerDay ? ' <span class="amp-muted">of ' + (source.CapPerHour || 'any') + ' / ' + (source.CapPerDay || 'any') + '</span>' : '')
+                + (source.RestUntilUtc ? '<br/>' + badge('Resting until ' + when(source.RestUntilUtc) + ' (' + source.BurstSent + ' of ' + source.BurstSize + ' sent)', 'amp-warn')
+                    : source.BurstSize ? '<br/><span class="amp-muted amp-small">Burst ' + source.BurstSent + ' of ' + source.BurstSize + '</span>' : '') + '</td><td>' + test + '</td></tr>';
         });
         view.querySelector('#ampSourceStatus').innerHTML = rows;
 
@@ -202,10 +204,10 @@ function aniMetaPlusPage(host) {
     // Sources
 
     function renderSources(view, overview) {
-        var rows = '<tr><th>Source</th><th>On</th><th>When blocked</th><th>Gap (ms)</th><th>Max / hour</th><th>Max / day</th><th>In rating</th><th>Titles in</th></tr>';
+        var rows = '<tr><th>Source</th><th>On</th><th>When blocked</th><th>Gap (ms)</th><th>Max / hour</th><th>Max / day</th><th>Burst</th><th>Rest (min)</th><th>In rating</th><th>Titles in</th></tr>';
         overview.Settings.forEach(function (s) {
             var mode = enumName(s.Mode, modes);
-            rows += '<tr data-source="' + esc(s.Id) + '"><td>' + esc(s.Id) + '</td>'
+            rows += '<tr data-source="' + esc(s.Id) + '" data-limit="' + esc(s.DailyLimitGuess || 0) + '"><td>' + esc(s.Id) + '</td>'
                 + '<td><input type="checkbox" data-field="Enabled"' + (s.Enabled ? ' checked' : '') + ' /></td>'
                 + '<td><select data-field="Mode">' + modes.map(function (m) {
                     return '<option value="' + m + '"' + (m === mode ? ' selected' : '') + '>' + modeNames[m] + '</option>';
@@ -213,12 +215,15 @@ function aniMetaPlusPage(host) {
                 + '<td><input type="number" min="' + esc(s.MinimumRequestIntervalMs || 0) + '" step="50" data-field="RequestIntervalMs" title="At least ' + esc(s.MinimumRequestIntervalMs || 0) + ' ms" value="' + esc(s.RequestIntervalMs) + '" /></td>'
                 + '<td><input type="number" min="0" data-field="MaxPerHour" value="' + esc(s.MaxPerHour || '') + '" placeholder="' + (s.DefaultMaxPerHour || 'none') + '" /></td>'
                 + '<td><input type="number" min="0" data-field="MaxPerDay" value="' + esc(s.MaxPerDay || '') + '" placeholder="' + (s.DefaultMaxPerDay || 'none') + '" /></td>'
+                + '<td><input type="number" min="0" data-field="BurstSize" value="' + esc(s.BurstSize || '') + '" placeholder="' + (s.DefaultBurstSize || 'none') + '" title="Requests sent in one go before a rest" /></td>'
+                + '<td><input type="number" min="0" data-field="RestMinutes" value="' + esc(s.RestMinutes || '') + '" placeholder="' + (s.DefaultRestMinutes || 60) + '" title="Minutes to leave the source alone after a burst" /></td>'
                 + '<td><input type="checkbox" data-field="IncludeInRating"' + (s.IncludeInRating ? ' checked' : '') + ' /></td>'
                 + '<td><select data-field="TitlePreference"><option value="">Global</option>' + titlePreferences.map(function (t) {
                     return '<option value="' + t + '"' + (t === s.TitlePreference ? ' selected' : '') + '>' + t + '</option>';
                 }).join('') + '</select></td></tr>';
         });
         view.querySelector('#ampSources').innerHTML = rows;
+        renderEstimates(view);
 
         var defaults = {};
         (overview.DefaultPriorities || []).forEach(function (p) { defaults[p.Kind] = p.Sources; });
@@ -390,6 +395,54 @@ function aniMetaPlusPage(host) {
         container.addEventListener('pointercancel', function (e) { endDrag(e, false); });
     }
 
+    // The most requests a day a source's limits let through, for each source with a known
+    // daily limit, worked out live as the fields change.
+    function renderEstimates(view) {
+        var lines = [];
+        Array.prototype.forEach.call(view.querySelectorAll('#ampSources tr[data-source]'), function (row) {
+            function value(name) {
+                var input = row.querySelector('[data-field="' + name + '"]');
+                return parseInt(input.value, 10) || parseInt(input.placeholder, 10) || 0;
+            }
+
+            var limit = parseInt(row.getAttribute('data-limit'), 10) || 0;
+            if (!limit) {
+                return;
+            }
+
+            var gap = Math.max(value('RequestIntervalMs'), parseInt(row.querySelector('[data-field="RequestIntervalMs"]').min, 10) || 0);
+            var burst = value('BurstSize');
+            var rest = value('RestMinutes');
+            var perDay = value('MaxPerDay');
+            var perHour = value('MaxPerHour');
+
+            var most = Math.floor(86400000 / Math.max(gap, 1));
+            if (burst > 0) {
+                var cycle = burst * gap / 60000 + rest;
+                most = Math.min(most, Math.ceil(1440 / cycle) * burst);
+            }
+
+            if (perHour > 0) {
+                most = Math.min(most, perHour * 24);
+            }
+
+            if (perDay > 0) {
+                most = Math.min(most, perDay);
+            }
+
+            var source = row.getAttribute('data-source');
+            var text = source + ': at most about ' + most + ' requests a day with these settings.';
+            lines.push(most > limit
+                ? badge('Over ' + limit + ' a day', 'amp-bad') + ' ' + esc(text + ' That is past the ' + limit + ' a day ' + source + ' is believed to ban for, so this IP may get banned.')
+                : perDay > limit
+                    ? badge('Day cap over ' + limit, 'amp-warn') + ' ' + esc(text + ' The bursts keep it there, but the day cap of ' + perDay + ' is past the ' + limit + ' ' + source + ' is believed to ban for, so a shorter rest or a bigger burst could get this IP banned.')
+                    : badge('Under ' + limit + ' a day', 'amp-ok') + ' ' + esc(text));
+            lines.push('<span class="amp-muted amp-small">' + esc('The ' + limit + ' a day is a guess, not a published limit: a ban came at exactly ' + limit + ' requests in a day (17 Oct 2026). Whether bursts with rests change it is not known. A ban that comes after ' + limit + ' requests in 24 hours pauses ' + source + ' for a full day.') + '</span>');
+        });
+
+        view.querySelector('#ampSourceEstimates').innerHTML = lines.join('<br/>');
+    }
+
     function saveSources(view) {
         withConfig(view, function (config) {
             config.Sources = Array.prototype.map.call(view.querySelectorAll('#ampSources tr[data-source]'), function (row) {
@@ -404,6 +457,8 @@ function aniMetaPlusPage(host) {
                     RequestIntervalMs: Math.max(parseInt(field('RequestIntervalMs').min, 10) || 0, parseInt(field('RequestIntervalMs').value, 10) || 0),
                     MaxPerHour: parseInt(field('MaxPerHour').value, 10) || 0,
                     MaxPerDay: parseInt(field('MaxPerDay').value, 10) || 0,
+                    BurstSize: parseInt(field('BurstSize').value, 10) || 0,
+                    RestMinutes: parseInt(field('RestMinutes').value, 10) || 0,
                     IncludeInRating: field('IncludeInRating').checked,
                     TitlePreference: field('TitlePreference').value
                 };
@@ -676,6 +731,7 @@ function aniMetaPlusPage(host) {
     function renderGeneral(view, config) {
         view.querySelector('#ampTitlePreference').value = enumName(config.TitlePreference, titlePreferences) || 'Localized';
         view.querySelector('#ampEpisodeTitlePreference').value = config.EpisodeTitlePreference || '';
+        view.querySelector('#ampSeasonDetails').value = config.SeasonDetails || 'AniDB';
         view.querySelector('#ampMaxGenres').value = config.MaxGenres;
         view.querySelector('#ampMinTagWeight').value = config.MinimumTagWeight;
         view.querySelector('#ampTagBlacklist').value = config.TagBlacklist || '';
@@ -1097,6 +1153,7 @@ function aniMetaPlusPage(host) {
         });
 
         view.querySelector('#ampSaveSources').addEventListener('click', function () { saveSources(view); });
+        view.querySelector('#ampSources').addEventListener('input', function () { renderEstimates(view); });
         wireOrder(view);
 
         view.querySelector('#ampSaveAniDb').addEventListener('click', function () {
@@ -1157,6 +1214,7 @@ function aniMetaPlusPage(host) {
             withConfig(view, function (config) {
                 config.TitlePreference = view.querySelector('#ampTitlePreference').value;
                 config.EpisodeTitlePreference = view.querySelector('#ampEpisodeTitlePreference').value;
+                config.SeasonDetails = view.querySelector('#ampSeasonDetails').value;
                 config.MaxGenres = parseInt(view.querySelector('#ampMaxGenres').value, 10) || 0;
                 config.MinimumTagWeight = parseInt(view.querySelector('#ampMinTagWeight').value, 10) || 0;
                 config.TagBlacklist = view.querySelector('#ampTagBlacklist').value;

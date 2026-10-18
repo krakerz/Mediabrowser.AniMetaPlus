@@ -1183,6 +1183,53 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     }
 
     /// <summary>
+    /// Whether a refresh of the anime needs a new answer from AniDB - nothing usable cached - and
+    /// AniDB is in use, whether or not it can be asked right now.
+    /// </summary>
+    /// <param name="appPaths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns><c>true</c> when the refresh depends on AniDB answering.</returns>
+    internal static bool NeedsAniDbAnswer(IApplicationPaths appPaths, string animeId)
+        => Plugin.Instance.Configuration.GetSource(SourceIds.AniDb).Enabled
+            && IsClientUsable()
+            && NeedsDownload(CachedSeriesDataPath(appPaths, animeId))
+            && !(IsCacheOnly(animeId) && HasCachedSeriesData(appPaths, animeId));
+
+    /// <summary>
+    /// Whether AniDB is held back for now: banned, blocked, or resting or capped on the Sources
+    /// tab. Work that needs it waits rather than filling shows with stand-in values.
+    /// </summary>
+    /// <returns><c>true</c> when AniDB may not be asked now.</returns>
+    internal static bool IsHeldBack()
+        => GetRemainingBanTime() > TimeSpan.Zero
+            || BlockStore.SourceBlock(SourceIds.AniDb) != null
+            || SourceGate.IsCapped(SourceIds.AniDb);
+
+    /// <summary>
+    /// Whether a refresh while AniDB is held back would leave stand-in values: AniDB is first
+    /// for a field taken from one source. Where it only adds to combined fields - genres,
+    /// rating, cast - or comes after other sources, missing it costs no stand-ins.
+    /// </summary>
+    /// <returns><c>true</c> when AniDB leads such a field.</returns>
+    internal static bool LeadsASingleSourceField()
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        return new[] { DataKind.Titles, DataKind.Overview, DataKind.Details }
+            .Any(kind => string.Equals(configuration.GetPriority(kind).FirstOrDefault(), SourceIds.AniDb, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Whether a refresh of the anime should wait for AniDB: it needs a new answer, AniDB is held
+    /// back, and going ahead would leave stand-in values.
+    /// </summary>
+    /// <param name="appPaths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns><c>true</c> when the refresh should wait.</returns>
+    internal static bool ShouldWaitForAniDb(IApplicationPaths appPaths, string animeId)
+        => IsHeldBack() && LeadsASingleSourceField() && NeedsAniDbAnswer(appPaths, animeId);
+
+    /// <summary>
     /// Whether the cached document of an anime has to be downloaded before it can be read.
     /// </summary>
     /// <param name="seriesDataPath">The path of the cached document.</param>
@@ -1249,8 +1296,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                     }
                     catch (SourceBlockedException ex)
                     {
-                        // The caps on the Sources tab hold AniDB back like a short block.
-                        throw new AniDbUnavailableException(ex.Message, ex) { RetryAfter = TimeSpan.FromHours(1) };
+                        // The caps and bursts on the Sources tab hold AniDB back like a short block.
+                        throw new AniDbUnavailableException(ex.Message, ex) { RetryAfter = ex.RetryAfter ?? TimeSpan.FromHours(1) };
                     }
                 }
 
@@ -1362,6 +1409,20 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
             _banRegisteredUtc = DateTime.UtcNow;
             var backoff = _currentBanBackoff;
+
+            // A ban that comes once the day's requests reach the daily limit is that limit, which
+            // retrying sooner cannot lift and may only extend: wait the whole day at once.
+            var sentToday = SourceGate.Counts().TryGetValue(SourceIds.AniDb, out var counts) ? counts.LastDay : 0;
+            if (sentToday >= SourceDefaults.AniDbDailyLimitGuess)
+            {
+                backoff = _maximumBanBackoff;
+                Logger?.LogWarning(
+                    "AniDB banned this client after {Count} requests in the last 24 hours, which is past its daily limit of about {Limit}. Waiting a full {RetryAfter} before asking again",
+                    sentToday,
+                    SourceDefaults.AniDbDailyLimitGuess,
+                    backoff);
+            }
+
             _banUntilUtc = DateTime.UtcNow + backoff;
 
             var escalated = backoff + backoff;

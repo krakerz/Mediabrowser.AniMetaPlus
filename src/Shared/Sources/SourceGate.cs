@@ -58,8 +58,8 @@ public static class SourceGate
         {
             // Asked again: a request ahead in the queue may have been blocked meanwhile.
             ThrowIfBlocked(source, itemKey, kind);
-            var (perHour, perDay) = SourceDefaults.Caps(setting);
-            lane.ThrowIfCapped(source, perHour, perDay);
+            var limits = SourceDefaults.Limits(setting);
+            lane.ThrowIfCapped(source, limits);
 
             var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), lane.NextTimestamp);
             while (remaining > TimeSpan.Zero)
@@ -69,7 +69,7 @@ public static class SourceGate
             }
 
             lane.NextTimestamp = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * (Math.Max(setting.RequestIntervalMs, 0) / 1000d));
-            lane.Count();
+            lane.Count(limits);
         }
         finally
         {
@@ -186,9 +186,9 @@ public static class SourceGate
         var setting = Plugin.Instance.Configuration.GetSource(source);
         var lane = _lanes.GetOrAdd(source, _ => new Lane());
 
-        var (perHour, perDay) = SourceDefaults.Caps(setting);
-        lane.ThrowIfCapped(source, perHour, perDay);
-        lane.Count();
+        var limits = SourceDefaults.Limits(setting);
+        lane.ThrowIfCapped(source, limits);
+        lane.Count(limits);
 
         if (string.Equals(source, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
         {
@@ -203,17 +203,16 @@ public static class SourceGate
     /// <param name="source">The source id.</param>
     /// <returns><c>true</c> when the next request would be refused.</returns>
     public static bool IsCapped(string source)
-    {
-        var (perHour, perDay) = SourceDefaults.Caps(Plugin.Instance.Configuration.GetSource(source));
-        if (perHour <= 0 && perDay <= 0)
-        {
-            return false;
-        }
+        => _lanes.GetOrAdd(source, _ => new Lane()).Refusal(SourceDefaults.Limits(Plugin.Instance.Configuration.GetSource(source))) != null;
 
-        var (hour, day) = _lanes.GetOrAdd(source, _ => new Lane()).Totals();
-
-        return (perHour > 0 && hour >= perHour) || (perDay > 0 && day >= perDay);
-    }
+    /// <summary>
+    /// How a source stands against its bursts: how many the current burst has sent, and when
+    /// its rest ends, if it is resting.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <returns>The burst state.</returns>
+    public static (int BurstSent, DateTime? RestUntilUtc) BurstState(string source)
+        => _lanes.GetOrAdd(source, _ => new Lane()).BurstState(SourceDefaults.Limits(Plugin.Instance.Configuration.GetSource(source)));
 
     // AniDB's counts outlive a restart: its caps are what keep a ban away, and a restart in the
     // middle of a library refresh would otherwise hand it a fresh allowance.
@@ -226,17 +225,7 @@ public static class SourceGate
     {
         try
         {
-            var stored = AniMetaDb.Current.GetState(AniDbCountsState);
-            if (string.IsNullOrEmpty(stored))
-            {
-                return;
-            }
-
-            var times = stored.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => long.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks) ? new DateTime(ticks, DateTimeKind.Utc) : (DateTime?)null)
-                .OfType<DateTime>();
-
-            _lanes.GetOrAdd(SourceIds.AniDb, _ => new Lane()).Load(times);
+            _lanes.GetOrAdd(SourceIds.AniDb, _ => new Lane()).Load(AniMetaDb.Current.GetState(AniDbCountsState));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -248,7 +237,7 @@ public static class SourceGate
     {
         try
         {
-            AniMetaDb.Current.SetState(AniDbCountsState, string.Join(',', lane.Snapshot().Select(t => t.Ticks.ToString(CultureInfo.InvariantCulture))));
+            AniMetaDb.Current.SetState(AniDbCountsState, lane.Save());
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -294,95 +283,71 @@ public static class SourceGate
     /// </summary>
     private sealed class Lane
     {
-        private readonly Queue<DateTime> _sent = new();
+        private readonly RequestPacer _pacer = new();
 
         public SemaphoreSlim Gate { get; } = new(1, 1);
 
         public long NextTimestamp { get; set; } = Stopwatch.GetTimestamp();
 
-        public void Count()
+        public void Count(RequestLimits limits)
         {
-            lock (_sent)
+            lock (_pacer)
             {
-                _sent.Enqueue(DateTime.UtcNow);
-                Trim();
+                _pacer.Record(DateTime.UtcNow, limits);
             }
         }
 
-        public void Load(IEnumerable<DateTime> times)
+        public void Load(string? state)
         {
-            lock (_sent)
+            lock (_pacer)
             {
-                var merged = _sent.Concat(times).Distinct().OrderBy(t => t).ToList();
-                _sent.Clear();
-                foreach (var at in merged)
-                {
-                    _sent.Enqueue(at);
-                }
-
-                Trim();
+                _pacer.Load(state, DateTime.UtcNow);
             }
         }
 
-        public IReadOnlyList<DateTime> Snapshot()
+        public string Save()
         {
-            lock (_sent)
+            lock (_pacer)
             {
-                Trim();
-                return [.. _sent];
+                return _pacer.Save();
             }
         }
 
         public (int LastHour, int LastDay) Totals()
         {
-            lock (_sent)
+            lock (_pacer)
             {
-                Trim();
-                var hourAgo = DateTime.UtcNow.AddHours(-1);
-                var hour = 0;
-
-                foreach (var at in _sent)
-                {
-                    if (at > hourAgo)
-                    {
-                        hour++;
-                    }
-                }
-
-                return (hour, _sent.Count);
+                return _pacer.Totals(DateTime.UtcNow);
             }
         }
 
-        public void ThrowIfCapped(string source, int perHour, int perDay)
+        public (string Reason, TimeSpan Wait)? Refusal(RequestLimits limits)
         {
-            if (perHour <= 0 && perDay <= 0)
+            lock (_pacer)
             {
-                return;
+                return _pacer.Refusal(DateTime.UtcNow, limits);
             }
+        }
 
-            var (hour, day) = Totals();
-
-            if ((perHour > 0 && hour >= perHour) || (perDay > 0 && day >= perDay))
+        public (int BurstSent, DateTime? RestUntilUtc) BurstState(RequestLimits limits)
+        {
+            lock (_pacer)
             {
-                throw new SourceBlockedException(string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0} has used its request cap ({1} this hour, {2} today).",
-                    source,
-                    hour,
-                    day))
+                // Asking refreshes a rest that has run out.
+                _pacer.Refusal(DateTime.UtcNow, limits);
+                return (_pacer.BurstSent, _pacer.RestUntilUtc);
+            }
+        }
+
+        public void ThrowIfCapped(string source, RequestLimits limits)
+        {
+            if (Refusal(limits) is { } refusal)
+            {
+                throw new SourceBlockedException(source + " is held back: " + refusal.Reason + ".")
                 {
-                    SourceId = source
+                    SourceId = source,
+                    RetryAfter = refusal.Wait
                 };
-            }
-        }
-
-        private void Trim()
-        {
-            var dayAgo = DateTime.UtcNow.AddDays(-1);
-
-            while (_sent.Count > 0 && _sent.Peek() < dayAgo)
-            {
-                _sent.Dequeue();
             }
         }
     }

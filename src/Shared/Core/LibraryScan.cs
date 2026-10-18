@@ -127,8 +127,10 @@ public static class LibraryScan
             // whatever the limit. One that would ask AniDB waits for a later run once the limit is
             // reached; it is identified again then, which costs nothing either.
             var asks = AniDbSeriesProvider.WouldAskAniDb(paths, animeId);
-            // A used-up AniDB cap lifts within the hour, so those wait too rather than take stand-ins.
-            if (asks && (askingAniDb >= aniDbLimit || SourceGate.IsCapped(SourceIds.AniDb)))
+
+            // While AniDB is banned, resting or capped, a show it has never answered for waits too,
+            // rather than being filled with stand-in values that need replacing later.
+            if ((asks && askingAniDb >= aniDbLimit) || AniDbSeriesProvider.ShouldWaitForAniDb(paths, animeId))
             {
                 deferred++;
 

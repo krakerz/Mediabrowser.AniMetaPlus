@@ -51,6 +51,15 @@ public class SourceStatus
     /// <summary>Gets or sets the daily cap in force; zero means none.</summary>
     public int CapPerDay { get; set; }
 
+    /// <summary>Gets or sets how many requests go out in one burst; zero means no bursts.</summary>
+    public int BurstSize { get; set; }
+
+    /// <summary>Gets or sets how many the current burst has sent.</summary>
+    public int BurstSent { get; set; }
+
+    /// <summary>Gets or sets when the rest after the last burst ends, while resting.</summary>
+    public DateTime? RestUntilUtc { get; set; }
+
     /// <summary>Gets or sets the last check of its client or key.</summary>
     public ClientTestRecord? LastTest { get; set; }
 }
@@ -339,8 +348,11 @@ public static class AniMetaApi
                 Block = BlockStore.SourceBlock(id),
                 LastHour = count.LastHour,
                 LastDay = count.LastDay,
-                CapPerHour = SourceDefaults.Caps(setting).PerHour,
-                CapPerDay = SourceDefaults.Caps(setting).PerDay,
+                CapPerHour = SourceDefaults.Limits(setting).PerHour,
+                CapPerDay = SourceDefaults.Limits(setting).PerDay,
+                BurstSize = SourceDefaults.Limits(setting).BurstSize,
+                BurstSent = SourceGate.BurstState(id).BurstSent,
+                RestUntilUtc = SourceGate.BurstState(id).RestUntilUtc,
                 LastTest = db.ClientTests.FindById(id)
             });
         }

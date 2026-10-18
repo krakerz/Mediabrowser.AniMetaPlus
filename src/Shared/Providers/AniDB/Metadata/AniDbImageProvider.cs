@@ -16,6 +16,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using AniMetaPlus.Configuration;
 using AniMetaPlus.Core;
 using AniMetaPlus.Sources;
 
@@ -56,6 +57,11 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
     {
         ArgumentNullException.ThrowIfNull(item);
 
+        if (item is Season)
+        {
+            return await GetSeasonImages(item, cancellationToken).ConfigureAwait(false);
+        }
+
         var seriesId = item.GetProviderId(ProviderNames.AniDb);
         var aniDb = (await GetImages(seriesId, cancellationToken).ConfigureAwait(false)).ToList();
 
@@ -64,13 +70,70 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
             image.Type = ImageType.Primary;
         }
 
-        // A season's image is its own entry's poster; the other sources have nothing per season.
-        if (item is Season)
-        {
-            return aniDb;
-        }
-
         return await ImageMerge.GetImages(item, aniDb, AniDbSeriesProvider.Logger ?? (ILogger)NullLogger.Instance, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Gets a season's images. The season's poster is its own AniDB entry's, and the other
+    /// sources have nothing per season. With the season's details delegated they are the server's
+    /// own TVDB and TMDB season images instead, rated by the poster order, and with them
+    /// left plain there are none.
+    /// </summary>
+    private async Task<IEnumerable<RemoteImageInfo>> GetSeasonImages(BaseItem item, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        switch (configuration.SeasonDetailsMode)
+        {
+            case SeasonDetailsMode.Plain:
+                return [];
+
+            case SeasonDetailsMode.Delegated:
+                var images = new List<RemoteImageInfo>();
+                var order = configuration.GetPriority(DataKind.PrimaryImage);
+                var seriesId = (item as Season)?.Series?.GetProviderId(ProviderNames.AniDb);
+                var itemKey = (string.IsNullOrEmpty(seriesId) ? ItemKeys.ForUnidentified("Series", null, item.Name) : ItemKeys.ForAnime(seriesId))
+                    + FormattableString.Invariant($":s{item.IndexNumber}");
+
+                for (var rank = 0; rank < order.Count; rank++)
+                {
+                    if (!SourceIds.IsDelegated(order[rank]) || !configuration.GetSource(order[rank]).Enabled)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        foreach (var image in await DelegatedProviders.GetImages(order[rank], item, itemKey, cancellationToken).ConfigureAwait(false))
+                        {
+                            if (image.Type != ImageType.Primary)
+                            {
+                                continue;
+                            }
+
+                            image.ProviderName = ProviderNames.ForImage(order[rank]);
+                            image.CommunityRating = 10 - rank;
+                            image.VoteCount = 1000 - rank;
+                            images.Add(image);
+                        }
+                    }
+                    catch (SourceBlockedException ex)
+                    {
+                        AniDbSeriesProvider.Logger?.LogDebug("{Source} offered no images for {Item}: {Message}", order[rank], item.Name, ex.Message);
+                    }
+                }
+
+                return images;
+
+            default:
+                var aniDb = (await GetImages(item.GetProviderId(ProviderNames.AniDb), cancellationToken).ConfigureAwait(false)).ToList();
+                foreach (var image in aniDb)
+                {
+                    image.Type = ImageType.Primary;
+                }
+
+                return aniDb;
+        }
     }
 
     /// <summary>
