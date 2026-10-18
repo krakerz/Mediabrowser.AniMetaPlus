@@ -401,6 +401,16 @@ public static class AniMetaApi
     }
 
     /// <summary>
+    /// Lifts several blocks at once, without refreshing their items: a few hundred refreshes
+    /// at once would each ask the sources again, AniDB among them. The items are asked again
+    /// at their next refresh.
+    /// </summary>
+    /// <param name="ids">The block ids.</param>
+    /// <returns>How many were lifted.</returns>
+    public static int LiftBlocks(IEnumerable<string> ids)
+        => (ids ?? []).Distinct(StringComparer.Ordinal).Count(id => BlockStore.Lift(id) != null);
+
+    /// <summary>
     /// Pins a block.
     /// </summary>
     /// <param name="id">The block id.</param>

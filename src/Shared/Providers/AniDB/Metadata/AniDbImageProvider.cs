@@ -154,6 +154,10 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
             {
                 found = await GetImages(seasonId, cancellationToken).ConfigureAwait(false);
             }
+            else if (!AniDbSeasonProvider.AsksEntryOf(source, item.IndexNumber))
+            {
+                continue;
+            }
             else if (string.Equals(source, SourceIds.AniList, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(source, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
             {
@@ -169,6 +173,8 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
                 {
                     context.Ids[provider] = id;
                 }
+
+                await AniDbSeasonProvider.AddLinkedIds(_appPaths, context, seasonId, cancellationToken).ConfigureAwait(false);
 
                 var outcome = await SourceFetcher.Fetch(source, context, cancellationToken).ConfigureAwait(false);
                 found = (outcome.Record?.Images ?? [])

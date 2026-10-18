@@ -698,9 +698,20 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 folderName);
         }
 
-        var matched = string.IsNullOrEmpty(info.Name) || truncated
-            ? string.Empty
-            : await Equals_check.XmlFindId(info.Name, GetLookupYear(info), cancellationToken).ConfigureAwait(false);
+        // Folders carry notes no title has - "(Fall)", "[BD]" - and the fuzzy search reads them
+        // as part of the name.
+        var withoutNotes = Queues.StripNotes(folderName ?? info.Name ?? string.Empty);
+
+        // Every spelling is tried whole before any is searched fuzzily. The fuzzy search of one
+        // spelling settles on whatever starts alike: "The Beginning After the End (Spring)"
+        // found its own second season, and a name cut short to "The Beginning" found a Tiger &
+        // Bunny film, where the folder without its note is a title AniDB has exactly.
+        var matched = await ExactMatch(info, folderName, withoutNotes, truncated, cancellationToken).ConfigureAwait(false);
+
+        if (string.IsNullOrEmpty(matched) && !string.IsNullOrEmpty(info.Name) && !truncated)
+        {
+            matched = await Equals_check.XmlFindId(info.Name, GetLookupYear(info), cancellationToken).ConfigureAwait(false);
+        }
 
         // The name searched above is the item's, which is whatever provider reached it first,
         // and a provider that matched the wrong show has already renamed it to that show. The
@@ -722,10 +733,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             }
         }
 
-        // Folders carry notes no title has - "(Fall)", "[BD]" - and the fuzzy search reads them
-        // as part of the name. Tried last, so a note that is part of a real title still matches
-        // that title first.
-        var withoutNotes = Queues.StripNotes(folderName ?? info.Name ?? string.Empty);
+        // Tried last, so a note that is part of a real title still matches that title first.
         if (string.IsNullOrEmpty(matched)
             && !string.IsNullOrEmpty(withoutNotes)
             && !string.Equals(withoutNotes, folderName, StringComparison.OrdinalIgnoreCase)
@@ -2179,6 +2187,63 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>The year, or <c>null</c> when nothing gives one.</returns>
     private static int? GetLookupYear(ItemLookupInfo info)
         => info.Year ?? info.PremiereDate?.Year;
+
+    /// <summary>
+    /// The AniDB entry one of an item's spellings is exactly the title of: its name, its folder
+    /// name, and the folder name without its notes. The name goes first unless it is the start
+    /// of the folder name cut off between two words, which is a name that has lost the words
+    /// telling the show apart.
+    /// </summary>
+    /// <param name="info">The item.</param>
+    /// <param name="folderName">The name of its folder.</param>
+    /// <param name="withoutNotes">The folder name without its notes.</param>
+    /// <param name="truncated">Whether the name is the folder name cut short.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or an empty string.</returns>
+    private async Task<string> ExactMatch(SeriesInfo info, string? folderName, string withoutNotes, bool truncated, CancellationToken cancellationToken)
+    {
+        var folderYear = YearInName(folderName ?? string.Empty) ?? GetLookupYear(info);
+        var folders = new[] { folderName, withoutNotes }
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => (Name: n!, Year: folderYear));
+
+        var spellings = new List<(string Name, int? Year)>();
+        if (!string.IsNullOrWhiteSpace(info.Name) && !truncated)
+        {
+            spellings.Add((info.Name, GetLookupYear(info)));
+        }
+
+        spellings = IsCutShort(info.Name, withoutNotes) ? [.. folders, .. spellings] : [.. spellings, .. folders];
+
+        foreach (var (name, year) in spellings.DistinctBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var matched = await Equals_check.XmlFindExactId(name, year, cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(matched))
+            {
+                if (!string.Equals(name, info.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger?.LogInformation("{SeriesName} (folder {FolderName}) is AniDB anime {AnimeId}, which has the title {Name} exactly", info.Name, folderName, matched, name);
+                }
+
+                return matched;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Whether a name is the start of a longer one, ending where a word does.
+    /// </summary>
+    /// <param name="name">The name on the item.</param>
+    /// <param name="longer">The folder name without its notes.</param>
+    /// <returns><c>true</c> where the name is the longer one cut short between words.</returns>
+    internal static bool IsCutShort(string? name, string? longer)
+        => !string.IsNullOrWhiteSpace(name) && !string.IsNullOrEmpty(longer)
+            && longer.Length > name.Trim().Length
+            && longer.StartsWith(name.Trim(), StringComparison.OrdinalIgnoreCase)
+            && !char.IsLetterOrDigit(longer[name.Trim().Length]);
 
     /// <summary>
     /// Whether the name on the item is the folder name cut short rather than a name of its own.

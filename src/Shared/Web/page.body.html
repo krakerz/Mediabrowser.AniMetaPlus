@@ -40,6 +40,9 @@
     .amp-row .inputContainer, .amp-row .selectContainer { flex: 1 1 14em; margin-bottom: .6em; }
     /* A guess with a long title must not widen its row and push the others onto a new line. */
     .amp-row .inputContainer { min-width: 0; }
+    #ampBlockFilters { align-items: center; }
+    #ampBlockFilters > select, #ampBlockFilters > input { flex: 1 1 9em; width: auto; min-width: 0; }
+    #ampBlockFilters > input { flex-basis: 14em; }
     .amp-row select:not(.emby-select), .amp-row input[type=text]:not(.emby-input) { width: 100%; box-sizing: border-box; }
     .amp-secret { display: flex; align-items: flex-end; gap: .4em; margin-bottom: 1.2em; }
     .amp-secret .inputContainer { flex-grow: 1; margin-bottom: 0; }
@@ -196,6 +199,14 @@
 <div class="amp-tab" data-tab="blocks">
     <p class="amp-small">Requests that failed, remembered so they are not sent again until they can succeed. <b>Lift</b> clears one and refreshes the item; <b>Pin</b> keeps it for good.</p>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowExpired" /><span>Show lapsed blocks</span></label>
+    <div class="amp-row" id="ampBlockFilters">
+        <select id="ampBlockFilterSource" title="Source"></select>
+        <select id="ampBlockFilterKind" title="Kind"></select>
+        <select id="ampBlockFilterReason" title="Why"></select>
+        <input type="text" id="ampBlockFilterText" placeholder="Filter by item or message" />
+        <button is="emby-button" type="button" class="raised" id="ampLiftShown"><span>Lift all shown</span></button>
+    </div>
+    <p class="amp-small" id="ampBlockCount"></p>
     <div class="amp-scroll"><table class="amp-table" id="ampBlocks"></table></div>
     <h3>Block by hand</h3>
     <div class="amp-row">
@@ -269,7 +280,7 @@
         </select>
         <div class="fieldDescription">Plain names stay the same whatever the details come from. A season already renamed changes only on a "Replace all metadata" refresh.</div>
     </div>
-    <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show:" /></div>
+    <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show (0 = no limit):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampTagBlacklist" type="text" label="Tags never imported (comma separated):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxCacheAge" type="number" min="3" label="Days scans and tasks reuse a fetched answer (at least 3, 7 recommended; a refresh by hand asks again sooner):" /></div>

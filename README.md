@@ -110,7 +110,7 @@ Layout:
 - **Titles dump**: location and state of the AniDB titles dump
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
-- **Blocks**: remembered failures, with lift and pin
+- **Blocks**: remembered failures, sortable and filterable by source, kind, reason or text, with lift, pin and lift-all-shown
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
 - **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, searchable alternative titles, plus the other plugin options
 - **Import/Export**: mappings, review decisions and pinned blocks (never keys)

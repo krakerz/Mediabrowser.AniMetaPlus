@@ -224,6 +224,42 @@ internal static partial class Equals_check
     }
 
     /// <summary>
+    /// Finds the AniDB id AniDB gives exactly this title to, without the fuzzy search. Lets a
+    /// caller with several spellings of a name try all of them whole before any is searched
+    /// fuzzily: the fuzzy search of one spelling can settle on the wrong show before another
+    /// spelling would have matched the right one exactly.
+    /// </summary>
+    /// <param name="name">The name to look for.</param>
+    /// <param name="year">The year the series is known to be from.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or an empty string when no one entry has the title.</returns>
+    public static async Task<string> XmlFindExactId(string name, int? year, CancellationToken cancellationToken)
+    {
+        string? xml = await ReadTitlesXml(0, cancellationToken).ConfigureAwait(false);
+        if (xml is null)
+        {
+            return string.Empty;
+        }
+
+        return FindExact(IndexEntries(xml), name, StripYearRegex().Replace(name, string.Empty).Trim(), year) ?? string.Empty;
+    }
+
+    private static string? FindExact(IReadOnlyDictionary<string, string> entriesById, string name, string strippedName, int? year)
+    {
+        foreach (var (candidate, loose) in GetNameCandidates(name, strippedName, year))
+        {
+            var matches = FindByTitle(entriesById, candidate, loose);
+
+            if (matches.Count == 1)
+            {
+                return matches[0];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Finds an AniDB ID for name.
     /// </summary>
     /// <param name="name">The name to search for.</param>
@@ -256,14 +292,10 @@ internal static partial class Equals_check
         // before being reduced to its letters and digits, so that a title differing only in
         // punctuation - a sequel marked with an apostrophe, say - cannot take the original's
         // place.
-        foreach (var (candidate, loose) in GetNameCandidates(name, strippedName, year))
+        var exact = FindExact(entriesById, name, strippedName, year);
+        if (exact != null)
         {
-            var matches = FindByTitle(entriesById, candidate, loose);
-
-            if (matches.Count == 1)
-            {
-                return matches[0];
-            }
+            return exact;
         }
 
         var results = SearchTitlesXml(xml, name);
