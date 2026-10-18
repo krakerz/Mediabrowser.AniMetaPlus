@@ -4,6 +4,20 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.14.0] — 2026-10-18
+
+### Added
+- Blocks tab: click a column header to sort (newest first by default), filter by source, kind, reason or text, and lift every shown block at once. Pinned blocks are left alone, and the lifted items are not refreshed straight away, so lifting hundreds doesn't set off hundreds of requests
+
+### Changed
+- The "Most genres per show" setting says that 0 means no limit
+- In the overview order, a season's AniList and MyAnimeList entries are taken from the AniBridge mappings of its AniDB entry. Their title search only runs when the mappings link none
+
+### Fixed
+- A show is matched to the AniDB entry that has its name exactly (the item's name, the folder name, or the folder name without notes like "(Spring)") before any fuzzy search. "The Beginning After the End (Spring)" was matched to its second season, and a name cut short to "The Beginning" was matched to a Tiger & Bunny film, which also put the show into that franchise's collection
+- Specials seasons no longer ask AniList or MyAnimeList for an overview or poster: those describe the whole show, not the specials
+- Stand-in values and reviews from before the source order changed are settled once their source no longer comes first, instead of spending AniDB requests and creating reviews against the current order
+
 ## [2.13.0] — 2026-10-18
 
 ### Added

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Core;
 using AniMetaPlus.Logging;
+using AniMetaPlus.Providers.AniDB.Mapping;
 using AniMetaPlus.Sources;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities.TV;
@@ -205,7 +206,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
         var answer = await FirstAnswer(
             configuration.GetPriority(DataKind.Overview),
-            source => AsksSource(source, configuration.GetSource(source).Enabled, entryAsked),
+            source => AsksSource(source, configuration.GetSource(source).Enabled, entryAsked) && AsksEntryOf(source, info.IndexNumber),
             source => AskSource(source, info, seriesId, seasonId, cancellationToken)).ConfigureAwait(false);
 
         if (answer is null)
@@ -273,6 +274,8 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
                 {
                     context.Ids[provider] = id;
                 }
+
+                await AddLinkedIds(appPaths, context, seasonId, cancellationToken).ConfigureAwait(false);
 
                 var outcome = await SourceFetcher.Fetch(source, context, cancellationToken).ConfigureAwait(false);
                 if (outcome.Record is not { } record)
@@ -372,6 +375,44 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     /// <returns><c>true</c> when the source is asked.</returns>
     internal static bool AsksSource(string source, bool enabled, bool ownEntry)
         => enabled && (ownEntry || SourceIds.IsDelegated(source));
+
+    /// <summary>
+    /// Whether AniList or MyAnimeList is asked about a season's AniDB entry. Not for the
+    /// specials: their entry is the show's own, and what those two have for it is the show's
+    /// synopsis and poster, not the specials'.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <param name="seasonNumber">The season number.</param>
+    /// <returns><c>true</c> when the source may be asked.</returns>
+    internal static bool AsksEntryOf(string source, int? seasonNumber)
+        => seasonNumber != 0
+            || !(string.Equals(source, SourceIds.AniList, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source, SourceIds.Mal, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Puts the AniList and MyAnimeList ids the mappings link a season's AniDB entry to into a
+    /// fetch, which saves searching those two by AniDB's spelling of its title - a search that
+    /// misses often enough to have filled the blocks list. Taken over any id on the season,
+    /// which may be the whole show's. Where the mappings link none, the search still runs.
+    /// </summary>
+    /// <param name="paths">The server paths.</param>
+    /// <param name="context">The fetch.</param>
+    /// <param name="seasonId">The season's AniDB entry.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task.</returns>
+    internal static async Task AddLinkedIds(IApplicationPaths paths, FetchContext context, string? seasonId, CancellationToken cancellationToken)
+    {
+        var logger = (ILogger?)AniDbSeriesProvider.Logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+        foreach (var (sourceId, prefix) in new[] { (SourceIds.AniList, "anilist"), (SourceIds.Mal, "mal") })
+        {
+            var linked = await AniBridgeMappings.ResolveLink(paths, seasonId, prefix, logger, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(linked))
+            {
+                context.Ids[sourceId] = linked;
+            }
+        }
+    }
 
     /// <summary>
     /// The name a season takes under the names setting.

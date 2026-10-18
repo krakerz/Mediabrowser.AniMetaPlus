@@ -35,6 +35,7 @@ internal sealed class AniBridgeIndex
     private readonly IReadOnlyDictionary<AniDbAnimeListEpisode, IReadOnlyList<string>> _movieKeys;
     private readonly IReadOnlyDictionary<string, AniDbAnimeListEpisode> _soleMovieByAnimeId;
     private IReadOnlyDictionary<string, string> _animeByLink = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, string> _linkByAnime = new Dictionary<string, string>();
 
     private AniBridgeIndex(
         IReadOnlyDictionary<string, AniBridgeEntry> byAnimeId,
@@ -158,6 +159,9 @@ internal sealed class AniBridgeIndex
 
         var index = Build(spans, seriesKeys, tmdbCandidates, movies, schemaVersion, cachedAtUtc, description, logger);
         index._animeByLink = animeByLink;
+        index._linkByAnime = animeByLink
+            .GroupBy(pair => pair.Value + ":" + pair.Key[..pair.Key.IndexOf(':')], StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().Key[(group.First().Key.IndexOf(':') + 1)..], StringComparer.Ordinal);
 
         return index;
     }
@@ -286,6 +290,16 @@ internal sealed class AniBridgeIndex
     /// <returns>The AniDB id, or <c>null</c> where the mappings link nothing to that id.</returns>
     public string? AnimeIdByLink(string prefix, string id)
         => _animeByLink.GetValueOrDefault(prefix + ":" + id);
+
+    /// <summary>
+    /// The MyAnimeList or AniList entry an AniDB entry is, the other way round from
+    /// <see cref="AnimeIdByLink"/>. Where the mappings link several, the first is taken.
+    /// </summary>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <param name="prefix">The mappings' name for the database, "mal" or "anilist".</param>
+    /// <returns>The id in that database, or <c>null</c> where the mappings link none.</returns>
+    public string? LinkOf(string animeId, string prefix)
+        => _linkByAnime.GetValueOrDefault(animeId + ":" + prefix);
 
     /// <summary>
     /// The AniDB entry a movie is, and which of its episodes holds it.

@@ -295,6 +295,11 @@ public class SourcesTests
             Assert.Null(index.AnimeIdByLink("mal", "40000"));
             Assert.Null(index.AnimeIdByLink("mal", "21222"));
             Assert.Null(index.AnimeIdByLink("mal", "1"));
+
+            // The other way round, for a season asked about by id instead of by its title.
+            Assert.Equal("21222", index.LinkOf("11021", "anilist"));
+            Assert.Equal("29575", index.LinkOf("11021", "mal"));
+            Assert.Null(index.LinkOf("11022", "mal"));
         }
         finally
         {

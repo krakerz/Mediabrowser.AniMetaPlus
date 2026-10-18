@@ -89,6 +89,12 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpPost("Blocks/Lift")]
     public ActionResult<BlockRecord> LiftBlock([FromQuery] string id) => AniMetaApi.LiftBlock(id) is { } block ? block : NotFound();
 
+    /// <summary>Lifts several blocks without refreshing their items.</summary>
+    /// <param name="request">The block ids.</param>
+    /// <returns>How many were lifted.</returns>
+    [HttpPost("Blocks/LiftMany")]
+    public ActionResult LiftBlocks([FromBody] ImageSelectionRequest request) => Ok(new { Lifted = AniMetaApi.LiftBlocks(request.Ids) });
+
     /// <summary>Pins a block.</summary>
     /// <param name="id">The block id.</param>
     /// <returns>The pinned block.</returns>

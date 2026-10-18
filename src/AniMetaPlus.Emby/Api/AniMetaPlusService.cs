@@ -49,6 +49,14 @@ public class LiftBlock : IReturn<BlockRecord>
     public string Id { get; set; } = string.Empty;
 }
 
+/// <summary>Lifts several blocks without refreshing their items.</summary>
+[Route("/AniMetaPlus/Blocks/LiftMany", "POST")]
+public class LiftBlocks : IReturn<int>
+{
+    /// <summary>Gets or sets the block ids.</summary>
+    public List<string> Ids { get; set; } = [];
+}
+
 /// <summary>Pins a block.</summary>
 [Route("/AniMetaPlus/Blocks/Pin", "POST")]
 public class PinBlock : IReturn<BlockRecord>
@@ -354,6 +362,11 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public object? Post(LiftBlock request) => AniMetaApi.LiftBlock(request.Id);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(LiftBlocks request) => new { Lifted = AniMetaApi.LiftBlocks(request.Ids) };
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

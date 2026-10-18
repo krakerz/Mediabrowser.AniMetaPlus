@@ -232,6 +232,14 @@ public static class SeriesMerge
             return;
         }
 
+        // Reordered since: the stand-in's source now comes after the one that supplied the field.
+        if (provenance.Provisional && !StillWaitsFor(preferred, chosen, preferredOrder))
+        {
+            Settle(db, provenance, kind, context);
+
+            return;
+        }
+
         var outcome = await get(preferred).ConfigureAwait(false);
         if (outcome is not { State: SourceState.Ok, Record: { } record } || !Has(kind, record))
         {
@@ -288,6 +296,73 @@ public static class SeriesMerge
             context.ItemName,
             kind,
             chosen);
+    }
+
+    /// <summary>
+    /// Whether a stand-in still waits for its source: that source comes before the one that
+    /// supplied the field in the field's current order. After the owner reorders the sources, a
+    /// stand-in for one that now comes later is simply the field's data.
+    /// </summary>
+    /// <param name="waitedFor">The source the stand-in waits for, or a review proposes.</param>
+    /// <param name="current">The source that supplied the field; several, comma separated, for a combined one.</param>
+    /// <param name="order">The field's source order now.</param>
+    /// <returns><c>true</c> while the source waited for still comes first.</returns>
+    public static bool StillWaitsFor(string? waitedFor, string? current, IReadOnlyList<string> order)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+
+        int IndexOf(string source) => order.ToList().FindIndex(s => string.Equals(s, source.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(waitedFor) || IndexOf(waitedFor) is var wanted && wanted < 0)
+        {
+            return false;
+        }
+
+        var supplied = (current ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(IndexOf).Where(i => i >= 0).ToList();
+
+        return supplied.Count == 0 || wanted < supplied.Min();
+    }
+
+    /// <summary>
+    /// Settles the stand-ins, and drops the pending reviews, that the current source order no
+    /// longer backs: their source now comes after the one that supplied the field, so asking it
+    /// again would only spend requests on a value the owner ranks lower.
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <param name="configuration">The configuration, for the source order.</param>
+    /// <returns>How many stand-ins were settled and reviews dropped.</returns>
+    public static (int Settled, int Dropped) SettleOutdated(AniMetaDb db, PluginConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var settled = 0;
+        var dropped = 0;
+
+        foreach (var review in db.Reviews.FindAll().Where(r => r.Status == ReviewStatus.Pending).ToList())
+        {
+            if (Enum.TryParse<DataKind>(review.Field, out var kind) && !StillWaitsFor(review.ProposedSource, review.CurrentSource, configuration.GetPriority(kind)))
+            {
+                db.Reviews.Delete(review.Id);
+                dropped++;
+            }
+        }
+
+        foreach (var provenance in db.Provenance.FindAll().Where(p => p.Provisional).ToList())
+        {
+            if (Enum.TryParse<DataKind>(provenance.Field, out var kind)
+                && !db.Reviews.Exists(r => r.Id == provenance.Id)
+                && !StillWaitsFor(provenance.PreferredSource, provenance.Source, configuration.GetPriority(kind)))
+            {
+                provenance.Provisional = false;
+                provenance.PreferredSource = string.Empty;
+                provenance.PinnedSource = string.Empty;
+                db.Provenance.Upsert(provenance);
+                settled++;
+            }
+        }
+
+        return (settled, dropped);
     }
 
     private static void Settle(AniMetaDb db, ProvenanceRecord provenance, DataKind kind, FetchContext context)

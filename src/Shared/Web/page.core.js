@@ -695,9 +695,80 @@ function aniMetaPlusPage(host) {
 
     // Blocks
 
+    var blockList = [];
+    var blockSort = { key: 'seen', dir: -1 };
+
+    var blockColumns = [
+        ['source', 'Source', function (b) { return (b.Source || '').toLowerCase(); }],
+        ['item', 'Item', function (b) { return (b.ItemName || b.ItemKey || '').toLowerCase(); }],
+        ['kind', 'Kind', function (b) { return (b.Kind || 'all').toLowerCase(); }],
+        ['why', 'Why', function (b) { return blockReason(b); }],
+        ['seen', 'Seen', function (b) { return new Date(b.LastSeenUtc).getTime() || 0; }]
+    ];
+
+    function blockReason(block) {
+        return enumName(block.Reason, ['Banned', 'RateLimited', 'Unavailable', 'ServerError', 'AuthFailed', 'ClientRejected', 'NotFound', 'ParseFailed', 'Empty', 'Manual', 'Other']);
+    }
+
+    function fillFilter(select, label, values) {
+        var current = select.value;
+        select.innerHTML = '<option value="">' + label + ': all</option>' + values.map(function (v) {
+            return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
+        }).join('');
+        select.value = values.indexOf(current) >= 0 ? current : '';
+    }
+
+    function distinct(blocks, read) {
+        var seen = {};
+        blocks.forEach(function (b) { seen[read(b)] = true; });
+        return Object.keys(seen).sort();
+    }
+
+    // The blocks the filters let through, in the order the headers say.
+    function shownBlocks(view) {
+        var source = view.querySelector('#ampBlockFilterSource').value;
+        var kind = view.querySelector('#ampBlockFilterKind').value;
+        var reason = view.querySelector('#ampBlockFilterReason').value;
+        var text = view.querySelector('#ampBlockFilterText').value.trim().toLowerCase();
+        var column = blockColumns.filter(function (c) { return c[0] === blockSort.key; })[0];
+
+        return blockList.filter(function (b) {
+            return (!source || b.Source === source)
+                && (!kind || (b.Kind || 'all') === kind)
+                && (!reason || blockReason(b) === reason)
+                && (!text || [b.ItemName, b.ItemKey, b.Message].join(' ').toLowerCase().indexOf(text) >= 0);
+        }).sort(function (a, b) {
+            var x = column[2](a), y = column[2](b);
+            return (x < y ? -1 : x > y ? 1 : 0) * blockSort.dir;
+        });
+    }
+
     function renderBlocks(view, blocks) {
+        blockList = blocks;
+        fillFilter(view.querySelector('#ampBlockFilterSource'), 'Source', distinct(blocks, function (b) { return b.Source; }));
+        fillFilter(view.querySelector('#ampBlockFilterKind'), 'Kind', distinct(blocks, function (b) { return b.Kind || 'all'; }));
+        fillFilter(view.querySelector('#ampBlockFilterReason'), 'Why', distinct(blocks, blockReason));
+        renderBlockRows(view);
+
+        view.querySelector('#ampBlockSource').innerHTML = sourceIds.map(function (s) {
+            return '<option value="' + s + '">' + s + '</option>';
+        }).join('');
+    }
+
+    function renderBlockRows(view) {
+        var blocks = shownBlocks(view);
+        view.querySelector('#ampBlockCount').textContent = blockList.length ? blocks.length + ' of ' + blockList.length + ' shown' : '';
+        var liftable = blocks.filter(function (b) { return !b.Pinned; }).length;
+        var liftButton = view.querySelector('#ampLiftShown');
+        liftButton.disabled = !liftable;
+        liftButton.querySelector('span').textContent = 'Lift all shown (' + liftable + ')';
+        liftButton.title = liftable < blocks.length ? 'Pinned blocks are left alone; lift those one at a time.' : '';
+
         view.querySelector('#ampBlocks').innerHTML = blocks.length
-            ? '<tr><th>Source</th><th>Item</th><th>Kind</th><th>Why</th><th>Seen</th><th></th></tr>' + blocks.map(function (b) {
+            ? '<tr>' + blockColumns.map(function (c) {
+                var arrow = c[0] === blockSort.key ? (blockSort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
+                return '<th data-sort="' + c[0] + '" style="cursor:pointer" title="Sort">' + c[1] + arrow + '</th>';
+            }).join('') + '<th></th></tr>' + blocks.map(function (b) {
                 var scope = enumName(b.Scope, ['Source', 'Item']);
                 return '<tr><td>' + esc(b.Source) + '</td><td>' + (scope === 'Source' ? badge('whole source', 'amp-bad') : esc(b.ItemName || b.ItemKey)) + '</td><td>' + esc(b.Kind || 'all') + '</td>'
                     + '<td>' + esc(blockText(b)) + '<div class="amp-small">' + esc(b.Message) + (b.HttpStatus ? ' (HTTP ' + b.HttpStatus + ')' : '') + '</div></td>'
@@ -705,11 +776,20 @@ function aniMetaPlusPage(host) {
                     + '<td class="amp-actions"><button type="button" is="emby-button" class="raised" data-lift="' + esc(b.Id) + '">Lift</button>'
                     + (b.Pinned ? badge('pinned') : '<button type="button" is="emby-button" class="raised" data-pin="' + esc(b.Id) + '">Pin</button>') + '</td></tr>';
             }).join('')
-            : '<tr><td class="amp-muted">No blocks.</td></tr>';
+            : '<tr><td class="amp-muted">' + (blockList.length ? 'No blocks match the filters.' : 'No blocks.') + '</td></tr>';
+    }
 
-        view.querySelector('#ampBlockSource').innerHTML = sourceIds.map(function (s) {
-            return '<option value="' + s + '">' + s + '</option>';
-        }).join('');
+    function liftShown(view) {
+        var blocks = shownBlocks(view);
+        var ids = blocks.filter(function (b) { return !b.Pinned; }).map(function (b) { return b.Id; });
+        var pinned = blocks.length - ids.length;
+
+        if (!ids.length || !window.confirm('Lift the ' + ids.length + ' blocks shown?' + (pinned ? ' Pinned blocks stay (' + pinned + ').' : '')
+            + " Their items are not refreshed now; each is asked again at its next refresh, AniDB included where a block was AniDB's.")) {
+            return;
+        }
+
+        post('Blocks/LiftMany', null, { Ids: ids }).then(function (r) { notify('Lifted ' + (r && r.Lifted !== undefined ? r.Lifted : ids.length)); loadAll(view); }, fail);
     }
 
     // General
@@ -1130,6 +1210,19 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampSearchAllUnmatched').addEventListener('click', function () { searchAllUnmatched(view); });
         view.querySelector('#ampShowIgnored').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampShowExpired').addEventListener('change', function () { loadAll(view); });
+        ['#ampBlockFilterSource', '#ampBlockFilterKind', '#ampBlockFilterReason'].forEach(function (id) {
+            view.querySelector(id).addEventListener('change', function () { renderBlockRows(view); });
+        });
+        view.querySelector('#ampBlockFilterText').addEventListener('input', function () { renderBlockRows(view); });
+        view.querySelector('#ampLiftShown').addEventListener('click', function () { liftShown(view); });
+        view.querySelector('#ampBlocks').addEventListener('click', function (e) {
+            var header = e.target.closest('[data-sort]');
+            if (header) {
+                var key = header.getAttribute('data-sort');
+                blockSort = { key: key, dir: blockSort.key === key ? -blockSort.dir : (key === 'seen' ? -1 : 1) };
+                renderBlockRows(view);
+            }
+        });
         view.querySelector('#ampRefreshStatus').addEventListener('click', function () { loadAll(view); });
 
         view.querySelector('#ampProvisional').addEventListener('click', function (e) {

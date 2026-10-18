@@ -110,6 +110,14 @@ public static class QueueProcessor
         // again proposes it.
         var upgraded = 0;
         var configuration = Plugin.Instance.Configuration;
+        // Stand-ins and reviews the owner's current source order no longer backs are settled first,
+        // so none of them is refreshed, or sent to AniDB, for a value ranked lower than what it has.
+        var (settled, dropped) = SeriesMerge.SettleOutdated(db, configuration);
+        if (settled + dropped > 0)
+        {
+            logger.LogInformation("AniMeta+ settled {Settled} stand-in values and dropped {Dropped} reviews that the current source order no longer backs", settled, dropped);
+        }
+
         foreach (var provenance in db.Provenance.Find(p => p.Provisional).ToList())
         {
             cancellationToken.ThrowIfCancellationRequested();
