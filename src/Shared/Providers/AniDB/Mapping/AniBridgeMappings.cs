@@ -405,7 +405,8 @@ internal static class AniBridgeMappings
     {
         var (cachedAtUtc, checkedAtUtc, index, maxAgeInDays, _) = _cache.GetStatus(appPaths);
 
-        return (cachedAtUtc, checkedAtUtc, index?.EntryCount ?? 0, maxAgeInDays);
+        // -1 while the copy on disk has not been read since the server started: it is read on first use.
+        return (cachedAtUtc, checkedAtUtc, index?.EntryCount ?? (cachedAtUtc == null ? 0 : -1), maxAgeInDays);
     }
 
     /// <summary>

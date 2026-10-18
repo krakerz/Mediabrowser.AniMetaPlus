@@ -206,6 +206,45 @@ public static class SourceGate
         => _lanes.GetOrAdd(source, _ => new Lane()).Refusal(SourceDefaults.Limits(Plugin.Instance.Configuration.GetSource(source))) != null;
 
     /// <summary>
+    /// How many more requests a source's limits let through right now: what is left of the
+    /// current burst, the hour and the day, whichever is least. A scan or queue run sends no
+    /// more than this, so it never queues refreshes that would only be turned away.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <returns>The number left; <see cref="int.MaxValue"/> where the source has no limits.</returns>
+    public static int RequestsLeft(string source)
+    {
+        var limits = SourceDefaults.Limits(Plugin.Instance.Configuration.GetSource(source));
+        var lane = _lanes.GetOrAdd(source, _ => new Lane());
+
+        if (lane.Refusal(limits) != null)
+        {
+            return 0;
+        }
+
+        var (hour, day) = lane.Totals();
+        var (burstSent, _) = lane.BurstState(limits);
+        var left = int.MaxValue;
+
+        if (limits.BurstSize > 0)
+        {
+            left = Math.Min(left, limits.BurstSize - burstSent);
+        }
+
+        if (limits.PerHour > 0)
+        {
+            left = Math.Min(left, limits.PerHour - hour);
+        }
+
+        if (limits.PerDay > 0)
+        {
+            left = Math.Min(left, limits.PerDay - day);
+        }
+
+        return Math.Max(left, 0);
+    }
+
+    /// <summary>
     /// How a source stands against its bursts: how many the current burst has sent, and when
     /// its rest ends, if it is resting.
     /// </summary>

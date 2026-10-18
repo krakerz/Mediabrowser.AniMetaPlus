@@ -73,7 +73,8 @@ public static class LibraryScan
             .OrderByDescending(i => i.AddedUtc)
             .ToList();
 
-        var aniDbLimit = Plugin.Instance.Configuration.AniDbShowsPerRun;
+        // As many as AniDB's burst, hour and day still allow; the rest wait for a later run.
+        var aniDbLimit = SourceGate.RequestsLeft(SourceIds.AniDb);
         var identified = 0;
         var askingAniDb = 0;
         var deferred = 0;
