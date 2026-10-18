@@ -28,6 +28,7 @@
     .amp-chip-add { padding: .25em .6em; border: 1px dashed rgba(128,128,128,.6); border-radius: 1.2em; opacity: .8; }
     .amp-chip-add:hover { opacity: 1; border-color: #52b54b; }
     .amp-order-reset { font-size: .85em; opacity: .75; margin-left: auto; }
+    .amp-hint { text-decoration: underline dotted rgba(128,128,128,.8); text-underline-offset: .2em; cursor: help; }
     .amp-badge { display: inline-block; padding: .1em .5em; border-radius: 1em; font-size: .85em; background: rgba(128,128,128,.25); }
     .amp-ok { background: rgba(82,181,75,.3); }
     .amp-bad { background: rgba(204,51,51,.35); }
@@ -261,8 +262,6 @@
     <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampTagBlacklist" type="text" label="Tags never imported (comma separated):" /></div>
-    <div class="inputContainer"><input is="emby-input" id="ampRequestInterval" type="number" min="2500" step="100" label="AniDB request interval (ms, at least 2500; the larger of this and AniDB's gap on the Sources tab is used):" /></div>
-    <div class="inputContainer"><input is="emby-input" id="ampAniDbPerRun" type="number" min="1" label="Shows sent to AniDB per scan or queue run (hourly; cached and local ones do not count):" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxCacheAge" type="number" min="3" label="Days scans and tasks reuse a fetched answer (at least 3, 7 recommended; a refresh by hand asks again sooner):" /></div>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImagesFromCache" /><span>Look up AniDB images from the cached answer when there is one (no AniDB API request; uncached anime are still asked)</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampImportGenres" /><span>Import genres</span></label>

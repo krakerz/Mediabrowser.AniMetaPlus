@@ -86,6 +86,10 @@ function aniMetaPlusPage(host) {
 
     // Status
 
+    function entries(count) {
+        return count < 0 ? 'read on first use since the server started' : (count || 0) + ' entries';
+    }
+
     function versionParts(version) {
         return String(version || '').split('.').map(function (part) { return parseInt(part, 10) || 0; });
     }
@@ -152,14 +156,22 @@ function aniMetaPlusPage(host) {
 
         var rows = '<tr><th>Source</th><th>State</th><th>Mode</th><th>Last hour / day</th><th>Last test</th></tr>';
         overview.Sources.forEach(function (source) {
+            var resting = source.RestUntilUtc && !source.Block;
             var state = !source.Enabled ? badge('Off')
                 : source.Block ? badge('Blocked: ' + blockText(source.Block), 'amp-bad')
                 : !source.Available ? badge(source.Unavailable || 'Unavailable', 'amp-warn')
+                : resting ? badge('Resting until ' + when(source.RestUntilUtc), 'amp-warn')
                 : badge('Ready', 'amp-ok');
             var test = source.LastTest ? esc(source.LastTest.Result) + ' <span class="amp-small">' + when(source.LastTest.AtUtc) + '</span>' : '';
-            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>' + source.LastHour + ' / ' + source.LastDay + (source.CapPerHour || source.CapPerDay ? ' <span class="amp-muted">of ' + (source.CapPerHour || 'any') + ' / ' + (source.CapPerDay || 'any') + '</span>' : '')
-                + (source.RestUntilUtc ? '<br/>' + badge('Resting until ' + when(source.RestUntilUtc) + ' (' + source.BurstSent + ' of ' + source.BurstSize + ' sent)', 'amp-warn')
-                    : source.BurstSize ? '<br/><span class="amp-muted amp-small">Burst ' + source.BurstSent + ' of ' + source.BurstSize + '</span>' : '') + '</td><td>' + test + '</td></tr>';
+
+            // One line per source: the caps follow the counts, and the burst shows on hover.
+            var caps = source.CapPerHour && source.CapPerDay ? ' of ' + source.CapPerHour + ' / ' + source.CapPerDay
+                : source.CapPerDay ? ' of ' + source.CapPerDay
+                : source.CapPerHour ? ' of ' + source.CapPerHour + ' an hour' : '';
+            var burst = source.BurstSize ? 'Burst ' + source.BurstSent + ' of ' + source.BurstSize + (resting ? ', resting until ' + when(source.RestUntilUtc) : '') : '';
+            var counts = source.LastHour + ' / ' + source.LastDay + (caps ? ' <span class="amp-muted">' + esc(caps) + '</span>' : '');
+            rows += '<tr><td>' + esc(source.Id) + '</td><td>' + state + '</td><td>' + esc(modeNames[enumName(source.Mode, modes)] || source.Mode) + '</td><td>'
+                + (burst ? '<span class="amp-hint" title="' + esc(burst) + '">' + counts + '</span>' : counts) + '</td><td>' + test + '</td></tr>';
         });
         view.querySelector('#ampSourceStatus').innerHTML = rows;
 
@@ -171,8 +183,8 @@ function aniMetaPlusPage(host) {
             + (a.OverridesError ? badge(a.OverridesError, 'amp-bad')
                 : a.OverridesWrittenAtUtc ? (a.OverridesShowCount || 0) + ' shows, ' + (a.OverridesMovieCount || 0) + ' movies, written ' + when(a.OverridesWrittenAtUtc)
                 : 'not present')
-            + '<br/>AniBridge: ' + (a.AniBridgeEntryCount || 0) + ' entries' + (a.AniBridgeCachedAtUtc ? ', cached ' + when(a.AniBridgeCachedAtUtc) : '')
-            + '. Anime-Lists: ' + (a.AnimeListEntryCount || 0) + ' entries' + (a.AnimeListCachedAtUtc ? ', cached ' + when(a.AnimeListCachedAtUtc) : '') + '.';
+            + '<br/>AniBridge: ' + entries(a.AniBridgeEntryCount) + (a.AniBridgeCachedAtUtc ? ', cached ' + when(a.AniBridgeCachedAtUtc) : '')
+            + '. Anime-Lists: ' + entries(a.AnimeListEntryCount) + (a.AnimeListCachedAtUtc ? ', cached ' + when(a.AnimeListCachedAtUtc) : '') + '.';
 
         view.querySelector('#ampCountWaiting').textContent = '(' + waiting.length + ')';
         view.querySelector('#ampCountProvisional').textContent = '(' + provisional.length + ')';
@@ -735,8 +747,6 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampMaxGenres').value = config.MaxGenres;
         view.querySelector('#ampMinTagWeight').value = config.MinimumTagWeight;
         view.querySelector('#ampTagBlacklist').value = config.TagBlacklist || '';
-        view.querySelector('#ampRequestInterval').value = config.RequestIntervalMs;
-        view.querySelector('#ampAniDbPerRun').value = config.AniDbShowsPerRun || 20;
         view.querySelector('#ampMaxCacheAge').value = config.MaxCacheAge;
         view.querySelector('#ampImagesFromCache').checked = config.AniDbImagesFromCache !== false;
         view.querySelector('#ampImportGenres').checked = !!config.ImportGenres;
@@ -1218,8 +1228,6 @@ function aniMetaPlusPage(host) {
                 config.MaxGenres = parseInt(view.querySelector('#ampMaxGenres').value, 10) || 0;
                 config.MinimumTagWeight = parseInt(view.querySelector('#ampMinTagWeight').value, 10) || 0;
                 config.TagBlacklist = view.querySelector('#ampTagBlacklist').value;
-                config.RequestIntervalMs = Math.max(2500, parseInt(view.querySelector('#ampRequestInterval').value, 10) || 2500);
-                config.AniDbShowsPerRun = Math.max(1, parseInt(view.querySelector('#ampAniDbPerRun').value, 10) || 20);
                 config.MaxCacheAge = Math.max(3, parseInt(view.querySelector('#ampMaxCacheAge').value, 10) || 7);
                 config.AniDbImagesFromCache = view.querySelector('#ampImagesFromCache').checked;
                 config.ImportGenres = view.querySelector('#ampImportGenres').checked;

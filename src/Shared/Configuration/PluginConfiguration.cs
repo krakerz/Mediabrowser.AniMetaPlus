@@ -54,7 +54,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// The shortest cache window AniDB metadata may be reused for. AniDB asks clients not to
     /// fetch the same anime more than once a day; three days keeps a library's scans well
-    /// clear of that, and scans stay paced by <see cref="AniDbShowsPerRun"/> besides.
+    /// clear of that, and AniDB's limits on the Sources tab pace scans besides.
     /// </summary>
     public const int MinimumCacheAgeDays = 3;
 
@@ -234,9 +234,9 @@ public partial class PluginConfiguration : BasePluginConfiguration
     public bool AniDbImagesFromCache { get; set; }
 
     /// <summary>
-    /// Gets or sets the shortest gap, in milliseconds, between two AniDB requests. Clamped to
-    /// at least <see cref="MinimumRequestIntervalMs"/>. AniDB counts requests per IP, so raise
-    /// this to leave room for another client on the same address.
+    /// Gets or sets the AniDB request gap the General tab used to set, in milliseconds. Read once
+    /// at startup and moved to AniDB's gap on the Sources tab, which is the only setting now;
+    /// kept so older configuration files still load.
     /// </summary>
     public int RequestIntervalMs
     {
@@ -245,10 +245,9 @@ public partial class PluginConfiguration : BasePluginConfiguration
     }
 
     /// <summary>
-    /// Gets or sets how many shows one run of the scan task, and of the queue task, may send to
-    /// AniDB for a new answer. Shows identified from local data, or whose answer is cached, do
-    /// not count: they cost AniDB nothing. Pacing a large library over many runs is what keeps a
-    /// first scan, or the catch-up after a ban, from earning a ban of its own.
+    /// Gets or sets how many shows one scan or queue run used to send to AniDB. No longer read:
+    /// a run now sends what is left of AniDB's burst, hour and day on the Sources tab. Kept so
+    /// older configuration files still load.
     /// </summary>
     public int AniDbShowsPerRun
     {

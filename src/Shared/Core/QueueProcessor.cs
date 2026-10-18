@@ -54,7 +54,7 @@ public static class QueueProcessor
 
         // Items going back to AniDB once it answers again are paced like the library scan: the
         // catch-up after a ban is exactly the burst that earns the next one.
-        var aniDbBudget = Plugin.Instance.Configuration.AniDbShowsPerRun;
+        var aniDbBudget = SourceGate.RequestsLeft(SourceIds.AniDb);
         var refreshed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         bool Refresh(string path, bool replaceAll, bool toAniDb = false)

@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-10-18
+
+### Changed
+- AniDB's request gap is set only on the Sources tab; a larger gap set on the General tab moves there at startup
+- Each scan or queue run sends AniDB only what is left of its current burst, hour and day, replacing the "Shows sent to AniDB per run" setting
+- The source status keeps each source on one line: caps follow the counts, the burst shows on hover, and a rest shows in the State column
+
+### Fixed
+- Lowering the burst size below what the current burst already sent starts the rest at once
+- The mapping lists show "read on first use" after a restart instead of 0 entries
+
 ## [2.9.0] — 2026-10-18
 
 ### Added

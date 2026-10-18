@@ -110,11 +110,38 @@ public static class PluginCore
                 db.SetState("migrated", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
                 db.Checkpoint();
             }
+
+            MoveRequestIntervalToSources(plugin, logger);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             logger.LogError(ex, "AniMeta+ could not open its database. Blocks, reviews and mappings made by hand are unavailable until it can");
         }
+    }
+
+    // The General tab's AniDB request interval moved to AniDB's gap on the Sources tab (2.10.0).
+    // The larger of the two was always the one used, so the larger is what AniDB's row keeps.
+    private static void MoveRequestIntervalToSources(Plugin plugin, ILogger logger)
+    {
+        var configuration = plugin.Configuration;
+        if (configuration.RequestIntervalMs <= PluginConfiguration.MinimumRequestIntervalMs)
+        {
+            return;
+        }
+
+        var setting = configuration.Sources.FirstOrDefault(s => string.Equals(s.Id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase));
+        if (setting == null)
+        {
+            setting = SourceDefaults.Setting(SourceIds.AniDb);
+            configuration.Sources.Add(setting);
+        }
+
+        var moved = configuration.RequestIntervalMs;
+        setting.RequestIntervalMs = Math.Max(setting.RequestIntervalMs, moved);
+        configuration.RequestIntervalMs = PluginConfiguration.MinimumRequestIntervalMs;
+        plugin.SaveConfiguration();
+
+        logger.LogInformation("AniMeta+ moved the AniDB request interval of {Interval} ms from the General tab to AniDB's gap on the Sources tab, now {Gap} ms", moved, setting.RequestIntervalMs);
     }
 
     private static void OnLifted(BlockRecord block)

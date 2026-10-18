@@ -160,6 +160,12 @@ public sealed class RequestPacer
     // A rest that has run out starts a fresh burst, and so does a quiet spell as long as a rest.
     private void EndRestIfOver(DateTime now, RequestLimits limits)
     {
+        // A burst size lowered below what the burst already sent rests at once, from its last request.
+        if (RestUntilUtc == null && limits.BurstSize > 0 && BurstSent >= limits.BurstSize && LastSentUtc is { } sent)
+        {
+            RestUntilUtc = sent + limits.Rest;
+        }
+
         if (RestUntilUtc is { } until && until <= now)
         {
             RestUntilUtc = null;

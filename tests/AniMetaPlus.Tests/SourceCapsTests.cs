@@ -114,4 +114,20 @@ public class SourceCapsTests
         Assert.Equal(1, pacer.BurstSent);
         Assert.Null(pacer.RestUntilUtc);
     }
+
+    [Fact]
+    public void ALoweredBurstSizeRestsAtOnce()
+    {
+        var pacer = new RequestPacer();
+        var wide = new RequestLimits(0, 0, 20, TimeSpan.FromMinutes(120));
+        pacer.Record(_start, wide);
+        pacer.Record(_start.AddSeconds(5), wide);
+
+        var narrow = wide with { BurstSize = 2 };
+        var refused = pacer.Refusal(_start.AddMinutes(1), narrow);
+
+        Assert.NotNull(refused);
+        Assert.Equal(_start.AddSeconds(5).AddMinutes(120), pacer.RestUntilUtc);
+        Assert.Null(pacer.Refusal(_start.AddSeconds(5).AddMinutes(120), narrow));
+    }
 }
