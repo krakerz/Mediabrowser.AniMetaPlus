@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using AniMetaPlus.Data;
 using AniMetaPlus.Logging;
 using AniMetaPlus.Providers.AniDB.Metadata;
 using AniMetaPlus.Titles;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
@@ -333,5 +335,143 @@ public class AniDbPosterOverrideTask(ILibraryManager libraryManager, IProviderMa
         {
             return null;
         }
+    }
+}
+
+/// <summary>
+/// Brings every anime's original title in line with the searchable-titles setting, straight in
+/// the library: its other titles from the local dump joined in, or taken out again. Sends no
+/// request and refreshes nothing, so it can run daily; a "Replace all metadata" refresh is the
+/// only thing that rewrites original titles in between.
+/// </summary>
+public class AlternativeTitlesTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, PluginLog<AlternativeTitlesTask> logger) : AniMetaTask
+{
+    /// <inheritdoc />
+    public override string Name => "Apply alternative titles to original titles";
+
+    /// <inheritdoc />
+    public override string Key => "AniMetaPlusAlternativeTitles";
+
+    /// <inheritdoc />
+    public override string Description => "Writes each anime's short names, English title and synonyms - from the local titles dump, then cached AniList and MyAnimeList answers - into its original title, which the server's search reads, or takes them out when \"Make alternative titles searchable\" is off. The shown title is left alone. No requests, no refresh.";
+
+    /// <inheritdoc />
+    public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromDays(1))];
+
+    /// <inheritdoc />
+    protected override async Task Run(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem);
+        HostServices.Refresher ??= library;
+        HostServices.Images ??= library;
+
+        var paths = Plugin.Instance.AppPaths;
+        var searchable = Plugin.Instance.Configuration.SearchableAlternativeTitles;
+        var items = library.ListTitledItems();
+        var changed = 0;
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress.Report(100.0 * i / Math.Max(items.Count, 1));
+
+            var item = items[i];
+            var wanted = AlternativeTitles.Wanted(item.OriginalTitle, item.Name, AlternativeTitles.Gather(paths, item.ProviderIds), searchable);
+            if (string.Equals(wanted, item.OriginalTitle, StringComparison.Ordinal) || string.IsNullOrEmpty(wanted))
+            {
+                continue;
+            }
+
+            await library.SaveOriginalTitle(item, wanted, cancellationToken).ConfigureAwait(false);
+            changed++;
+        }
+
+        logger.LogInformation("AniMeta+ alternative titles: {Changed} of {Count} original titles {Action}", changed, items.Count, searchable ? "now carry their alternative titles" : "set back to the plain original title");
+        progress.Report(100);
+    }
+}
+
+
+/// <summary>
+/// Groups anime into one collection per franchise, from the relations in the AniDB answers
+/// already cached. Sends no request, and only ever changes the collections it made itself.
+/// </summary>
+public class FranchiseCollectionsTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, ICollectionManager collectionManager, PluginLog<FranchiseCollectionsTask> logger) : AniMetaTask
+{
+    /// <inheritdoc />
+    public override string Name => "Group anime franchises into collections";
+
+    /// <inheritdoc />
+    public override string Key => "AniMetaPlusFranchiseCollections";
+
+    /// <inheritdoc />
+    public override string Description => "Groups anime that are sequels, prequels, side stories, parent stories, summaries or full stories of each other into one collection per franchise, from the relations in the cached AniDB answers. Reads only cached answers and sends no request. Collections you made yourself are left alone, and a collection you renamed keeps its name. Does nothing unless the franchise collections setting is on.";
+
+    /// <inheritdoc />
+    public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromDays(1))];
+
+    /// <inheritdoc />
+    protected override async Task Run(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.FranchiseCollections)
+        {
+            progress.Report(100);
+            return;
+        }
+
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem, collectionManager);
+        HostServices.Refresher ??= library;
+        HostServices.Images ??= library;
+
+        var paths = Plugin.Instance.AppPaths;
+        var nodes = new Dictionary<string, FranchiseNode>();
+        var itemIds = new Dictionary<string, List<string>>();
+
+        foreach (var (item, animeId) in library.ListAniDbSeriesAndMovies())
+        {
+            var node = new FranchiseNode(item.Name ?? string.Empty, HostLibrary.Premiere(item));
+
+            // Two items with one AniDB id count as one anime, named by the earlier.
+            if (!nodes.TryGetValue(animeId, out var known) || (node.Premiere != null && (known.Premiere == null || node.Premiere < known.Premiere)))
+            {
+                nodes[animeId] = node;
+            }
+
+            if (!itemIds.TryGetValue(animeId, out var ids))
+            {
+                itemIds[animeId] = ids = [];
+            }
+
+            ids.Add(HostLibrary.ItemId(item));
+        }
+
+        // Cached answers only: nothing here can reach AniDB.
+        var franchises = Franchises.Group(nodes, id =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return AniDbSeriesProvider.HasCachedSeriesData(paths, id)
+                ? Franchises.ReadRelations(AniDbSeriesProvider.CachedSeriesDataPath(paths, id))
+                : null;
+        });
+
+        var targets = franchises
+            .Select(f => new FranchiseTarget(f.Key, f.Name, f.AnimeIds.SelectMany(id => itemIds[id]).Distinct().ToList()))
+            .ToList();
+
+        var db = AniMetaDb.Current;
+        var result = await Franchises.Sync(
+            library,
+            targets,
+            db.FranchiseCollections.FindAll().ToList(),
+            record =>
+            {
+                db.FranchiseCollections.DeleteMany(r => r.CollectionId == record.CollectionId);
+                db.FranchiseCollections.Upsert(record);
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        logger.LogInformation("AniMeta+ franchise collections: {Franchises} franchises found, {Created} collections created, {Updated} updated, {Added} items added, {Removed} removed", franchises.Count, result.Created, result.Updated, result.Added, result.Removed);
+        progress.Report(100);
     }
 }

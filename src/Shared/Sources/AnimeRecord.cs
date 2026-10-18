@@ -88,6 +88,9 @@ public sealed class AnimeRecord
     /// <summary>Gets or sets the title in Japanese script.</summary>
     public string? NativeTitle { get; set; }
 
+    /// <summary>Gets or sets the other names the source knows the anime by.</summary>
+    public List<string> Synonyms { get; set; } = [];
+
     /// <summary>Gets or sets the synopsis, as plain text.</summary>
     public string? Overview { get; set; }
 

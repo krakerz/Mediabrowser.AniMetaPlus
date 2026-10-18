@@ -163,6 +163,7 @@ public static class MalClient
         {
             record.EnglishTitle = NullIfEmpty(Str(alternatives, "en"));
             record.NativeTitle = NullIfEmpty(Str(alternatives, "ja"));
+            AddSynonyms(record, alternatives, "synonyms");
         }
 
         foreach (var genre in Array(root, "genres"))
@@ -216,6 +217,7 @@ public static class MalClient
         };
 
         record.Ids[SourceIds.Mal] = malId;
+        AddSynonyms(record, data, "title_synonyms");
 
         if (data.TryGetProperty("aired", out var aired) && aired.ValueKind == JsonValueKind.Object)
         {
@@ -294,6 +296,17 @@ public static class MalClient
         => DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date) ? date : null;
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static void AddSynonyms(AnimeRecord record, JsonElement element, string name)
+    {
+        foreach (var synonym in Array(element, name))
+        {
+            if (synonym.ValueKind == JsonValueKind.String && synonym.GetString() is { Length: > 0 } title)
+            {
+                record.Synonyms.Add(title);
+            }
+        }
+    }
 
     private static IEnumerable<JsonElement> Array(JsonElement element, string name)
         => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array

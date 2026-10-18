@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Sources;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
@@ -27,11 +28,12 @@ namespace AniMetaPlus.Host;
 /// <summary>
 /// Refreshes items through the server's own queue, and lists the anime libraries' items.
 /// </summary>
-public sealed class HostLibrary : IHostRefresher, IHostImages
+public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
 {
     private readonly ILibraryManager _libraryManager;
     private readonly IProviderManager _providerManager;
     private readonly IFileSystem _fileSystem;
+    private readonly ICollectionManager? _collectionManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HostLibrary"/> class.
@@ -39,11 +41,13 @@ public sealed class HostLibrary : IHostRefresher, IHostImages
     /// <param name="libraryManager">The library manager.</param>
     /// <param name="providerManager">The provider manager.</param>
     /// <param name="fileSystem">The file system.</param>
-    public HostLibrary(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem)
+    /// <param name="collectionManager">The collection manager, for the tasks that make collections.</param>
+    public HostLibrary(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, ICollectionManager? collectionManager = null)
     {
         _libraryManager = libraryManager;
         _providerManager = providerManager;
         _fileSystem = fileSystem;
+        _collectionManager = collectionManager;
         HostServices.FileSystem = fileSystem;
     }
 
@@ -157,6 +161,48 @@ public sealed class HostLibrary : IHostRefresher, IHostImages
     }
 
     /// <summary>
+    /// Lists the anime library series and movies that carry an AniDB id.
+    /// </summary>
+    /// <returns>Each item with its AniDB id.</returns>
+    public IReadOnlyList<(BaseItem Item, string AnimeId)> ListAniDbSeriesAndMovies()
+        => ListAniDbItems().Where(x => x.Item is not Season).ToList();
+
+    /// <summary>
+    /// Lists the anime library series and movies that carry an AniDB, AniList or MyAnimeList id:
+    /// the ones whose titles can be found without asking anyone.
+    /// </summary>
+    /// <returns>The items.</returns>
+    public IReadOnlyList<BaseItem> ListTitledItems()
+    {
+        var items = _libraryManager.GetItemList(new InternalItemsQuery
+        {
+#if EMBY
+            IncludeItemTypes = ["Series", "Movie"],
+#else
+            IncludeItemTypes = [BaseItemKind.Series, BaseItemKind.Movie],
+#endif
+            Recursive = true,
+            DtoOptions = new DtoOptions(true)
+        });
+
+        return items
+            .Where(item => new[] { ProviderNames.AniDb, SourceIds.AniList, SourceIds.Mal }.Any(id => !string.IsNullOrEmpty(item.GetProviderId(id))) && IsAnimeLibraryItem(item))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets when an item premiered.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <returns>The date, or <c>null</c> when it has none.</returns>
+    public static DateTime? Premiere(BaseItem item)
+#if EMBY
+        => item.PremiereDate?.UtcDateTime;
+#else
+        => item.PremiereDate;
+#endif
+
+    /// <summary>
     /// Whether an item has a poster.
     /// </summary>
     /// <param name="item">The item.</param>
@@ -244,6 +290,24 @@ public sealed class HostLibrary : IHostRefresher, IHostImages
     }
 
     /// <summary>
+    /// Writes an item's original title straight to the library, without a refresh.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="title">The original title.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    public async Task SaveOriginalTitle(BaseItem item, string? title, CancellationToken cancellationToken)
+    {
+        item.OriginalTitle = title;
+#if EMBY
+        item.UpdateToRepository(ItemUpdateType.MetadataEdit);
+        await Task.CompletedTask.ConfigureAwait(false);
+#else
+        await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+#endif
+    }
+
+    /// <summary>
     /// Replaces an item's poster with the image given, through the server's own image saving.
     /// </summary>
     /// <param name="item">The item.</param>
@@ -284,6 +348,81 @@ public sealed class HostLibrary : IHostRefresher, IHostImages
         }
 
         await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+#endif
+    }
+
+    /// <inheritdoc />
+    public HostCollection? FindCollection(string collectionId)
+    {
+        if (FindItem(collectionId) is not BoxSet box)
+        {
+            return null;
+        }
+
+#if EMBY
+        var members = _libraryManager.GetItemList(new InternalItemsQuery { CollectionIds = [box.InternalId], Recursive = true });
+#else
+        var members = box.GetLinkedChildren();
+#endif
+
+        return new HostCollection(box.Name ?? string.Empty, members.Select(ItemId).ToList());
+    }
+
+    /// <inheritdoc />
+    public async Task<string> CreateCollection(string name, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken)
+    {
+        var manager = _collectionManager ?? throw new InvalidOperationException("No collection manager.");
+
+        // Locked, so that a metadata fetcher does not rename it.
+#if EMBY
+        var box = await manager.CreateCollection(new CollectionCreationOptions { Name = name, ItemIdList = itemIds.Select(id => long.Parse(id, CultureInfo.InvariantCulture)).ToArray(), IsLocked = true }).ConfigureAwait(false);
+        return ItemId(box);
+#else
+        var box = await manager.CreateCollectionAsync(new CollectionCreationOptions { Name = name, ItemIdList = itemIds.ToList(), IsLocked = true }).ConfigureAwait(false);
+        return ItemId(box);
+#endif
+    }
+
+    /// <inheritdoc />
+    public async Task AddToCollection(string collectionId, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken)
+    {
+        var manager = _collectionManager ?? throw new InvalidOperationException("No collection manager.");
+#if EMBY
+        await manager.AddToCollection(long.Parse(collectionId, CultureInfo.InvariantCulture), itemIds.Select(id => long.Parse(id, CultureInfo.InvariantCulture)).ToArray()).ConfigureAwait(false);
+#else
+        await manager.AddToCollectionAsync(Guid.ParseExact(collectionId, "N"), itemIds.Select(id => Guid.ParseExact(id, "N")).ToList()).ConfigureAwait(false);
+#endif
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveFromCollection(string collectionId, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken)
+    {
+        var manager = _collectionManager ?? throw new InvalidOperationException("No collection manager.");
+#if EMBY
+        if (FindItem(collectionId) is BoxSet box)
+        {
+            manager.RemoveFromCollection(box, itemIds.Select(id => long.Parse(id, CultureInfo.InvariantCulture)).ToArray());
+        }
+#else
+        await manager.RemoveFromCollectionAsync(Guid.ParseExact(collectionId, "N"), itemIds.Select(id => Guid.ParseExact(id, "N")).ToList()).ConfigureAwait(false);
+#endif
+    }
+
+    /// <inheritdoc />
+    public async Task RenameCollection(string collectionId, string name, CancellationToken cancellationToken)
+    {
+        var box = FindItem(collectionId);
+        if (box == null)
+        {
+            return;
+        }
+
+        box.Name = name;
+#if EMBY
+        box.UpdateToRepository(ItemUpdateType.MetadataEdit);
+        await Task.CompletedTask.ConfigureAwait(false);
+#else
+        await box.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
 #endif
     }
 

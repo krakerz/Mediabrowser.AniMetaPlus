@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,6 +32,62 @@ public interface IHostImages
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns><c>false</c> when the item no longer exists.</returns>
     Task<bool> RestorePoster(string itemId, string file, string mimeType, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A collection as the server holds it.
+/// </summary>
+/// <param name="Name">The collection's name.</param>
+/// <param name="MemberIds">The server ids of the items in it.</param>
+public sealed record HostCollection(string Name, IReadOnlyCollection<string> MemberIds);
+
+/// <summary>
+/// Makes and changes collections through the server, which the shared code cannot reach itself.
+/// </summary>
+public interface IHostCollections
+{
+    /// <summary>
+    /// Finds a collection.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <returns>The collection, or <c>null</c> when it no longer exists.</returns>
+    HostCollection? FindCollection(string collectionId);
+
+    /// <summary>
+    /// Makes a collection holding the items given.
+    /// </summary>
+    /// <param name="name">The name.</param>
+    /// <param name="itemIds">The server ids of the items.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server's id of the new collection.</returns>
+    Task<string> CreateCollection(string name, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds items to a collection.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <param name="itemIds">The server ids of the items.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    Task AddToCollection(string collectionId, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes items out of a collection, without deleting them.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <param name="itemIds">The server ids of the items.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    Task RemoveFromCollection(string collectionId, IReadOnlyCollection<string> itemIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Renames a collection.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <param name="name">The new name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    Task RenameCollection(string collectionId, string name, CancellationToken cancellationToken);
 }
 
 /// <summary>

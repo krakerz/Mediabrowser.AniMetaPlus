@@ -112,7 +112,7 @@ Layout:
 - **Review**: replacement values waiting for Accept / Keep / Lock
 - **Blocks**: remembered failures, with lift and pin
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
-- **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, plus the other plugin options
+- **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, searchable alternative titles, plus the other plugin options
 - **Import/Export**: mappings, review decisions and pinned blocks (never keys)
 
 ### Source modes
@@ -128,6 +128,8 @@ When a source is blocked, the mode decides what happens to the items it would fi
 - **Refresh AniDB titles dump**: every 12 hours; downloads only when due.
 - **Process AniMeta+ queues**: every 30 minutes.
 - **Identify anime libraries**: hourly; identifies the whole library from local data and sends AniDB only what is left of its current burst and daily cap.
+- **Group anime franchises into collections**: daily; when the option is on, puts sequels, prequels, side stories and summaries in the library into one collection per franchise, read from cached AniDB answers. Collections made by hand are left alone, and nothing is ever deleted.
+- **Apply alternative titles to original titles**: daily; writes each anime's alternative titles from the titles dump and cached AniList/MyAnimeList answers into its original title, or takes them out when the option is off. No requests, no refresh.
 - **Fill missing posters from cached AniDB answers**: manual only; gives anime without a poster AniDB's picture from the cached answer, without asking the AniDB API.
 - **Replace posters with AniDB's from cached answers**: manual only; replaces every anime poster with AniDB's, named by the cached answer, without asking the AniDB API. The previous poster is kept on the Image overrides tab until you acknowledge or revert it. Other images are kept.
 

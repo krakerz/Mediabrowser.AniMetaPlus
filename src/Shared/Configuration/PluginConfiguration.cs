@@ -143,6 +143,21 @@ public partial class PluginConfiguration : BasePluginConfiguration
     public string EpisodeTitlePreference { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets a value indicating whether an anime's other titles - short names such as
+    /// "DanMachi", the English title, synonyms - go into its original title, read from the local
+    /// titles dump. The servers search the name and the original title only, so this is what
+    /// makes them findable. Off by default: the servers show the original title on the item's page.
+    /// </summary>
+    public bool SearchableAlternativeTitles { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the franchise task groups anime into collections,
+    /// one per franchise, from the relations in the cached AniDB answers. Off by default; when
+    /// off the task does nothing and never removes a collection.
+    /// </summary>
+    public bool FranchiseCollections { get; set; }
+
+    /// <summary>
     /// Gets the language AniDB episode titles are taken in, after <see cref="EpisodeTitlePreference"/>
     /// falls back to the show titles' language.
     /// </summary>

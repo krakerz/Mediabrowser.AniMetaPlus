@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Logging;
 using AniMetaPlus.Sources;
+using AniMetaPlus.Titles;
 using AniMetaPlus.Providers.AniDB.Mapping;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities.Movies;
@@ -37,6 +38,14 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
 
     /// <inheritdoc />
     public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
+    {
+        var result = await GetMovieMetadata(info, cancellationToken).ConfigureAwait(false);
+        AlternativeTitles.Apply(result.Item, Plugin.Instance.AppPaths);
+
+        return result;
+    }
+
+    private async Task<MetadataResult<Movie>> GetMovieMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
         RefreshScope.Enter(info);
         var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);

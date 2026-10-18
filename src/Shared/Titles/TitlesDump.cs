@@ -61,6 +61,7 @@ public static class TitlesDump
     private static readonly SemaphoreSlim _refreshGate = new(1, 1);
     private static int _animeCount;
     private static Dictionary<string, string>? _mainTitles;
+    private static Dictionary<string, List<DumpTitle>>? _searchTitles;
 
     /// <summary>
     /// Gets the path of the dump the plugin reads.
@@ -129,6 +130,7 @@ public static class TitlesDump
             File.WriteAllText(StampPath(imported.FullName), Stamp(source));
             _animeCount = count;
             _mainTitles = null;
+            _searchTitles = null;
             AniDbTitleMatcher.Invalidate();
 
             logger.LogInformation("Imported the AniDB titles dump {Path}: {Count} anime", source.FullName, count);
@@ -387,6 +389,75 @@ public static class TitlesDump
     }
 
     /// <summary>
+    /// Gets the romaji and English titles of an anime from the imported dump - main, official,
+    /// short and synonyms - without asking AniDB. Read once and kept, like the main titles.
+    /// </summary>
+    /// <param name="paths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <returns>The titles in the dump's order; empty when it does not have the anime.</returns>
+    public static IReadOnlyList<DumpTitle> SearchTitles(IApplicationPaths paths, string animeId)
+    {
+        var all = _searchTitles;
+
+        if (all == null)
+        {
+            all = new Dictionary<string, List<DumpTitle>>(StringComparer.Ordinal);
+            var path = ImportedPath(paths);
+
+            if (File.Exists(path))
+            {
+                try
+                {
+                    using var reader = XmlReader.Create(path, new XmlReaderSettings { IgnoreComments = true, CheckCharacters = false });
+                    string? aid = null;
+                    var more = reader.Read();
+
+                    while (more)
+                    {
+                        if (reader.NodeType == XmlNodeType.Element)
+                        {
+                            if (reader.Name == "anime")
+                            {
+                                aid = reader.GetAttribute("aid");
+                            }
+                            else if (reader.Name == "title" && aid != null)
+                            {
+                                var language = reader.GetAttribute("xml:lang") ?? string.Empty;
+                                var type = reader.GetAttribute("type") ?? string.Empty;
+                                var text = reader.ReadElementContentAsString();
+                                more = !reader.EOF;
+
+                                // Only the alphabet a search box is typed in.
+                                if (language is "x-jat" or "en" && text.Length > 0)
+                                {
+                                    if (!all.TryGetValue(aid, out var list))
+                                    {
+                                        all[aid] = list = [];
+                                    }
+
+                                    list.Add(new DumpTitle(type, language, text));
+                                }
+
+                                continue;
+                            }
+                        }
+
+                        more = reader.Read();
+                    }
+                }
+                catch (Exception ex) when (ex is XmlException or IOException)
+                {
+                    // An unreadable dump has no titles to give.
+                }
+            }
+
+            _searchTitles = all;
+        }
+
+        return all.TryGetValue(animeId, out var titles) ? titles : [];
+    }
+
+    /// <summary>
     /// Writes the dump at <paramref name="sourcePath"/> out in the layout of AniDB's XML dump.
     /// </summary>
     /// <param name="sourcePath">The dump, as <c>.dat</c> or <c>.xml</c>, gzipped or not.</param>
@@ -623,3 +694,11 @@ public static class TitlesDump
         }
     }
 }
+
+/// <summary>
+/// One title of an anime in the titles dump.
+/// </summary>
+/// <param name="Type">main, official, short, syn or card.</param>
+/// <param name="Language">The language code, such as x-jat or en.</param>
+/// <param name="Title">The title.</param>
+public sealed record DumpTitle(string Type, string Language, string Title);

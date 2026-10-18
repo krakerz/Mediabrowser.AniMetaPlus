@@ -744,6 +744,8 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampTitlePreference').value = enumName(config.TitlePreference, titlePreferences) || 'Localized';
         view.querySelector('#ampEpisodeTitlePreference').value = config.EpisodeTitlePreference || '';
         view.querySelector('#ampSeasonDetails').value = config.SeasonDetails || 'AniDB';
+        view.querySelector('#ampSearchableTitles').checked = !!config.SearchableAlternativeTitles;
+        view.querySelector('#ampFranchiseCollections').checked = !!config.FranchiseCollections;
         view.querySelector('#ampSeasonNames').value = config.SeasonNames || 'Source';
         view.querySelector('#ampMaxGenres').value = config.MaxGenres;
         view.querySelector('#ampMinTagWeight').value = config.MinimumTagWeight;
@@ -1226,6 +1228,8 @@ function aniMetaPlusPage(host) {
                 config.TitlePreference = view.querySelector('#ampTitlePreference').value;
                 config.EpisodeTitlePreference = view.querySelector('#ampEpisodeTitlePreference').value;
                 config.SeasonDetails = view.querySelector('#ampSeasonDetails').value;
+                config.SearchableAlternativeTitles = view.querySelector('#ampSearchableTitles').checked;
+                config.FranchiseCollections = view.querySelector('#ampFranchiseCollections').checked;
                 config.SeasonNames = view.querySelector('#ampSeasonNames').value;
                 config.MaxGenres = parseInt(view.querySelector('#ampMaxGenres').value, 10) || 0;
                 config.MinimumTagWeight = parseInt(view.querySelector('#ampMinTagWeight').value, 10) || 0;
