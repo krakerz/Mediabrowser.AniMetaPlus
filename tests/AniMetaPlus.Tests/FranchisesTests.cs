@@ -262,6 +262,47 @@ public class FranchisesTests
         public List<string> Members { get; } = [];
     }
 
+    [Fact]
+    public async Task AsksForTheNamingMembersArtOnEveryRun()
+    {
+        var host = new FakeCollections();
+
+        var first = await Franchises.Sync(host, [new("1", "Show", ["a", "b"], "a")], [], null, CancellationToken.None);
+        var second = await Franchises.Sync(host, [new("1", "Show", ["a", "b"], "a")], first.Records, null, CancellationToken.None);
+
+        // Replaces the server's collage when new, then only fills what is missing.
+        var collection = Assert.Single(host.Collections.Keys);
+        Assert.Equal([(collection, "a", true), (collection, "a", false)], host.ArtRequests);
+        Assert.Equal(1, first.ArtCopied);
+        Assert.True(Assert.Single(first.Records).ArtSet);
+        Assert.Equal(0, second.ArtCopied);
+    }
+
+    [Fact]
+    public async Task ACollectionFromBeforeArtTakesItOnce()
+    {
+        var host = new FakeCollections();
+        var first = await Franchises.Sync(host, [new("1", "Show", ["a", "b"])], [], null, CancellationToken.None);
+        Assert.False(Assert.Single(first.Records).ArtSet);
+
+        var second = await Franchises.Sync(host, [new("1", "Show", ["a", "b"], "a")], first.Records, null, CancellationToken.None);
+        var third = await Franchises.Sync(host, [new("1", "Show", ["a", "b"], "a")], second.Records, null, CancellationToken.None);
+
+        Assert.Equal([true, false], host.ArtRequests.ConvertAll(r => r.Replace));
+        Assert.True(Assert.Single(third.Records).ArtSet);
+    }
+
+    [Fact]
+    public async Task AsksForNoArtWithoutASource()
+    {
+        var host = new FakeCollections();
+
+        var result = await Franchises.Sync(host, [new("1", "Show", ["a", "b"])], [], null, CancellationToken.None);
+
+        Assert.Empty(host.ArtRequests);
+        Assert.Equal(0, result.ArtCopied);
+    }
+
     private sealed class FakeCollections : IHostCollections
     {
         private int _next;
@@ -300,6 +341,15 @@ public class FranchisesTests
             Collections[collectionId].Name = name;
 
             return Task.CompletedTask;
+        }
+
+        public List<(string Collection, string Source, bool Replace)> ArtRequests { get; } = [];
+
+        public Task<int> CopyArt(string collectionId, string sourceItemId, bool replace, CancellationToken cancellationToken)
+        {
+            ArtRequests.Add((collectionId, sourceItemId, replace));
+
+            return Task.FromResult(replace ? 1 : 0);
         }
     }
 }

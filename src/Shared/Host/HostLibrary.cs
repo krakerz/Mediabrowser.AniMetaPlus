@@ -315,10 +315,13 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     /// <param name="mimeType">Its media type.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-    public async Task SavePoster(BaseItem item, Stream image, string mimeType, CancellationToken cancellationToken)
+    public Task SavePoster(BaseItem item, Stream image, string mimeType, CancellationToken cancellationToken)
+        => SaveImage(item, ImageType.Primary, image, mimeType, cancellationToken);
+
+    private async Task SaveImage(BaseItem item, ImageType type, Stream image, string mimeType, CancellationToken cancellationToken)
     {
 #if EMBY
-        await _providerManager.SaveImage(item, _libraryManager.GetLibraryOptions(item), image, mimeType.AsMemory(), ImageType.Primary, null, [], new DirectoryService(_fileSystem), true, cancellationToken).ConfigureAwait(false);
+        await _providerManager.SaveImage(item, _libraryManager.GetLibraryOptions(item), image, mimeType.AsMemory(), type, null, [], new DirectoryService(_fileSystem), true, cancellationToken).ConfigureAwait(false);
         item.UpdateToRepository(ItemUpdateType.ImageUpdate);
 #else
         if (string.IsNullOrEmpty(item.ContainingFolderPath))
@@ -335,7 +338,7 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
                     await image.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
                 }
 
-                await _providerManager.SaveImage(item, temporary, mimeType, ImageType.Primary, null, false, cancellationToken).ConfigureAwait(false);
+                await _providerManager.SaveImage(item, temporary, mimeType, type, null, false, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -344,12 +347,76 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
         }
         else
         {
-            await _providerManager.SaveImage(item, image, mimeType, ImageType.Primary, null, cancellationToken).ConfigureAwait(false);
+            await _providerManager.SaveImage(item, image, mimeType, type, null, cancellationToken).ConfigureAwait(false);
         }
 
         await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
 #endif
     }
+
+    /// <inheritdoc />
+    public async Task<int> CopyArt(string collectionId, string sourceItemId, bool replace, CancellationToken cancellationToken)
+    {
+        if (FindItem(collectionId) is not BoxSet box || FindItem(sourceItemId) is not { } source)
+        {
+            return 0;
+        }
+
+        var copied = 0;
+        var linked = false;
+
+        // Once given its art, only what the collection lacks: art the owner set later stays.
+        foreach (var type in new[] { ImageType.Primary, ImageType.Backdrop })
+        {
+            if ((!replace && box.HasImage(type, 0)) || source.GetImagePath(type, 0) is not { Length: > 0 } path)
+            {
+                continue;
+            }
+
+            if (Uri.TryCreate(path, UriKind.Absolute, out var link) && (link.Scheme == Uri.UriSchemeHttp || link.Scheme == Uri.UriSchemeHttps))
+            {
+                // A server that does not download artwork keeps the source's link. Saved from it as
+                // a file: a collection holding only a link gets Emby's collage drawn back over it.
+#if EMBY
+                await _providerManager.SaveImage(box, _libraryManager.GetLibraryOptions(box), path, type, null, [], new DirectoryService(_fileSystem), true, cancellationToken).ConfigureAwait(false);
+#else
+                await _providerManager.SaveImage(box, path, type, null, cancellationToken).ConfigureAwait(false);
+#endif
+                linked = true;
+                copied++;
+
+                continue;
+            }
+
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            await using var image = File.OpenRead(path);
+            await SaveImage(box, type, image, MimeTypeOf(path), cancellationToken).ConfigureAwait(false);
+            copied++;
+        }
+
+        if (linked)
+        {
+#if EMBY
+            box.UpdateToRepository(ItemUpdateType.ImageUpdate);
+#else
+            await box.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
+#endif
+        }
+
+        return copied;
+    }
+
+    private static string MimeTypeOf(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        _ => "image/jpeg"
+    };
 
     /// <inheritdoc />
     public HostCollection? FindCollection(string collectionId)

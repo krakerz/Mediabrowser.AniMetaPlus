@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-10-18
+
+### Added
+- Franchise collections take the poster and backdrop of their earliest entry, replacing the collage Emby draws for a new collection; art set by hand later is kept
+
 ## [2.12.0] — 2026-10-18
 
 ### Added

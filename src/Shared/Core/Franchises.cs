@@ -31,7 +31,8 @@ public sealed record Franchise(string Key, string Name, IReadOnlyList<string> An
 /// <param name="Key">The franchise key.</param>
 /// <param name="Name">The collection's name.</param>
 /// <param name="ItemIds">The server ids of the items it should hold.</param>
-public sealed record FranchiseTarget(string Key, string Name, IReadOnlyList<string> ItemIds);
+/// <param name="ArtItemId">The server id of the item whose poster and backdrop the collection takes: the one it is named after.</param>
+public sealed record FranchiseTarget(string Key, string Name, IReadOnlyList<string> ItemIds, string? ArtItemId = null);
 
 /// <summary>
 /// What a franchise sync did.
@@ -52,6 +53,9 @@ public sealed class FranchiseSyncResult
 
     /// <summary>Gets or sets how many items were removed.</summary>
     public int Removed { get; set; }
+
+    /// <summary>Gets or sets how many images were copied onto collections.</summary>
+    public int ArtCopied { get; set; }
 }
 
 /// <summary>
@@ -211,6 +215,9 @@ public static class Franchises
         return result.OrderBy(f => f.Key, IdComparer.Instance).ToList();
     }
 
+    private static Task<int> CopyArt(IHostCollections host, string collectionId, FranchiseTarget target, bool replace, CancellationToken cancellationToken)
+        => string.IsNullOrEmpty(target.ArtItemId) ? Task.FromResult(0) : host.CopyArt(collectionId, target.ArtItemId, replace, cancellationToken);
+
     /// <summary>
     /// Makes the collections match the franchises: makes missing ones, adds and removes the
     /// items it put there itself, and leaves every collection it did not make alone.
@@ -263,7 +270,10 @@ public static class Franchises
                 var id = await host.CreateCollection(target.Name, target.ItemIds, cancellationToken).ConfigureAwait(false);
                 result.Created++;
                 result.Added += target.ItemIds.Count;
-                Keep(new FranchiseCollectionRecord { Id = target.Key, CollectionId = id, Name = target.Name, MemberIds = [.. target.ItemIds] });
+                // Any image a new collection has is the server's own collage, not the owner's.
+                var copiedNew = await CopyArt(host, id, target, true, cancellationToken).ConfigureAwait(false);
+                result.ArtCopied += copiedNew;
+                Keep(new FranchiseCollectionRecord { Id = target.Key, CollectionId = id, Name = target.Name, MemberIds = [.. target.ItemIds], ArtSet = copiedNew > 0 });
                 continue;
             }
 
@@ -296,12 +306,17 @@ public static class Franchises
                 changed = true;
             }
 
+            // Asked every run: the member the art comes from may only now have its poster. A collection
+            // never given its art - one from before art was copied - takes it once over the collage.
+            var copied = await CopyArt(host, record.CollectionId, target, !record.ArtSet, cancellationToken).ConfigureAwait(false);
+            result.ArtCopied += copied;
+
             if (changed)
             {
                 result.Updated++;
             }
 
-            Keep(new FranchiseCollectionRecord { Id = target.Key, CollectionId = record.CollectionId, Name = name, MemberIds = [.. target.ItemIds] });
+            Keep(new FranchiseCollectionRecord { Id = target.Key, CollectionId = record.CollectionId, Name = name, MemberIds = [.. target.ItemIds], ArtSet = record.ArtSet || copied > 0 });
         }
 
         // Franchises that no longer exist keep their record, and their collection.
