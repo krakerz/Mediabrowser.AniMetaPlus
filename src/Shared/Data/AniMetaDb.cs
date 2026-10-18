@@ -132,6 +132,11 @@ public sealed class AniMetaDb : IDisposable
     public ILiteCollection<ImageBackupRecord> ImageBackups => _db.GetCollection<ImageBackupRecord>("imagebackups");
 
     /// <summary>
+    /// Gets the collections the franchise task made.
+    /// </summary>
+    public ILiteCollection<FranchiseCollectionRecord> FranchiseCollections => _db.GetCollection<FranchiseCollectionRecord>("franchisecollections");
+
+    /// <summary>
     /// Gets the named values kept between runs.
     /// </summary>
     public ILiteCollection<StateRecord> State => _db.GetCollection<StateRecord>("state");

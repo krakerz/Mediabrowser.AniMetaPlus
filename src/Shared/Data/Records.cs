@@ -455,3 +455,22 @@ public class ImageBackupRecord
     /// <summary>Gets or sets when the poster was replaced.</summary>
     public DateTime ReplacedUtc { get; set; }
 }
+
+/// <summary>
+/// A collection the franchise task made, remembered so that a rerun updates it rather than
+/// making another, and so that collections the owner made are never touched.
+/// </summary>
+public class FranchiseCollectionRecord
+{
+    /// <summary>Gets or sets the franchise key: the lowest AniDB id in its component.</summary>
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the server's id of the collection.</summary>
+    public string CollectionId { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the name the task last gave the collection.</summary>
+    public string Name { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the server ids of the items the task last put in it.</summary>
+    public List<string> MemberIds { get; set => field = value ?? []; } = [];
+}

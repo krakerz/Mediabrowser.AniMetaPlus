@@ -365,6 +365,37 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <inheritdoc />
     public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
+        var result = await GetSeriesMetadata(info, cancellationToken).ConfigureAwait(false);
+        AlternativeTitles.Apply(result.Item, _appPaths);
+
+        if (result.Item is { } series && series.Status == null && AiringStatus(series.PremiereDate, series.EndDate, DateTime.UtcNow) is { } status)
+        {
+            series.Status = status;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Whether a show is still airing, from its dates: ended once its end date has passed,
+    /// continuing once it has started and has not ended.
+    /// </summary>
+    /// <param name="premiere">The first air date.</param>
+    /// <param name="end">The last air date.</param>
+    /// <param name="now">The time, in UTC.</param>
+    /// <returns>The status, or <c>null</c> when the dates do not say.</returns>
+    internal static SeriesStatus? AiringStatus(DateTimeOffset? premiere, DateTimeOffset? end, DateTime now)
+    {
+        if (end is { } last && last <= now)
+        {
+            return SeriesStatus.Ended;
+        }
+
+        return premiere is { } first && first <= now ? SeriesStatus.Continuing : null;
+    }
+
+    private async Task<MetadataResult<Series>> GetSeriesMetadata(SeriesInfo info, CancellationToken cancellationToken)
+    {
         RefreshScope.Enter(info);
         var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
         var unidentifiedKey = ItemKeys.ForUnidentified("Series", info.Path, info.Name);
@@ -1701,8 +1732,8 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         => (long)(Stopwatch.Frequency * (GetRequestIntervalMs() / 1000d));
 
     /// <summary>
-    /// Gets the gap kept between two AniDB requests. It is set in two places, the General tab
-    /// and AniDB's row on the Sources tab, and the larger one is kept.
+    /// Gets the gap kept between two AniDB requests: AniDB's gap on the Sources tab, or the
+    /// General tab value an older configuration still holds, whichever is larger.
     /// </summary>
     /// <returns>The gap in milliseconds.</returns>
     internal static int GetRequestIntervalMs()
@@ -1758,6 +1789,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                             }
 
                             break;
+
 
                         case "enddate":
                             var endDate = await reader.ReadElementContentAsStringAsync().ConfigureAwait(false);
@@ -2164,15 +2196,17 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <param name="name">The name on the item.</param>
     /// <param name="folderName">The name of the folder holding it.</param>
     /// <returns><c>true</c> where the name is the folder name cut short.</returns>
-    private static bool IsTruncation(string? name, string? folderName)
+    internal static bool IsTruncation(string? name, string? folderName)
     {
-        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(folderName) || name.Any(char.IsLetter))
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(folderName)
+            || folderName.Length <= name.Length
+            || !folderName.StartsWith(name, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return folderName.Length > name.Length
-            && folderName.StartsWith(name, StringComparison.OrdinalIgnoreCase);
+        // Emby names a "Show 2" folder "Show", and the name then finds the first show, not its sequel.
+        return !name.Any(char.IsLetter) || SequelNumberRegex().IsMatch(folderName[name.Length..]);
     }
 
     /// <summary>
@@ -2705,6 +2739,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     [GeneratedRegex("client", RegexOptions.IgnoreCase)]
     private static partial Regex ClientErrorRegex();
+
+    [GeneratedRegex(@"^\s*(?:[0-9]{1,2}|[IVX]{1,4})\s*$", RegexOptions.CultureInvariant)]
+    private static partial Regex SequelNumberRegex();
 
     [GeneratedRegex(@"\(([0-9]{4})\)\s*$", RegexOptions.CultureInvariant)]
     private static partial Regex TrailingYearRegex();

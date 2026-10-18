@@ -4,6 +4,19 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-10-18
+
+### Added
+- Option to make alternative titles searchable: short names such as "DanMachi", the English title and synonyms go into the original title, which Emby and Jellyfin search, while the shown title stays as it is
+- Alternative titles come from the local titles dump, then from cached AniList and MyAnimeList answers, so shows without an AniDB entry get them too
+- Daily task "Apply alternative titles to original titles" that writes them into existing shows, or takes them out when the option is off, without refreshing or sending any request
+- AniList and MyAnimeList synonyms are kept with their cached answers
+- Series get a Continuing or Ended status from their air dates
+- Option and daily task to group franchises into collections: sequels, prequels, side stories and summaries in the library, from cached AniDB answers; collections made by hand are left alone
+
+### Fixed
+- A "Show 2" folder that Emby names "Show" is identified as the sequel, not the first show
+
 ## [2.11.0] — 2026-10-18
 
 ### Added

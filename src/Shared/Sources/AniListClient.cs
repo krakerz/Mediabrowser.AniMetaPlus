@@ -22,6 +22,7 @@ public static partial class AniListClient
     private const string MediaFields = """
         id idMal isAdult episodes format
         title { romaji english native }
+        synonyms
         description(asHtml: false)
         startDate { year month day }
         endDate { year month day }
@@ -207,6 +208,14 @@ public static partial class AniListClient
             record.RomajiTitle = Str(title, "romaji");
             record.EnglishTitle = Str(title, "english");
             record.NativeTitle = Str(title, "native");
+        }
+
+        foreach (var synonym in Array(media, "synonyms"))
+        {
+            if (synonym.ValueKind == JsonValueKind.String && synonym.GetString() is { Length: > 0 } name)
+            {
+                record.Synonyms.Add(name);
+            }
         }
 
         record.Overview = CleanDescription(Str(media, "description"));
