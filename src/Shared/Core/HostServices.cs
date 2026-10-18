@@ -88,6 +88,17 @@ public interface IHostCollections
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     Task RenameCollection(string collectionId, string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Copies an item's poster and first backdrop onto a collection, from the files the server
+    /// already holds.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <param name="sourceItemId">The server's id of the item whose art is copied.</param>
+    /// <param name="replace">Whether to replace images the collection has - the collage Emby makes for a new one - rather than only fill missing ones.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>How many images were copied.</returns>
+    Task<int> CopyArt(string collectionId, string sourceItemId, bool replace, CancellationToken cancellationToken) => Task.FromResult(0);
 }
 
 /// <summary>

@@ -456,7 +456,7 @@ public class FranchiseCollectionsTask(ILibraryManager libraryManager, IProviderM
         });
 
         var targets = franchises
-            .Select(f => new FranchiseTarget(f.Key, f.Name, f.AnimeIds.SelectMany(id => itemIds[id]).Distinct().ToList()))
+            .Select(f => new FranchiseTarget(f.Key, f.Name, f.AnimeIds.SelectMany(id => itemIds[id]).Distinct().ToList(), itemIds[EarliestOf(f.AnimeIds, nodes)][0]))
             .ToList();
 
         var db = AniMetaDb.Current;
@@ -471,7 +471,14 @@ public class FranchiseCollectionsTask(ILibraryManager libraryManager, IProviderM
             },
             cancellationToken).ConfigureAwait(false);
 
-        logger.LogInformation("AniMeta+ franchise collections: {Franchises} franchises found, {Created} collections created, {Updated} updated, {Added} items added, {Removed} removed", franchises.Count, result.Created, result.Updated, result.Added, result.Removed);
+        logger.LogInformation("AniMeta+ franchise collections: {Franchises} franchises found, {Created} collections created, {Updated} updated, {Added} items added, {Removed} removed, {Art} images copied", franchises.Count, result.Created, result.Updated, result.Added, result.Removed, result.ArtCopied);
         progress.Report(100);
     }
+
+    // The member that premiered first, which names the collection and lends it its art.
+    private static string EarliestOf(IReadOnlyList<string> animeIds, IReadOnlyDictionary<string, FranchiseNode> nodes)
+        => animeIds
+            .OrderBy(id => nodes.TryGetValue(id, out var node) && node.Premiere is { } premiere ? premiere : DateTime.MaxValue)
+            .ThenBy(id => long.TryParse(id, out var number) ? number : long.MaxValue)
+            .First();
 }

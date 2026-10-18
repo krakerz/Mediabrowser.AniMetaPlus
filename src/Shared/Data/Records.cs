@@ -473,4 +473,7 @@ public class FranchiseCollectionRecord
 
     /// <summary>Gets or sets the server ids of the items the task last put in it.</summary>
     public List<string> MemberIds { get; set => field = value ?? []; } = [];
+
+    /// <summary>Gets or sets a value indicating whether the collection was given its art, after which only missing images are filled.</summary>
+    public bool ArtSet { get; set; }
 }
