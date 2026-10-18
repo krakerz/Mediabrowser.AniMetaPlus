@@ -39,6 +39,29 @@ public enum SeasonDetailsMode
     /// <summary>
     /// Nothing: the season keeps the server's own name and has no details or images.
     /// </summary>
+    Plain,
+
+    /// <summary>
+    /// From the first source in the overview order that has an overview for the season, each
+    /// asked per season: its own AniDB entry, AniList or MyAnimeList for that entry, or the
+    /// server's TheTVDB and TheMovieDb season providers.
+    /// </summary>
+    Order
+}
+
+/// <summary>
+/// Where a season's name comes from.
+/// </summary>
+public enum SeasonNamesMode
+{
+    /// <summary>
+    /// From the source the season's details came from, when it has a name of its own.
+    /// </summary>
+    Source,
+
+    /// <summary>
+    /// Always "Season N" or "Specials", whatever the sources call the season.
+    /// </summary>
     Plain
 }
 
@@ -197,8 +220,8 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets where a season's details come from: <c>AniDB</c> (the entry the season
     /// resolves to), <c>Delegated</c> (the server's TheTVDB and TheMovieDb season providers) or
-    /// <c>Plain</c> (nothing, the season keeps the server's own name). Anything else is
-    /// <c>AniDB</c>.
+    /// <c>Plain</c> (nothing, the season keeps the server's own name) or <c>Order</c> (the first
+    /// source in the overview order that has one for the season). Anything else is <c>AniDB</c>.
     /// </summary>
     public string SeasonDetails { get; set; } = "AniDB";
 
@@ -208,6 +231,20 @@ public partial class PluginConfiguration : BasePluginConfiguration
     [System.Xml.Serialization.XmlIgnore]
     public SeasonDetailsMode SeasonDetailsMode
         => Enum.TryParse<SeasonDetailsMode>(SeasonDetails?.Trim(), true, out var mode) && Enum.IsDefined(mode) ? mode : SeasonDetailsMode.AniDb;
+
+    /// <summary>
+    /// Gets or sets where a season's name comes from: <c>Source</c> (the source its details came
+    /// from, when it has a name for the season) or <c>Plain</c> ("Season N" or "Specials",
+    /// whatever the details mode). Anything else is <c>Source</c>.
+    /// </summary>
+    public string SeasonNames { get; set; } = "Source";
+
+    /// <summary>
+    /// Gets <see cref="SeasonNames"/> as a <see cref="SeasonNamesMode"/>.
+    /// </summary>
+    [System.Xml.Serialization.XmlIgnore]
+    public SeasonNamesMode SeasonNamesMode
+        => Enum.TryParse<SeasonNamesMode>(SeasonNames?.Trim(), true, out var mode) && Enum.IsDefined(mode) ? mode : SeasonNamesMode.Source;
 
     /// <summary>
     /// Gets or sets a value indicating whether the AniBridge mappings are consulted before the

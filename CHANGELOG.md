@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-10-18
+
+### Added
+- Season details can come from each season's own entry in the Overview and Poster source order, so MyAnimeList or AniList give every season its own synopsis
+- Season names setting: from the source the details came from, or always plain "Season 1", "Season 2", "Specials"
+
 ## [2.10.0] — 2026-10-18
 
 ### Changed

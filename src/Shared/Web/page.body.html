@@ -252,12 +252,20 @@
         <div class="fieldDescription">Applies to episodes from every source. Romaji titles come only from AniDB; TheTVDB and TheMovieDb episodes keep the library's language then.</div>
     </div>
     <div class="selectContainer">
-        <select is="emby-select" id="ampSeasonDetails" label="Season details:">
+        <select is="emby-select" id="ampSeasonDetails" label="Season details (overview, dates, poster):">
             <option value="AniDB">From the AniDB entry each season maps to</option>
+            <option value="Order">From each season's own entry, in the Overview and Poster source order</option>
             <option value="Delegated">From TheTVDB / TheMovieDb (in the Episodes source order)</option>
-            <option value="Plain">None: plain "Season 1", "Season 2", nothing fetched</option>
+            <option value="Plain">None, nothing fetched</option>
         </select>
-        <div class="fieldDescription">Name, overview, dates and poster of each season. Episodes still map to AniDB either way. A season already renamed changes only on a "Replace all metadata" refresh.</div>
+        <div class="fieldDescription">MyAnimeList and AniList keep each season as its own entry, so the source order gives every season its own synopsis. Episodes still map to AniDB either way.</div>
+    </div>
+    <div class="selectContainer">
+        <select is="emby-select" id="ampSeasonNames" label="Season names:">
+            <option value="Source">From the source the details came from</option>
+            <option value="Plain">Plain "Season 1", "Season 2", "Specials"</option>
+        </select>
+        <div class="fieldDescription">Plain names stay the same whatever the details come from. A season already renamed changes only on a "Replace all metadata" refresh.</div>
     </div>
     <div class="inputContainer"><input is="emby-input" id="ampMaxGenres" type="number" min="0" label="Most genres per show:" /></div>
     <div class="inputContainer"><input is="emby-input" id="ampMinTagWeight" type="number" min="0" label="Lowest AniDB tag weight kept:" /></div>
