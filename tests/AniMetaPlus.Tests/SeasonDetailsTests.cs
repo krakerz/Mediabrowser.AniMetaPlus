@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Providers.AniDB.Metadata;
+using AniMetaPlus.Sources;
 using MediaBrowser.Controller.Entities.TV;
 using Xunit;
 
@@ -19,6 +22,8 @@ public class SeasonDetailsTests
     [InlineData("AniDB", SeasonDetailsMode.AniDb)]
     [InlineData("Delegated", SeasonDetailsMode.Delegated)]
     [InlineData("Plain", SeasonDetailsMode.Plain)]
+    [InlineData("Order", SeasonDetailsMode.Order)]
+    [InlineData("order", SeasonDetailsMode.Order)]
     [InlineData("delegated", SeasonDetailsMode.Delegated)]
     [InlineData(" PLAIN ", SeasonDetailsMode.Plain)]
     [InlineData("", SeasonDetailsMode.AniDb)]
@@ -90,4 +95,137 @@ public class SeasonDetailsTests
     [InlineData(null, "Unnumbered", "Unnumbered")]
     public void PlainNamesIgnoreEarlierNames(int? number, string? current, string? expected)
         => Assert.Equal(expected, AniMetaPlus.Providers.AniDB.Metadata.AniDbSeasonProvider.PlainName(number, current));
+
+    [Fact]
+    public void NamesDefaultToTheSource()
+    {
+        Assert.Equal("Source", new PluginConfiguration().SeasonNames);
+        Assert.Equal(SeasonNamesMode.Source, new PluginConfiguration().SeasonNamesMode);
+    }
+
+    [Theory]
+    [InlineData("Source", SeasonNamesMode.Source)]
+    [InlineData("Plain", SeasonNamesMode.Plain)]
+    [InlineData(" plain ", SeasonNamesMode.Plain)]
+    [InlineData("SOURCE", SeasonNamesMode.Source)]
+    [InlineData("", SeasonNamesMode.Source)]
+    [InlineData(null, SeasonNamesMode.Source)]
+    [InlineData("Klingon", SeasonNamesMode.Source)]
+    [InlineData("9", SeasonNamesMode.Source)]
+    public void ParsesTheNamesMode(string? value, SeasonNamesMode expected)
+        => Assert.Equal(expected, new PluginConfiguration { SeasonNames = value! }.SeasonNamesMode);
+
+    [Theory]
+    [InlineData(SeasonNamesMode.Source, 2, "Season 2", "The Final Arc", "The Final Arc")]
+    [InlineData(SeasonNamesMode.Source, 2, "Season 2", null, "Season 2")]
+    [InlineData(SeasonNamesMode.Source, 2, "Old name", " ", "Season 2")]
+    [InlineData(SeasonNamesMode.Source, 0, "Extras", null, "Specials")]
+    [InlineData(SeasonNamesMode.Plain, 2, "Season 2", "The Final Arc", "Season 2")]
+    [InlineData(SeasonNamesMode.Plain, 0, "Extras", "Bonus", "Specials")]
+    public void NameFollowsTheNamesSetting(SeasonNamesMode names, int number, string? serverName, string? sourceName, string expected)
+        => Assert.Equal(expected, AniDbSeasonProvider.ChooseName(names, number, serverName, sourceName));
+
+    [Theory]
+    [InlineData("200", "100", "Second Season", "Second Season")]
+    [InlineData("100", "100", "Show", null)]
+    [InlineData("200", "100", null, null)]
+    [InlineData("200", "100", " ", null)]
+    public void EntryTitleNamesOnlyALaterSeason(string seasonId, string seriesId, string? title, string? expected)
+        => Assert.Equal(expected, AniDbSeasonProvider.EntryName(seasonId, seriesId, title));
+
+    [Fact]
+    public void DelegatedNameIsOneOfItsOwn()
+    {
+        Assert.Equal("The Final Arc", AniDbSeasonProvider.DelegatedName(new Season { Name = "The Final Arc" }, "Season 2"));
+        Assert.Null(AniDbSeasonProvider.DelegatedName(new Season { Name = "season 2" }, "Season 2"));
+        Assert.Null(AniDbSeasonProvider.DelegatedName(new Season(), "Season 2"));
+    }
+
+    [Theory]
+    [InlineData(SourceIds.AniDb, true, true, true)]
+    [InlineData(SourceIds.AniList, true, true, true)]
+    [InlineData(SourceIds.Mal, true, true, true)]
+    [InlineData(SourceIds.Tvdb, true, true, true)]
+    [InlineData(SourceIds.AniDb, true, false, false)]
+    [InlineData(SourceIds.AniList, true, false, false)]
+    [InlineData(SourceIds.Mal, true, false, false)]
+    [InlineData(SourceIds.Tvdb, true, false, true)]
+    [InlineData(SourceIds.Tmdb, true, false, true)]
+    [InlineData(SourceIds.Tvdb, false, false, false)]
+    [InlineData(SourceIds.AniDb, false, true, false)]
+    public void PartialEntriesAndSpecialsAskOnlyTheServersProviders(string source, bool enabled, bool ownEntry, bool expected)
+        => Assert.Equal(expected, AniDbSeasonProvider.AsksSource(source, enabled, ownEntry));
+
+    private static AniDbSeasonProvider.OrderAnswer Answer(string source, string? overview, string? name = null)
+        => new(source, name, overview, new DateTime(2020, 1, 5), null, 2020);
+
+    [Fact]
+    public async Task FirstSourceWithAnOverviewWinsAndTheRestAreNotAsked()
+    {
+        var asked = new List<string>();
+
+        var answer = await AniDbSeasonProvider.FirstAnswer(
+            [SourceIds.AniDb, SourceIds.AniList, SourceIds.Tvdb],
+            _ => true,
+            source =>
+            {
+                asked.Add(source);
+
+                return Task.FromResult<AniDbSeasonProvider.OrderAnswer?>(Answer(source, source == SourceIds.AniDb ? " " : "Text from " + source));
+            });
+
+        Assert.Equal(SourceIds.AniList, answer?.Source);
+        Assert.Equal("Text from AniList", answer?.Overview);
+        Assert.Equal([SourceIds.AniDb, SourceIds.AniList], asked);
+    }
+
+    [Fact]
+    public async Task SourcesThatAreNotAskedOrAnswerNothingAreSkipped()
+    {
+        var asked = new List<string>();
+
+        var answer = await AniDbSeasonProvider.FirstAnswer(
+            [SourceIds.AniDb, SourceIds.Mal, SourceIds.Tvdb, SourceIds.Tmdb],
+            source => source != SourceIds.AniDb,
+            source =>
+            {
+                asked.Add(source);
+
+                return Task.FromResult(source == SourceIds.Tvdb ? null : Answer(source, "Text from " + source, "Arc"));
+            });
+
+        Assert.Equal(SourceIds.Mal, answer?.Source);
+        Assert.Equal("Arc", answer?.Name);
+        Assert.Equal([SourceIds.Mal], asked);
+    }
+
+    [Fact]
+    public async Task AnUnansweringSourceFallsThroughToTheNext()
+    {
+        var asked = new List<string>();
+
+        var answer = await AniDbSeasonProvider.FirstAnswer(
+            [SourceIds.Mal, SourceIds.Tvdb, SourceIds.Tmdb],
+            _ => true,
+            source =>
+            {
+                asked.Add(source);
+
+                return Task.FromResult(source == SourceIds.Tmdb ? Answer(source, "Text") : null);
+            });
+
+        Assert.Equal(SourceIds.Tmdb, answer?.Source);
+        Assert.Equal([SourceIds.Mal, SourceIds.Tvdb, SourceIds.Tmdb], asked);
+    }
+
+    [Fact]
+    public async Task NoAnswerWithAnOverviewIsNull()
+    {
+        var answer = await AniDbSeasonProvider.FirstAnswer(
+            [SourceIds.AniDb, SourceIds.Tvdb],
+            _ => true,
+            source => Task.FromResult<AniDbSeasonProvider.OrderAnswer?>(Answer(source, null)));
+
+        Assert.Null(answer);
+    }
 }

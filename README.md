@@ -112,7 +112,7 @@ Layout:
 - **Review**: replacement values waiting for Accept / Keep / Lock
 - **Blocks**: remembered failures, with lift and pin
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
-- **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), plus the other plugin options
+- **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, plus the other plugin options
 - **Import/Export**: mappings, review decisions and pinned blocks (never keys)
 
 ### Source modes

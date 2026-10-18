@@ -34,6 +34,19 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     /// <inheritdoc />
     public async Task<MetadataResult<Season>> GetMetadata(SeasonInfo info, CancellationToken cancellationToken)
     {
+        var result = await Fill(info, cancellationToken).ConfigureAwait(false);
+
+        // Whatever the details mode took a name from, plain names are the setting's say.
+        if (Plugin.Instance.Configuration.SeasonNamesMode == SeasonNamesMode.Plain)
+        {
+            result.Item.Name = PlainName(info.IndexNumber, info.Name);
+        }
+
+        return result;
+    }
+
+    private async Task<MetadataResult<Season>> Fill(SeasonInfo info, CancellationToken cancellationToken)
+    {
         RefreshScope.Enter(info);
         var mode = Plugin.Instance.Configuration.SeasonDetailsMode;
         var result = new MetadataResult<Season>
@@ -73,8 +86,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
                     ex.RetryAfter);
 
                 // A paused AniDB keeps the season as it is until AniDB answers again.
-                if (Plugin.Instance.Configuration.GetSource(SourceIds.AniDb).Mode == FallbackMode.Pause
-                    && !(ex is AniDbUnavailableException { ClientRejected: false } && !AniDbSeriesProvider.IsClientUsable()))
+                if (PausesFor(ex))
                 {
                     throw;
                 }
@@ -90,6 +102,10 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             else if (mode == SeasonDetailsMode.AniDb)
             {
                 await FillFromDelegates(result, info, seriesId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (mode == SeasonDetailsMode.Order)
+            {
+                await FillInOrder(result, info, seriesId, null, false, cancellationToken).ConfigureAwait(false);
             }
 
             return result;
@@ -109,6 +125,13 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
         if (mode == SeasonDetailsMode.Delegated)
         {
             await FillFromDelegatedSources(result, info, seriesId, cancellationToken).ConfigureAwait(false);
+
+            return result;
+        }
+
+        if (mode == SeasonDetailsMode.Order)
+        {
+            await FillInOrder(result, info, seriesId, seasonId, info.IndexNumber is not <= 0 && wholeEntry, cancellationToken).ConfigureAwait(false);
 
             return result;
         }
@@ -142,9 +165,9 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             // The first season is the series entry, so taking its title would name the season
             // after the show it sits under. A later season has a title of its own.
             if (Plugin.Instance.Configuration.UseAniDbSeasonNames
-                && !string.Equals(seasonId, seriesId, StringComparison.Ordinal))
+                && EntryName(seasonId, seriesId, seriesResult.Item.Name) is { } entryName)
             {
-                result.Item.Name = seriesResult.Item.Name;
+                result.Item.Name = entryName;
             }
 
             result.Item.Overview = seriesResult.Item.Overview;
@@ -164,6 +187,222 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
         return result;
     }
+
+    /// <summary>
+    /// Fills the season's overview and dates from the first source in the overview order that
+    /// has an overview for it, and names it after that source when the names setting allows.
+    /// </summary>
+    /// <param name="result">The season being filled.</param>
+    /// <param name="info">The lookup info.</param>
+    /// <param name="seriesId">The series' AniDB id.</param>
+    /// <param name="seasonId">The season's own AniDB entry id, when it resolved.</param>
+    /// <param name="ownEntry">Whether the season is the whole of that entry, so that the entry's own synopsis describes it.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    private async Task FillInOrder(MetadataResult<Season> result, SeasonInfo info, string? seriesId, string? seasonId, bool ownEntry, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+        var entryAsked = ownEntry && !string.IsNullOrEmpty(seasonId);
+
+        var answer = await FirstAnswer(
+            configuration.GetPriority(DataKind.Overview),
+            source => AsksSource(source, configuration.GetSource(source).Enabled, entryAsked),
+            source => AskSource(source, info, seriesId, seasonId, cancellationToken)).ConfigureAwait(false);
+
+        if (answer is null)
+        {
+            return;
+        }
+
+        _logger.LogDebug("Season {SeasonNumber} of AniDB series {SeriesId} filled from {Source}", info.IndexNumber, seriesId, answer.Source);
+
+        result.Item.Overview = answer.Overview;
+        result.Item.PremiereDate = answer.PremiereDate;
+        result.Item.EndDate = answer.EndDate;
+        result.Item.ProductionYear = answer.ProductionYear;
+        result.Item.Name = ChooseName(configuration.SeasonNamesMode, info.IndexNumber, info.Name, answer.Name);
+    }
+
+    /// <summary>
+    /// Asks one source for the season's overview, dates and name. A source that cannot answer
+    /// is skipped, except an AniDB that is paused.
+    /// </summary>
+    private async Task<OrderAnswer?> AskSource(string source, SeasonInfo info, string? seriesId, string? seasonId, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        try
+        {
+            if (string.Equals(source, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
+            {
+                var seriesInfo = new SeriesInfo
+                {
+                    MetadataLanguage = info.MetadataLanguage,
+                    MetadataCountryCode = info.MetadataCountryCode
+                };
+
+                seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seasonId!);
+
+                var found = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken).ConfigureAwait(false);
+                if (!found.HasMetadata)
+                {
+                    return null;
+                }
+
+                return new OrderAnswer(
+                    source,
+                    configuration.UseAniDbSeasonNames ? EntryName(seasonId, seriesId, found.Item.Name) : null,
+                    found.Item.Overview,
+                    found.Item.PremiereDate?.UtcDateTime(),
+                    found.Item.EndDate?.UtcDateTime(),
+                    found.Item.ProductionYear);
+            }
+
+            if (string.Equals(source, SourceIds.AniList, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source, SourceIds.Mal, StringComparison.OrdinalIgnoreCase))
+            {
+                var context = new FetchContext
+                {
+                    ItemKey = ItemKeys.ForAnime(seasonId!),
+                    ItemName = info.Name ?? string.Empty,
+                    AnimeId = seasonId,
+                    Year = info.Year,
+                    Language = info.MetadataLanguage ?? "en"
+                };
+
+                foreach (var (provider, id) in info.ProviderIds)
+                {
+                    context.Ids[provider] = id;
+                }
+
+                var outcome = await SourceFetcher.Fetch(source, context, cancellationToken).ConfigureAwait(false);
+                if (outcome.Record is not { } record)
+                {
+                    return null;
+                }
+
+                return new OrderAnswer(
+                    source,
+                    EntryName(seasonId, seriesId, record.Title(configuration.TitlePreference.ToString())),
+                    record.Overview,
+                    record.StartDate,
+                    record.EndDate,
+                    record.StartDate?.Year);
+            }
+
+            if (SourceIds.IsDelegated(source))
+            {
+                var found = await DelegatedProviders.GetMetadata<Season, SeasonInfo>(source, info, SeasonKey(info, seriesId), info.Name ?? SeasonKey(info, seriesId), "Season", cancellationToken).ConfigureAwait(false);
+                if (found?.Item is not { } season)
+                {
+                    return null;
+                }
+
+                return new OrderAnswer(source, DelegatedName(season, info.Name), season.Overview, season.PremiereDate?.UtcDateTime(), season.EndDate?.UtcDateTime(), season.ProductionYear);
+            }
+        }
+        catch (AniDbBannedException ex)
+        {
+            _logger.LogDebug("Season {SeasonNumber} could not be read from {Source}: {Message}", info.IndexNumber, source, ex.Message);
+
+            if (PausesFor(ex))
+            {
+                throw;
+            }
+        }
+        catch (SourceBlockedException ex)
+        {
+            _logger.LogDebug("Season {SeasonNumber} could not be read from {Source}: {Message}", info.IndexNumber, source, ex.Message);
+        }
+        catch (InvalidOperationException ex) when (!BlockStore.IsShutdown(ex))
+        {
+            // AniDB refused this one anime. Only its answer is missing, and the next source is asked.
+            _logger.LogDebug("Season {SeasonNumber} could not be read from {Source}: {Message}", info.IndexNumber, source, ex.Message);
+        }
+
+        return null;
+    }
+
+    private static bool PausesFor(AniDbBannedException ex)
+        => Plugin.Instance.Configuration.GetSource(SourceIds.AniDb).Mode == FallbackMode.Pause
+            && !(ex is AniDbUnavailableException { ClientRejected: false } && !AniDbSeriesProvider.IsClientUsable());
+
+    /// <summary>
+    /// What a source answered for a season in the overview order.
+    /// </summary>
+    /// <param name="Source">The source id.</param>
+    /// <param name="Name">The name the source has for the season, or <c>null</c> when it has none to offer.</param>
+    /// <param name="Overview">The overview.</param>
+    /// <param name="PremiereDate">The premiere date.</param>
+    /// <param name="EndDate">The end date.</param>
+    /// <param name="ProductionYear">The production year.</param>
+    internal sealed record OrderAnswer(string Source, string? Name, string? Overview, DateTime? PremiereDate, DateTime? EndDate, int? ProductionYear);
+
+    /// <summary>
+    /// Asks the sources in order and stops at the first answer that has an overview.
+    /// </summary>
+    /// <param name="order">The source ids, best first.</param>
+    /// <param name="asked">Whether a source is asked at all.</param>
+    /// <param name="ask">Asks one source.</param>
+    /// <returns>The first answer with an overview, or <c>null</c> when there is none.</returns>
+    internal static async Task<OrderAnswer?> FirstAnswer(IEnumerable<string> order, Func<string, bool> asked, Func<string, Task<OrderAnswer?>> ask)
+    {
+        foreach (var source in order)
+        {
+            if (!asked(source))
+            {
+                continue;
+            }
+
+            if (await ask(source).ConfigureAwait(false) is { } answer && !string.IsNullOrWhiteSpace(answer.Overview))
+            {
+                return answer;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Whether a source is asked about a season. An entry's own synopsis describes the season
+    /// only when the season is the whole entry; anything else asks the server's providers alone.
+    /// </summary>
+    /// <param name="source">The source id.</param>
+    /// <param name="enabled">Whether the source is on.</param>
+    /// <param name="ownEntry">Whether the season is the whole of its own AniDB entry.</param>
+    /// <returns><c>true</c> when the source is asked.</returns>
+    internal static bool AsksSource(string source, bool enabled, bool ownEntry)
+        => enabled && (ownEntry || SourceIds.IsDelegated(source));
+
+    /// <summary>
+    /// The name a season takes under the names setting.
+    /// </summary>
+    /// <param name="names">The names setting.</param>
+    /// <param name="number">The season number.</param>
+    /// <param name="serverName">The name the server gave the season.</param>
+    /// <param name="sourceName">The name the source has for the season, if any.</param>
+    /// <returns>The name.</returns>
+    internal static string? ChooseName(SeasonNamesMode names, int? number, string? serverName, string? sourceName)
+        => names == SeasonNamesMode.Source && !string.IsNullOrWhiteSpace(sourceName) ? sourceName : PlainName(number, serverName);
+
+    /// <summary>
+    /// The title of a season's entry as the season's name. The first season is the series entry,
+    /// so its title would name the season after the show it sits under.
+    /// </summary>
+    /// <param name="seasonId">The season's AniDB id.</param>
+    /// <param name="seriesId">The series' AniDB id.</param>
+    /// <param name="title">The entry's title.</param>
+    /// <returns>The name, or <c>null</c> when the entry is the series' own or has no title.</returns>
+    internal static string? EntryName(string? seasonId, string? seriesId, string? title)
+        => string.IsNullOrWhiteSpace(title) || string.Equals(seasonId, seriesId, StringComparison.Ordinal) ? null : title;
+
+    /// <summary>
+    /// A delegated provider's name for a season, when it is one of its own.
+    /// </summary>
+    /// <param name="found">The provider's season.</param>
+    /// <param name="serverName">The name the server gave the season, which is not a name of its own.</param>
+    /// <returns>The name, or <c>null</c>.</returns>
+    internal static string? DelegatedName(Season found, string? serverName)
+        => !string.IsNullOrWhiteSpace(found.Name) && !string.Equals(found.Name, serverName, StringComparison.OrdinalIgnoreCase) ? found.Name : null;
 
     /// <summary>
     /// Fills what AniDB left empty from the server's own TVDB or TMDB season provider, in the
@@ -248,8 +487,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     /// <returns><c>true</c> when the answer was taken.</returns>
     internal static bool ApplyDelegated(Season target, Season found, string? serverName)
     {
-        var named = !string.IsNullOrWhiteSpace(found.Name)
-            && !string.Equals(found.Name, serverName, StringComparison.OrdinalIgnoreCase);
+        var named = DelegatedName(found, serverName) is not null;
 
         if (!named && string.IsNullOrEmpty(found.Overview))
         {
