@@ -27,6 +27,12 @@ public sealed record SourceFailure(BlockScope Scope, BlockReason Reason, string 
 public class SourceBlockedException : Exception
 {
     /// <summary>
+    /// Gets or sets how long until the source may be asked again, when that is known: the time
+    /// left in a rest or until a cap frees up.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="SourceBlockedException"/> class.
     /// </summary>
     public SourceBlockedException()

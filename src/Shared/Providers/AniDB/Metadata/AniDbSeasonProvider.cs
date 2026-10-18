@@ -35,12 +35,14 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     public async Task<MetadataResult<Season>> GetMetadata(SeasonInfo info, CancellationToken cancellationToken)
     {
         RefreshScope.Enter(info);
+        var mode = Plugin.Instance.Configuration.SeasonDetailsMode;
         var result = new MetadataResult<Season>
         {
             HasMetadata = true,
             Item = new Season
             {
-                Name = info.Name,
+                // A name an earlier AniDB fill gave the season is not kept outside AniDB mode.
+                Name = mode == SeasonDetailsMode.AniDb ? info.Name : PlainName(info.IndexNumber, info.Name),
                 IndexNumber = info.IndexNumber
             }
         };
@@ -81,7 +83,32 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
         if (string.IsNullOrEmpty(seasonId))
         {
-            await FillFromDelegates(result, info, seriesId, cancellationToken).ConfigureAwait(false);
+            if (mode == SeasonDetailsMode.Delegated)
+            {
+                await FillFromDelegatedSources(result, info, seriesId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (mode == SeasonDetailsMode.AniDb)
+            {
+                await FillFromDelegates(result, info, seriesId, cancellationToken).ConfigureAwait(false);
+            }
+
+            return result;
+        }
+
+        // Recorded so the episode and image providers see the season's own entry instead of
+        // resolving it again.
+        result.Item.ProviderIds[ProviderNames.AniDb] = seasonId;
+
+        // The id is all the episodes need. Nothing is fetched for the season's own entry, which
+        // would cost an AniDB request per season.
+        if (mode == SeasonDetailsMode.Plain)
+        {
+            return result;
+        }
+
+        if (mode == SeasonDetailsMode.Delegated)
+        {
+            await FillFromDelegatedSources(result, info, seriesId, cancellationToken).ConfigureAwait(false);
 
             return result;
         }
@@ -91,10 +118,6 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             info.IndexNumber,
             seriesId,
             seasonId);
-
-        // Recorded so the episode and image providers see the season's own entry instead of
-        // resolving it again.
-        result.Item.ProviderIds[ProviderNames.AniDb] = seasonId;
 
         // Specials have no entry of their own, which is why the id above is the series'. The
         // episodes need it, but the season must not be filled from it: the specials did not
@@ -150,8 +173,7 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     private async Task FillFromDelegates(MetadataResult<Season> result, SeasonInfo info, string? seriesId, CancellationToken cancellationToken)
     {
         var configuration = Plugin.Instance.Configuration;
-        var itemKey = (string.IsNullOrEmpty(seriesId) ? ItemKeys.ForUnidentified("Series", null, info.Name) : ItemKeys.ForAnime(seriesId))
-            + FormattableString.Invariant($":s{info.IndexNumber}");
+        var itemKey = SeasonKey(info, seriesId);
 
         foreach (var source in configuration.GetPriority(DataKind.Overview))
         {
@@ -184,6 +206,85 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             }
         }
     }
+
+    /// <summary>
+    /// Fills the season from the server's own TVDB or TMDB season provider, in the episodes'
+    /// source order, taking everything from the first that answers with a name or an overview.
+    /// </summary>
+    private async Task FillFromDelegatedSources(MetadataResult<Season> result, SeasonInfo info, string? seriesId, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+        var itemKey = SeasonKey(info, seriesId);
+
+        foreach (var source in configuration.GetPriority(DataKind.Episodes))
+        {
+            if (!SourceIds.IsDelegated(source) || !configuration.GetSource(source).Enabled)
+            {
+                continue;
+            }
+
+            try
+            {
+                var found = await DelegatedProviders.GetMetadata<Season, SeasonInfo>(source, info, itemKey, info.Name ?? itemKey, "Season", cancellationToken).ConfigureAwait(false);
+                if (found?.Item is { } season && ApplyDelegated(result.Item, season, info.Name))
+                {
+                    return;
+                }
+            }
+            catch (SourceBlockedException ex)
+            {
+                _logger.LogDebug("Season {SeasonNumber} could not be read from {Source}: {Message}", info.IndexNumber, source, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copies a delegated provider's answer onto the season when it has an overview or a name
+    /// of its own.
+    /// </summary>
+    /// <param name="target">The season being filled.</param>
+    /// <param name="found">The provider's season.</param>
+    /// <param name="serverName">The name the server gave the season, which is not a name of its own.</param>
+    /// <returns><c>true</c> when the answer was taken.</returns>
+    internal static bool ApplyDelegated(Season target, Season found, string? serverName)
+    {
+        var named = !string.IsNullOrWhiteSpace(found.Name)
+            && !string.Equals(found.Name, serverName, StringComparison.OrdinalIgnoreCase);
+
+        if (!named && string.IsNullOrEmpty(found.Overview))
+        {
+            return false;
+        }
+
+        if (named)
+        {
+            target.Name = found.Name;
+        }
+
+        target.Overview = found.Overview;
+        target.PremiereDate = found.PremiereDate;
+        target.EndDate = found.EndDate;
+        target.ProductionYear = found.ProductionYear;
+
+        return true;
+    }
+
+    /// <summary>
+    /// The plain name of a season: "Specials" for season 0, "Season N" otherwise.
+    /// </summary>
+    /// <param name="number">The season number.</param>
+    /// <param name="fallback">The name to keep when the season has no number.</param>
+    /// <returns>The name.</returns>
+    internal static string? PlainName(int? number, string? fallback) => number switch
+    {
+        null => fallback,
+        0 => "Specials",
+        _ => FormattableString.Invariant($"Season {number}")
+    };
+
+    private static string SeasonKey(SeasonInfo info, string? seriesId)
+        => (string.IsNullOrEmpty(seriesId) ? ItemKeys.ForUnidentified("Series", null, info.Name) : ItemKeys.ForAnime(seriesId))
+            + FormattableString.Invariant($":s{info.IndexNumber}");
 
     /// <inheritdoc />
     public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeasonInfo searchInfo, CancellationToken cancellationToken)

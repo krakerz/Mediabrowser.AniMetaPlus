@@ -4,6 +4,19 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-10-18
+
+### Added
+- AniDB requests go out in bursts followed by a rest (20, then 120 minutes, by default), set per source on the Sources tab next to the hourly and daily caps
+- The Sources tab estimates how many AniDB requests a day the settings allow, and warns when that, or the day cap, is past the 256 a day AniDB is believed to ban for
+- A ban that comes after 256 AniDB requests in 24 hours pauses AniDB for a full day at once
+- Season details setting: from the AniDB entry, from TheTVDB / TheMovieDb, or plain "Season 1, Season 2" with nothing fetched
+
+### Changed
+- AniDB's default hourly cap is replaced by the burst-and-rest pacing, and its default daily cap is 250 instead of 150
+- While AniDB is banned, resting or capped, the library scan and the queue hold back shows AniDB has never answered for, where AniDB comes first for titles, overview or dates, instead of filling them with stand-in values
+- The status line shows AniDB's burst progress and when a rest ends
+
 ## [2.8.0] — 2026-10-17
 
 ### Changed

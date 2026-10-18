@@ -21,6 +21,27 @@ public enum TitlePreferenceType
     JapaneseRomaji
 }
 
+/// <summary>
+/// Where a season's details come from.
+/// </summary>
+public enum SeasonDetailsMode
+{
+    /// <summary>
+    /// From the AniDB entry the season resolves to.
+    /// </summary>
+    AniDb,
+
+    /// <summary>
+    /// From the server's own TheTVDB and TheMovieDb season providers, never from AniDB's entry.
+    /// </summary>
+    Delegated,
+
+    /// <summary>
+    /// Nothing: the season keeps the server's own name and has no details or images.
+    /// </summary>
+    Plain
+}
+
 public enum AnimeDefaultGenreType
 {
     None,
@@ -168,9 +189,25 @@ public partial class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether a season is named after the AniDB entry it was
-    /// filled from. With this off the season keeps the name Jellyfin gave it.
+    /// filled from. With this off the season keeps the name Jellyfin gave it. Applies only
+    /// when <see cref="SeasonDetails"/> is <c>AniDB</c>.
     /// </summary>
     public bool UseAniDbSeasonNames { get; set; }
+
+    /// <summary>
+    /// Gets or sets where a season's details come from: <c>AniDB</c> (the entry the season
+    /// resolves to), <c>Delegated</c> (the server's TheTVDB and TheMovieDb season providers) or
+    /// <c>Plain</c> (nothing, the season keeps the server's own name). Anything else is
+    /// <c>AniDB</c>.
+    /// </summary>
+    public string SeasonDetails { get; set; } = "AniDB";
+
+    /// <summary>
+    /// Gets <see cref="SeasonDetails"/> as a <see cref="SeasonDetailsMode"/>.
+    /// </summary>
+    [System.Xml.Serialization.XmlIgnore]
+    public SeasonDetailsMode SeasonDetailsMode
+        => Enum.TryParse<SeasonDetailsMode>(SeasonDetails?.Trim(), true, out var mode) && Enum.IsDefined(mode) ? mode : SeasonDetailsMode.AniDb;
 
     /// <summary>
     /// Gets or sets a value indicating whether the AniBridge mappings are consulted before the

@@ -59,7 +59,7 @@ public static class QueueProcessor
 
         bool Refresh(string path, bool replaceAll, bool toAniDb = false)
         {
-            if (budget <= 0 || (toAniDb && (aniDbBudget <= 0 || SourceGate.IsCapped(SourceIds.AniDb))) || refresher == null || string.IsNullOrEmpty(path))
+            if (budget <= 0 || (toAniDb && (aniDbBudget <= 0 || (AniDbSeriesProvider.IsHeldBack() && AniDbSeriesProvider.LeadsASingleSourceField()))) || refresher == null || string.IsNullOrEmpty(path))
             {
                 return false;
             }
@@ -148,7 +148,7 @@ public static class QueueProcessor
             var mappedId = Queues.MappedAnimeId(unmatched.Id);
             var toAniDb = mappedId != null
                 && AniDbSeriesProvider.LinkParts(mappedId) is null
-                && AniDbSeriesProvider.WouldAskAniDb(Plugin.Instance.AppPaths, mappedId);
+                && AniDbSeriesProvider.NeedsAniDbAnswer(Plugin.Instance.AppPaths, mappedId);
 
             if (Refresh(unmatched.Path, true, toAniDb))
             {

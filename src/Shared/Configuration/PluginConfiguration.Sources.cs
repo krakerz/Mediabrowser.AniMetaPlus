@@ -77,15 +77,42 @@ public class SourceSetting
     public int MaxPerDay { get; set; }
 
     /// <summary>
+    /// Gets or sets how many requests go out in one burst before a rest. Zero means no bursts,
+    /// or for AniDB its default.
+    /// </summary>
+    public int BurstSize { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long, in minutes, a rest after a burst lasts. Zero means the default.
+    /// </summary>
+    public int RestMinutes { get; set; }
+
+    /// <summary>
     /// Gets the hourly cap that applies when none is set, for the settings page. Read-only, so it
     /// is not written into the configuration file.
     /// </summary>
-    public int DefaultMaxPerHour => SourceDefaults.Caps(new SourceSetting { Id = Id }).PerHour;
+    public int DefaultMaxPerHour => SourceDefaults.Limits(new SourceSetting { Id = Id }).PerHour;
 
     /// <summary>
     /// Gets the daily cap that applies when none is set, for the settings page.
     /// </summary>
-    public int DefaultMaxPerDay => SourceDefaults.Caps(new SourceSetting { Id = Id }).PerDay;
+    public int DefaultMaxPerDay => SourceDefaults.Limits(new SourceSetting { Id = Id }).PerDay;
+
+    /// <summary>
+    /// Gets the number of requests a day believed to earn a ban, for the settings page's warning;
+    /// zero where none is known. A guess for AniDB: see <see cref="SourceDefaults.AniDbDailyLimitGuess"/>.
+    /// </summary>
+    public int DailyLimitGuess => string.Equals(Id, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase) ? SourceDefaults.AniDbDailyLimitGuess : 0;
+
+    /// <summary>
+    /// Gets the burst size that applies when none is set, for the settings page.
+    /// </summary>
+    public int DefaultBurstSize => SourceDefaults.Limits(new SourceSetting { Id = Id }).BurstSize;
+
+    /// <summary>
+    /// Gets the rest length that applies when none is set, in minutes, for the settings page.
+    /// </summary>
+    public int DefaultRestMinutes => (int)SourceDefaults.Limits(new SourceSetting { Id = Id }).Rest.TotalMinutes;
 
     /// <summary>
     /// Gets or sets a value indicating whether the source's score counts towards the rating.
