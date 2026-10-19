@@ -73,4 +73,46 @@ public sealed class OutdatedStandInTests : IDisposable
         // AniDB still comes first for the overview: that stand-in keeps waiting.
         Assert.True(db.Provenance.FindById("anidb:3|Overview").Provisional);
     }
+
+    // Genres and tags filled from AniList and MyAnimeList while AniDB was blocked lost AniDB's tags
+    // for good: a combined field waits for every source in its order, wherever it stands.
+    [Fact]
+    public void KeepsACombinedFieldWaitingWhereverItsSourceStands()
+    {
+        var configuration = new PluginConfiguration();
+        configuration.Priorities.Add(new KindPriority { Kind = "Genres", Sources = "AniList,AniDB,MyAnimeList" });
+
+        using var db = AniMetaDb.Open(_folder, NullLogger.Instance);
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "anidb:1|Genres", ItemKey = "anidb:1", Field = "Genres", Source = "AniList,MyAnimeList", PreferredSource = "AniDB", Provisional = true });
+
+        Assert.Equal((0, 0), SeriesMerge.SettleOutdated(db, configuration));
+        Assert.True(db.Provenance.FindById("anidb:1|Genres").Provisional);
+
+        configuration.Priorities[0].Sources = "AniList,MyAnimeList";
+        Assert.Equal((1, 0), SeriesMerge.SettleOutdated(db, configuration));
+    }
+
+    [Fact]
+    public void MarksCombinedFieldsFilledWithoutAniDbAsWaitingForIt()
+    {
+        var configuration = new PluginConfiguration();
+        configuration.Priorities.Add(new KindPriority { Kind = "Genres", Sources = "AniList,AniDB,MyAnimeList" });
+        configuration.Priorities.Add(new KindPriority { Kind = "Titles", Sources = "MyAnimeList,AniDB" });
+        configuration.Priorities.Add(new KindPriority { Kind = "People", Sources = "AniList,MyAnimeList" });
+
+        using var db = AniMetaDb.Open(_folder, NullLogger.Instance);
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "a|Genres", ItemKey = "a", Field = "Genres", Source = "AniList,MyAnimeList" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "b|Genres", ItemKey = "b", Field = "Genres", Source = "AniList,AniDB,MyAnimeList" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "c|Titles", ItemKey = "c", Field = "Titles", Source = "MyAnimeList" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "d|People", ItemKey = "d", Field = "People", Source = "AniList" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "e|Genres", ItemKey = "e", Field = "Genres", Source = "AniList", Locked = true });
+
+        Assert.Equal(1, SeriesMerge.WaitForMissingContributors(db, configuration, "AniDB"));
+        Assert.Equal("AniDB", db.Provenance.FindById("a|Genres").PreferredSource);
+        Assert.True(db.Provenance.FindById("a|Genres").Provisional);
+        Assert.False(db.Provenance.FindById("b|Genres").Provisional);
+        Assert.False(db.Provenance.FindById("c|Titles").Provisional);
+        Assert.False(db.Provenance.FindById("d|People").Provisional);
+        Assert.False(db.Provenance.FindById("e|Genres").Provisional);
+    }
 }

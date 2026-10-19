@@ -40,7 +40,7 @@
     .amp-row .inputContainer, .amp-row .selectContainer { flex: 1 1 14em; margin-bottom: .6em; }
     /* A guess with a long title must not widen its row and push the others onto a new line. */
     .amp-row .inputContainer { min-width: 0; }
-    #ampBlockFilters { align-items: center; }
+    #ampBlockFilters, #ampMapFilters { align-items: center; }
     .amp-reviews td, .amp-unmatched td { vertical-align: top; }
     .amp-unmatched td:nth-child(1) { width: 26%; }
     .amp-unmatched td:nth-child(3) { width: 40%; }
@@ -54,6 +54,17 @@
     .amp-reviews td.amp-actions { white-space: nowrap; }
     #ampBlockFilters > select, #ampBlockFilters > input { flex: 1 1 9em; width: auto; min-width: 0; }
     #ampBlockFilters > input { flex-basis: 14em; }
+    #ampMapFilters > select, #ampMapFilters > input { flex: 1 1 9em; width: auto; min-width: 0; }
+    #ampMapFilters > input { flex-basis: 14em; }
+    .amp-mapping td:nth-child(1) { min-width: 14em; max-width: 24em; }
+    .amp-mapping .amp-path { word-break: break-all; }
+    .amp-mapping a { color: inherit; text-decoration: underline; }
+    .amp-map-acts { display: flex; flex-wrap: wrap; gap: .3em; min-width: 12em; }
+    .amp-map-acts button { margin: 0; }
+    .amp-map-form { display: flex; flex-wrap: wrap; gap: .8em; align-items: flex-end; }
+    .amp-map-form label { display: flex; flex-direction: column; gap: .2em; }
+    .amp-map-form input[type=text] { width: 9em; background: rgba(128,128,128,.12); color: inherit; border: 1px solid rgba(128,128,128,.45); border-radius: .25em; padding: .3em .4em; font: inherit; }
+    .amp-map-form button { margin: 0; }
     .amp-row select:not(.emby-select), .amp-row input[type=text]:not(.emby-input) { width: 100%; box-sizing: border-box; }
     .amp-secret { display: flex; align-items: flex-end; gap: .4em; margin-bottom: 1.2em; }
     .amp-secret .inputContainer { flex-grow: 1; margin-bottom: 0; }
@@ -80,6 +91,7 @@
     <button type="button" data-tab="clients">Clients &amp; keys</button>
     <button type="button" data-tab="titles">Titles dump</button>
     <button type="button" data-tab="unmatched">Unmatched</button>
+    <button type="button" data-tab="mapping">Mapping</button>
     <button type="button" data-tab="review">Review</button>
     <button type="button" data-tab="blocks">Blocks</button>
     <button type="button" data-tab="images">Image overrides</button>
@@ -198,6 +210,31 @@
     <div class="amp-sub" data-sub="mapped">
         <div class="amp-scroll"><table class="amp-table" id="ampMappings"></table></div>
     </div>
+</div>
+
+<!-- Mapping -->
+<div class="amp-tab" data-tab="mapping">
+    <p class="amp-small">The ids every identified show has on each site, and what the plugin did to them. <b>Verify</b> confirms a show's ids; <b>Revert</b> puts back the ids a correction replaced; <b>Set manually</b> keeps ids you enter and stops the plugin deciding that show's ids; <b>Lift manual</b> hands the show back to the plugin.</p>
+    <div class="amp-row" id="ampMapFilters">
+        <select id="ampMapFilterStatus" title="Status">
+            <option value="attention">Needs a look</option>
+            <option value="all">All</option>
+            <option value="Corrected">Corrected</option>
+            <option value="Suspect">Suspect</option>
+            <option value="Manual">Manual</option>
+            <option value="Verified">Verified</option>
+            <option value="none">Not checked</option>
+        </select>
+        <input type="text" id="ampMapFilterText" placeholder="Filter by name, path or id" />
+        <button is="emby-button" type="button" class="raised" id="ampMapReload"><span>Reload</span></button>
+    </div>
+    <div class="amp-row">
+        <span class="amp-small" id="ampMapCount"></span>
+        <button is="emby-button" type="button" class="raised" id="ampMapPrev"><span>Prev</span></button>
+        <span class="amp-small" id="ampMapPage"></span>
+        <button is="emby-button" type="button" class="raised" id="ampMapNext"><span>Next</span></button>
+    </div>
+    <div class="amp-scroll"><table class="amp-table amp-mapping" id="ampMapping"><tr><td class="amp-muted">Not loaded yet.</td></tr></table></div>
 </div>
 
 <!-- Review -->

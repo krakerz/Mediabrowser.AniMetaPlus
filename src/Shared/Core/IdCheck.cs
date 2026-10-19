@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AniMetaPlus.Data;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB.Mapping;
 using AniMetaPlus.Providers.AniDB.Metadata;
@@ -19,7 +20,8 @@ namespace AniMetaPlus.Core;
 /// </summary>
 /// <param name="Fix">The AniDB id the show should have instead, or <c>null</c>.</param>
 /// <param name="Suspect">Whether the id looks wrong without enough evidence to change it.</param>
-public readonly record struct AniDbVerdict(string? Fix, bool Suspect);
+/// <param name="Reason">A short phrase for why, or <c>null</c> where the id fits.</param>
+public readonly record struct AniDbVerdict(string? Fix, bool Suspect, string? Reason = null);
 
 /// <summary>
 /// Checks the ids of the shows already identified, from local data only: the mapping sources
@@ -30,6 +32,11 @@ public readonly record struct AniDbVerdict(string? Fix, bool Suspect);
 /// </summary>
 public static class IdCheck
 {
+    /// <summary>
+    /// The ids of a show the mapping page lists and records: AniDB, MyAnimeList, AniList, TVDB and TMDB.
+    /// </summary>
+    public static readonly string[] RecordedProviders = [ProviderNames.AniDb, SourceIds.Mal, SourceIds.AniList, "Tvdb", "Tmdb"];
+
     // A show checked under these ids is not checked again until one of them changes or the
     // server restarts: the evidence is local and does not change between runs.
     private static readonly ConcurrentDictionary<string, bool> _checked = new(StringComparer.Ordinal);
@@ -58,7 +65,7 @@ public static class IdCheck
         // show, and is still wrong.
         if (!string.IsNullOrEmpty(byShow) && string.Equals(byShow, byFolder, StringComparison.Ordinal))
         {
-            return new AniDbVerdict(byShow, false);
+            return new AniDbVerdict(byShow, false, "TVDB id and folder name agree");
         }
 
         // An entry of the same TVDB show: a later season kept in a folder of its own - unless the
@@ -66,7 +73,7 @@ public static class IdCheck
         // Season 01 to 05, held as Monogatari Series: Second Season.
         if (!string.IsNullOrEmpty(currentShow) && string.Equals(currentShow, itemTvdb, StringComparison.Ordinal))
         {
-            return holdsSeasonOne && !string.IsNullOrEmpty(byShow) ? new AniDbVerdict(byShow, false) : default;
+            return holdsSeasonOne && !string.IsNullOrEmpty(byShow) ? new AniDbVerdict(byShow, false, "folder holds Season 01") : default;
         }
 
         // The TVDB id says another entry, and the folder name reads as that entry's title and not
@@ -75,11 +82,65 @@ public static class IdCheck
         if (!string.IsNullOrEmpty(byShow) && string.IsNullOrEmpty(byFolder)
             && folderLikesShow >= LikeEnough && folderLikesCurrent <= folderLikesShow - LikeMargin)
         {
-            return new AniDbVerdict(byShow, false);
+            return new AniDbVerdict(byShow, false, "folder name reads as the TVDB entry");
         }
 
-        return new AniDbVerdict(null, !string.IsNullOrEmpty(byShow) || !string.IsNullOrEmpty(byFolder));
+        var suspect = !string.IsNullOrEmpty(byShow) || !string.IsNullOrEmpty(byFolder);
+        return new AniDbVerdict(null, suspect, suspect ? "TVDB id and folder name disagree with it" : null);
     }
+
+    /// <summary>
+    /// Whether the check leaves a show alone because of what was decided about it: always for
+    /// a show with its ids set by hand, and for one the owner confirmed while its ids are still
+    /// the confirmed ones.
+    /// </summary>
+    /// <param name="record">The show's record, or <c>null</c>.</param>
+    /// <param name="currentIds">The ids the show has now, by provider.</param>
+    /// <returns><c>true</c> when the check skips the show.</returns>
+    public static bool SkipsCheck(IdRecord? record, IReadOnlyDictionary<string, string> currentIds)
+    {
+        ArgumentNullException.ThrowIfNull(currentIds);
+
+        if (record == null)
+        {
+            return false;
+        }
+
+        if (string.Equals(record.Status, IdRecord.Manual, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return string.Equals(record.Status, IdRecord.Verified, StringComparison.Ordinal)
+            && new[] { ProviderNames.AniDb, SourceIds.Mal, SourceIds.AniList }.All(key =>
+                string.Equals(IdOf(record.NewIds, key), IdOf(currentIds, key), StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Picks the recorded providers' ids out of an item's ids, leaving out missing ones.
+    /// </summary>
+    /// <param name="ids">The item's ids.</param>
+    /// <returns>The ids, by provider.</returns>
+    public static Dictionary<string, string> RecordedIds(IReadOnlyDictionary<string, string> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var key in RecordedProviders)
+        {
+            var id = IdOf(ids, key);
+            if (id.Length > 0)
+            {
+                result[key] = id;
+            }
+        }
+
+        return result;
+    }
+
+    // An id by provider, ignoring case in the key as the items' own id lists do.
+    private static string IdOf(IEnumerable<KeyValuePair<string, string>> ids, string key)
+        => ids.FirstOrDefault(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase)).Value ?? string.Empty;
 
     /// <summary>
     /// How alike a folder name has to be to an entry's title to count as naming it.
@@ -160,8 +221,13 @@ public static class IdCheck
         }
 
         var paths = Plugin.Instance.AppPaths;
+        var db = AniMetaDb.Current;
+        var records = db.IdRecords.FindAll().ToDictionary(r => r.Id, StringComparer.Ordinal);
         var shows = items
             .Where(i => i.Kind == "Series" && i.ProviderIds.TryGetValue(ProviderNames.AniDb, out var id) && !string.IsNullOrEmpty(id))
+
+            // What the owner set or confirmed is not the check's to decide.
+            .Where(i => !SkipsCheck(records.GetValueOrDefault(i.Path), i.ProviderIds))
             .Where(i => !_checked.ContainsKey(CheckKey(i)))
             .Where(i => Queues.MappedAnimeId(ItemKeys.ForUnidentified(i.Kind, i.Path, i.Name)) == null)
             .ToList();
@@ -205,6 +271,7 @@ public static class IdCheck
             if (verdict.Suspect)
             {
                 suspects++;
+                RecordSuspect(db, records.GetValueOrDefault(show.Path), show, byShow, byFolder, verdict.Reason);
                 logger.LogWarning(
                     "{Name} ({Path}) may have the wrong AniDB id: it has AniDB {Current} ({CurrentTitle}), its TVDB {Tvdb} / TMDB {Tmdb} maps to AniDB {ByShow} and its folder name is exactly the title of AniDB {ByFolder}. Left as it is; use Identify on the show if it is wrong",
                     show.Name,
@@ -243,6 +310,12 @@ public static class IdCheck
 
             if (wanted.Count == 0)
             {
+                // A suspect noted earlier that the show no longer is, since its ids were fixed by other means.
+                if (!verdict.Suspect && records.GetValueOrDefault(show.Path) is { Status: IdRecord.Suspect })
+                {
+                    db.IdRecords.Delete(show.Path);
+                }
+
                 _checked[CheckKey(show)] = true;
                 continue;
             }
@@ -279,6 +352,8 @@ public static class IdCheck
                 fixedLinks++;
             }
 
+            RecordCorrection(db, records.GetValueOrDefault(show.Path), show, wanted, verdict.Fix != null ? verdict.Reason : "AniBridge link");
+
             if (refresher.Refresh(show.Path, true) && asks)
             {
                 askingAniDb++;
@@ -294,6 +369,90 @@ public static class IdCheck
             deferred);
 
         return askingAniDb;
+    }
+
+    /// <summary>
+    /// Whether the owner set a show's ids by hand.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns><c>true</c> when the show has a manual record.</returns>
+    public static bool IsManual(string? path)
+        => !string.IsNullOrEmpty(path) && AniMetaDb.Current.IdRecords.FindById(path) is { Status: IdRecord.Manual };
+
+    /// <summary>
+    /// The ids a show has once the corrections are put on it: those it had, replaced by the
+    /// corrections, and without those the corrections remove.
+    /// </summary>
+    /// <param name="old">The ids it had.</param>
+    /// <param name="wanted">The corrections, by provider; an empty one removes that id.</param>
+    /// <returns>The ids, by provider.</returns>
+    public static Dictionary<string, string> CorrectedIds(IReadOnlyDictionary<string, string> old, IReadOnlyDictionary<string, string> wanted)
+    {
+        ArgumentNullException.ThrowIfNull(wanted);
+
+        var result = RecordedIds(old);
+        foreach (var (provider, id) in wanted)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                result.Remove(provider);
+            }
+            else
+            {
+                result[provider] = id;
+            }
+        }
+
+        return result;
+    }
+
+    private static void RecordCorrection(AniMetaDb db, IdRecord? existing, ScanItem show, IReadOnlyDictionary<string, string> wanted, string? reason)
+    {
+        var now = DateTime.UtcNow;
+        db.IdRecords.Upsert(new IdRecord
+        {
+            Id = show.Path,
+            ItemName = show.Name,
+            Status = IdRecord.Corrected,
+            OldIds = RecordedIds(show.ProviderIds),
+            NewIds = CorrectedIds(show.ProviderIds, wanted),
+            Reason = reason ?? string.Empty,
+            CreatedUtc = existing?.CreatedUtc ?? now,
+            UpdatedUtc = now
+        });
+    }
+
+    private static void RecordSuspect(AniMetaDb db, IdRecord? existing, ScanItem show, string? byShow, string? byFolder, string? reason)
+    {
+        // What the owner confirmed or set stands, whatever the check thinks of it.
+        if (existing is { Status: IdRecord.Verified or IdRecord.Manual })
+        {
+            return;
+        }
+
+        var candidates = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(byShow))
+        {
+            candidates["ByTvdb"] = byShow;
+        }
+
+        if (!string.IsNullOrEmpty(byFolder))
+        {
+            candidates["ByFolder"] = byFolder;
+        }
+
+        var now = DateTime.UtcNow;
+        db.IdRecords.Upsert(new IdRecord
+        {
+            Id = show.Path,
+            ItemName = show.Name,
+            Status = IdRecord.Suspect,
+            OldIds = RecordedIds(show.ProviderIds),
+            NewIds = candidates,
+            Reason = reason ?? string.Empty,
+            CreatedUtc = existing?.CreatedUtc ?? now,
+            UpdatedUtc = now
+        });
     }
 
     /// <summary>

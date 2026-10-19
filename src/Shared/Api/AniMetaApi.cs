@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Core;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB;
 using AniMetaPlus.Providers.AniDB.Mapping;
 using AniMetaPlus.Providers.AniDB.Metadata;
@@ -135,6 +136,36 @@ public class MapResult
 }
 
 /// <summary>
+/// One show of the anime libraries with its ids and what was decided about them.
+/// </summary>
+public class IdRow
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the show's name.</summary>
+    public string Name { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the ids the show has now, by provider; missing ones are left out.</summary>
+    public Dictionary<string, string> Ids { get; set => field = value ?? new(); } = new();
+
+    /// <summary>Gets or sets the status: Corrected, Suspect, Verified, Manual, or empty when nothing was decided.</summary>
+    public string Status { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the ids the show had before.</summary>
+    public Dictionary<string, string> OldIds { get; set => field = value ?? new(); } = new();
+
+    /// <summary>Gets or sets the ids it has since, or for a suspect the candidates.</summary>
+    public Dictionary<string, string> NewIds { get; set => field = value ?? new(); } = new();
+
+    /// <summary>Gets or sets why.</summary>
+    public string Reason { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets when it was last decided, if it was.</summary>
+    public DateTime? UpdatedUtc { get; set; }
+}
+
+/// <summary>
 /// One replaced poster waiting for the owner's decision.
 /// </summary>
 public class ImageBackupItem
@@ -230,6 +261,7 @@ public static class AniMetaApi
 {
     private static readonly TimeSpan _testGap = TimeSpan.FromMinutes(3);
     private static readonly JsonSerializerOptions _json = new() { WriteIndented = true };
+    private static readonly string[] _handIdProviders = [ProviderNames.AniDb, SourceIds.Mal, SourceIds.AniList];
 
     private static AniMetaDb Db => AniMetaDb.Current;
 
@@ -585,6 +617,228 @@ public static class AniMetaApi
     /// </summary>
     /// <returns>The mappings.</returns>
     public static IReadOnlyList<MappingRecord> GetMappings() => Db.Mappings.FindAll().OrderByDescending(m => m.CreatedUtc).ToList();
+
+    /// <summary>
+    /// Lists every show of the anime libraries with its ids and what was decided about them.
+    /// </summary>
+    /// <returns>The shows, by name.</returns>
+    public static IReadOnlyList<IdRow> GetIdRecords()
+    {
+        var records = Db.IdRecords.FindAll().ToDictionary(r => r.Id, StringComparer.Ordinal);
+
+        return ListShows()
+            .Select(show => ToRow(show, records.GetValueOrDefault(show.Path)))
+            .OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Marks a show's ids as confirmed by the owner. The ids it has now are kept with the mark,
+    /// so that the check takes the show up again if they change.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
+    public static IdRow? VerifyIds(string path)
+    {
+        if (FindShow(path) is not { } show)
+        {
+            return null;
+        }
+
+        var existing = Db.IdRecords.FindById(path);
+
+        // Ids set by hand stay so until the owner lifts that.
+        if (existing is { Status: IdRecord.Manual })
+        {
+            return ToRow(show, existing);
+        }
+
+        var ids = IdCheck.RecordedIds(show.ProviderIds);
+        return ToRow(show, Save(show, existing, IdRecord.Verified, existing?.OldIds ?? ids, ids, "Confirmed by the owner"));
+    }
+
+    /// <summary>
+    /// Puts back the ids a show had before the id check corrected them, and marks them as set by
+    /// hand. The show is refreshed with its metadata replaced.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
+    /// <exception cref="ArgumentException">The show was not corrected.</exception>
+    public static async Task<IdRow?> RevertIds(string path)
+    {
+        if (FindShow(path) is not { } show)
+        {
+            return null;
+        }
+
+        var existing = Db.IdRecords.FindById(path);
+        if (existing is not { Status: IdRecord.Corrected })
+        {
+            throw new ArgumentException("Only a corrected show can be reverted.", nameof(path));
+        }
+
+        var restored = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var provider in _handIdProviders)
+        {
+            restored[provider] = existing.OldIds.GetValueOrDefault(provider) ?? string.Empty;
+        }
+
+        return await SetByHand(show, existing, restored, "Reverted by the owner").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sets a show's AniDB, MyAnimeList and AniList ids by hand, marks them as the owner's, and
+    /// refreshes the show with its metadata replaced.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <param name="aniDb">The AniDB id, required, digits only.</param>
+    /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
+    /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
+    /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
+    /// <exception cref="ArgumentException">An id is not digits, or the AniDB id is missing.</exception>
+    public static async Task<IdRow?> SetIds(string path, string? aniDb, string? mal, string? aniList)
+    {
+        var ids = ParseHandIds(aniDb, mal, aniList);
+
+        if (FindShow(path) is not { } show)
+        {
+            return null;
+        }
+
+        return await SetByHand(show, Db.IdRecords.FindById(path), ids, "Set by the owner").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Takes the owner's mark off a show: its ids stay, and the id check may correct them again.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
+    public static IdRow? LiftIds(string path)
+    {
+        if (FindShow(path) is not { } show)
+        {
+            return null;
+        }
+
+        var existing = Db.IdRecords.FindById(path);
+        if (existing is { Status: IdRecord.Manual })
+        {
+            Db.IdRecords.Delete(path);
+            existing = null;
+        }
+
+        return ToRow(show, existing);
+    }
+
+    /// <summary>
+    /// Reads the ids the owner types in by hand.
+    /// </summary>
+    /// <param name="aniDb">The AniDB id, required, digits only.</param>
+    /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
+    /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
+    /// <returns>The ids by provider; an empty one removes that id from the show.</returns>
+    /// <exception cref="ArgumentException">An id is not digits, or the AniDB id is missing.</exception>
+    public static Dictionary<string, string> ParseHandIds(string? aniDb, string? mal, string? aniList)
+    {
+        var ids = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [ProviderNames.AniDb] = (aniDb ?? string.Empty).Trim(),
+            [SourceIds.Mal] = (mal ?? string.Empty).Trim(),
+            [SourceIds.AniList] = (aniList ?? string.Empty).Trim()
+        };
+
+        if (ids[ProviderNames.AniDb].Length == 0)
+        {
+            throw new ArgumentException("The AniDB id is required.", nameof(aniDb));
+        }
+
+        if (!ids[ProviderNames.AniDb].All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException("The AniDB id is digits only.", nameof(aniDb));
+        }
+
+        if (!ids[SourceIds.Mal].All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException("The MyAnimeList id is digits only.", nameof(mal));
+        }
+
+        if (!ids[SourceIds.AniList].All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException("The AniList id is digits only.", nameof(aniList));
+        }
+
+        return ids;
+    }
+
+    private static IReadOnlyList<ScanItem> ListShows()
+        => (HostServices.Refresher?.ListAnimeItems() ?? []).Where(i => i.Kind == "Series").ToList();
+
+    private static ScanItem? FindShow(string? path)
+        => string.IsNullOrEmpty(path) ? null : ListShows().FirstOrDefault(s => string.Equals(s.Path, path, StringComparison.Ordinal));
+
+    private static IdRow ToRow(ScanItem show, IdRecord? record) => new()
+    {
+        Path = show.Path,
+        Name = show.Name,
+        Ids = IdCheck.RecordedIds(show.ProviderIds),
+        Status = record?.Status ?? string.Empty,
+        OldIds = record?.OldIds ?? new(),
+        NewIds = record?.NewIds ?? new(),
+        Reason = record?.Reason ?? string.Empty,
+        UpdatedUtc = record?.UpdatedUtc
+    };
+
+    private static IdRecord Save(ScanItem show, IdRecord? existing, string status, Dictionary<string, string> oldIds, Dictionary<string, string> newIds, string reason)
+    {
+        var now = DateTime.UtcNow;
+        var record = new IdRecord
+        {
+            Id = show.Path,
+            ItemName = show.Name,
+            Status = status,
+            OldIds = oldIds,
+            NewIds = newIds,
+            Reason = reason,
+            CreatedUtc = existing?.CreatedUtc ?? now,
+            UpdatedUtc = now
+        };
+
+        Db.IdRecords.Upsert(record);
+        return record;
+    }
+
+    // Writes the ids onto the show, marks them the owner's and refreshes the show, which
+    // replaces its metadata since the ids behind it changed.
+    private static async Task<IdRow?> SetByHand(ScanItem show, IdRecord? existing, Dictionary<string, string> ids, string reason)
+    {
+        var refresher = HostServices.Refresher;
+        if (refresher == null || !await refresher.SaveIds(show.Path, ids, CancellationToken.None).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        var now = ids.Where(i => i.Value.Length > 0).ToDictionary(i => i.Key, i => i.Value, StringComparer.Ordinal);
+        var record = Save(show, existing, IdRecord.Manual, existing is { Status: IdRecord.Manual } ? existing.OldIds : IdCheck.RecordedIds(show.ProviderIds), now, reason);
+
+        refresher.Refresh(show.Path, true);
+
+        var shown = IdCheck.RecordedIds(show.ProviderIds);
+        foreach (var (provider, id) in ids)
+        {
+            if (id.Length > 0)
+            {
+                shown[provider] = id;
+            }
+            else
+            {
+                shown.Remove(provider);
+            }
+        }
+
+        var row = ToRow(show, record);
+        row.Ids = shown;
+        return row;
+    }
 
     /// <summary>
     /// Lists the replaced posters waiting for a decision, newest first.

@@ -212,6 +212,49 @@ public class MappingRecord
 }
 
 /// <summary>
+/// What the plugin or the owner decided about the ids of one show: the id check corrected them
+/// or finds them doubtful, the owner confirmed them, or the owner set them by hand.
+/// </summary>
+public class IdRecord
+{
+    /// <summary>The id check changed the show's ids.</summary>
+    public const string Corrected = "Corrected";
+
+    /// <summary>The id check finds the AniDB id doubtful and left it alone.</summary>
+    public const string Suspect = "Suspect";
+
+    /// <summary>The owner confirmed the ids.</summary>
+    public const string Verified = "Verified";
+
+    /// <summary>The owner set the ids; the plugin never decides them.</summary>
+    public const string Manual = "Manual";
+
+    /// <summary>Gets or sets the show's folder, which is the key.</summary>
+    public string Id { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the show's name when it was recorded.</summary>
+    public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the status: Corrected, Suspect, Verified or Manual.</summary>
+    public string Status { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the ids the show had before, by provider.</summary>
+    public Dictionary<string, string> OldIds { get; set => field = value ?? new(); } = new();
+
+    /// <summary>Gets or sets the ids the show has now, or for a suspect the candidates, by provider.</summary>
+    public Dictionary<string, string> NewIds { get; set => field = value ?? new(); } = new();
+
+    /// <summary>Gets or sets why, in a short phrase.</summary>
+    public string Reason { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets when it was first recorded.</summary>
+    public DateTime CreatedUtc { get; set; }
+
+    /// <summary>Gets or sets when it last changed.</summary>
+    public DateTime UpdatedUtc { get; set; }
+}
+
+/// <summary>
 /// A guess at what an unmatched item is.
 /// </summary>
 public class CandidateRecord

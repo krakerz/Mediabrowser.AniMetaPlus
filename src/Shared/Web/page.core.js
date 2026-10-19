@@ -794,6 +794,221 @@ function aniMetaPlusPage(host) {
         post('Blocks/LiftMany', null, { Ids: ids }).then(function (r) { notify('Lifted ' + (r && r.Lifted !== undefined ? r.Lifted : ids.length)); loadAll(view); }, fail);
     }
 
+    // Mapping
+
+    var mapList = [];
+    var mapSort = { key: 'status', dir: 1 };
+    var mapPage = 0;
+    var mapPageSize = 100;
+    var mapEdit = null;
+    var mapStatusOrder = ['Corrected', 'Suspect', 'Manual', 'Verified', ''];
+
+    // Key, header, keys the id may be stored under, site link.
+    var mapIds = [
+        ['anidb', 'AniDB', ['AniDB'], 'https://anidb.net/anime/'],
+        ['mal', 'MyAnimeList', ['MyAnimeList', 'Mal'], 'https://myanimelist.net/anime/'],
+        ['anilist', 'AniList', ['AniList'], 'https://anilist.co/anime/'],
+        ['tvdb', 'TVDB', ['Tvdb', 'TVDB'], 'https://thetvdb.com/dereferrer/series/'],
+        ['tmdb', 'TMDB', ['Tmdb', 'TMDB'], 'https://www.themoviedb.org/tv/']
+    ];
+
+    function mapId(ids, keys) {
+        for (var i = 0; i < keys.length; i++) {
+            if (ids && ids[keys[i]] !== undefined && ids[keys[i]] !== null && ids[keys[i]] !== '') {
+                return String(ids[keys[i]]);
+            }
+        }
+
+        return '';
+    }
+
+    function mapStatus(record) {
+        return record.Status || '';
+    }
+
+    function mapName(record) {
+        return (record.Name || record.Path || '').toLowerCase();
+    }
+
+    var mapColumns = [['show', 'Show', mapName]].concat(mapIds.map(function (def) {
+        return [def[0], def[1], function (r) { return parseInt(mapId(r.Ids, def[2]), 10) || 0; }];
+    })).concat([['status', 'Status', function (r) {
+        var index = mapStatusOrder.indexOf(mapStatus(r));
+        return index < 0 ? mapStatusOrder.length : index;
+    }]]);
+
+    // The records the filters let through, in the order the headers say, the name breaking ties.
+    function shownMapping(view) {
+        var status = view.querySelector('#ampMapFilterStatus').value;
+        var text = view.querySelector('#ampMapFilterText').value.trim().toLowerCase();
+        var column = mapColumns.filter(function (c) { return c[0] === mapSort.key; })[0];
+
+        return mapList.filter(function (r) {
+            var own = mapStatus(r);
+            if (status === 'attention' ? ['Corrected', 'Suspect', 'Manual'].indexOf(own) < 0
+                : status === 'none' ? own !== '' : status !== 'all' && own !== status) {
+                return false;
+            }
+
+            return !text || [r.Name, r.Path].concat(mapIds.map(function (def) { return mapId(r.Ids, def[2]); })).join(' ').toLowerCase().indexOf(text) >= 0;
+        }).sort(function (a, b) {
+            var x = column[2](a), y = column[2](b);
+            var order = (x < y ? -1 : x > y ? 1 : 0) * mapSort.dir;
+            return order || (mapName(a) < mapName(b) ? -1 : mapName(a) > mapName(b) ? 1 : 0);
+        });
+    }
+
+    function mapLink(def, id) {
+        return '<a href="' + esc(def[3] + encodeURIComponent(id)) + '" target="_blank" rel="noopener">' + esc(id) + '</a>';
+    }
+
+    function mapCell(record, def) {
+        var now = mapId(record.Ids, def[2]);
+        var status = mapStatus(record);
+        var html = now ? mapLink(def, now) : '<span class="amp-muted">-</span>';
+
+        if (status === 'Corrected') {
+            var old = mapId(record.OldIds, def[2]);
+            if (old && old !== now) {
+                html += '<div><s class="amp-small">' + esc(old) + '</s></div>';
+            }
+        }
+
+        if (status === 'Suspect' && def[0] === 'anidb') {
+            [['ByTvdb', 'TVDB says'], ['ByFolder', 'folder says']].forEach(function (hint) {
+                var suggested = mapId(record.NewIds, [hint[0]]);
+                if (suggested) {
+                    html += '<div class="amp-small">' + hint[1] + ' ' + mapLink(def, suggested) + '</div>';
+                }
+            });
+        }
+
+        return '<td>' + html + '</td>';
+    }
+
+    function mapButton(act, label, submit) {
+        return '<button type="button" is="emby-button" class="raised' + (submit ? ' button-submit' : '') + '" data-map-act="' + act + '">' + label + '</button>';
+    }
+
+    function mapRow(record) {
+        var status = mapStatus(record);
+        var kind = status === 'Corrected' ? 'amp-warn' : status === 'Suspect' ? 'amp-bad' : status === 'Verified' ? 'amp-ok' : '';
+        var actions = (status === 'Corrected' || status === 'Suspect' || status === '' ? mapButton('verify', 'Verify', status === 'Suspect') : '')
+            + (status === 'Corrected' ? mapButton('revert', 'Revert') : '')
+            + mapButton('edit', 'Set manually')
+            + (status === 'Manual' ? mapButton('lift', 'Lift manual') : '');
+
+        return '<tr data-path="' + esc(record.Path) + '"><td><b>' + esc(record.Name || record.Path) + '</b><div class="amp-small amp-path">' + esc(record.Path) + '</div></td>'
+            + mapIds.map(function (def) { return mapCell(record, def); }).join('')
+            + '<td>' + (status ? badge(status, kind) : '<span class="amp-muted">-</span>')
+            + (record.Reason && (status === 'Corrected' || status === 'Suspect') ? '<div class="amp-small">' + esc(record.Reason) + '</div>' : '') + '</td>'
+            + '<td><div class="amp-map-acts">' + actions + '</div></td></tr>';
+    }
+
+    function mapEditRow() {
+        function field(name, label) {
+            return '<label class="amp-small">' + label + '<input type="text" data-map-field="' + name + '" value="' + esc(mapEdit[name]) + '" /></label>';
+        }
+
+        return '<tr class="amp-map-edit" data-path="' + esc(mapEdit.path) + '"><td colspan="' + (mapIds.length + 3) + '"><div class="amp-map-form">'
+            + field('AniDb', 'AniDB id (required)') + field('Mal', 'MyAnimeList id') + field('AniList', 'AniList id')
+            + mapButton('save', 'Save', true) + mapButton('cancel', 'Cancel')
+            + '</div></td></tr>';
+    }
+
+    function renderMapping(view) {
+        var shown = shownMapping(view);
+        var pages = Math.max(1, Math.ceil(shown.length / mapPageSize));
+        mapPage = Math.min(Math.max(mapPage, 0), pages - 1);
+        var rows = shown.slice(mapPage * mapPageSize, (mapPage + 1) * mapPageSize);
+
+        view.querySelector('#ampMapCount').textContent = mapList.length ? shown.length + ' of ' + mapList.length + ' shown' : '';
+        view.querySelector('#ampMapPage').textContent = shown.length ? 'page ' + (mapPage + 1) + ' of ' + pages : '';
+        view.querySelector('#ampMapPrev').disabled = mapPage <= 0;
+        view.querySelector('#ampMapNext').disabled = mapPage >= pages - 1;
+
+        view.querySelector('#ampMapping').innerHTML = rows.length
+            ? '<tr>' + mapColumns.map(function (c) {
+                var arrow = c[0] === mapSort.key ? (mapSort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
+                return '<th data-sort="' + c[0] + '" style="cursor:pointer" title="Sort">' + c[1] + arrow + '</th>';
+            }).join('') + '<th></th></tr>' + rows.map(function (r) {
+                return mapRow(r) + (mapEdit && mapEdit.path === r.Path ? mapEditRow() : '');
+            }).join('')
+            : '<tr><td class="amp-muted">' + (mapList.length ? 'No shows match the filters.' : 'No identified shows.') + '</td></tr>';
+    }
+
+    function loadMapping(view) {
+        host.showLoading();
+        return get('IdRecords').then(function (records) {
+            mapList = records || [];
+            renderMapping(view);
+            host.hideLoading();
+        }, function (error) {
+            view.querySelector('#ampMapping').innerHTML = '<tr><td class="amp-muted">Could not load.</td></tr>';
+            fail(error);
+        });
+    }
+
+    function mapAct(view, endpoint, body, message) {
+        post('IdRecords/' + endpoint, null, body).then(function () {
+            notify(message);
+            loadMapping(view);
+        }, fail);
+    }
+
+    function onMappingClick(view, e) {
+        var header = e.target.closest('[data-sort]');
+        if (header) {
+            var key = header.getAttribute('data-sort');
+            mapSort = { key: key, dir: mapSort.key === key ? -mapSort.dir : 1 };
+            mapPage = 0;
+            renderMapping(view);
+            return;
+        }
+
+        var button = e.target.closest('button[data-map-act]');
+        if (!button) {
+            return;
+        }
+
+        var path = button.closest('tr[data-path]').getAttribute('data-path');
+        var act = button.getAttribute('data-map-act');
+        var record = mapList.filter(function (r) { return r.Path === path; })[0];
+
+        if (act === 'verify') {
+            mapAct(view, 'Verify', { Path: path }, 'Verified');
+        } else if (act === 'revert') {
+            if (window.confirm('Put back the ids this show had before the correction and keep them by hand? The show is refreshed.')) {
+                mapAct(view, 'Revert', { Path: path }, 'Reverted; refreshing');
+            }
+        } else if (act === 'lift') {
+            if (window.confirm('Lift the manual mark? The ids stay, but the plugin may correct them again on its next check.')) {
+                mapAct(view, 'Lift', { Path: path }, 'Lifted');
+            }
+        } else if (act === 'edit' && record) {
+            mapEdit = {
+                path: path,
+                AniDb: mapId(record.Ids, mapIds[0][2]),
+                Mal: mapId(record.Ids, mapIds[1][2]),
+                AniList: mapId(record.Ids, mapIds[2][2])
+            };
+            renderMapping(view);
+        } else if (act === 'cancel') {
+            mapEdit = null;
+            renderMapping(view);
+        } else if (act === 'save' && mapEdit) {
+            var aniDb = mapEdit.AniDb.trim();
+            if (!/^[0-9]+$/.test(aniDb)) {
+                notify('The AniDB id is required and must be digits');
+                return;
+            }
+
+            var edit = mapEdit;
+            mapEdit = null;
+            mapAct(view, 'Manual', { Path: path, AniDb: aniDb, Mal: edit.Mal.trim(), AniList: edit.AniList.trim() }, 'Saved; refreshing');
+        }
+    }
+
     // General
 
     function span(minutes) {
@@ -1152,6 +1367,10 @@ function aniMetaPlusPage(host) {
         if (parts[0] === 'images') {
             loadImages(view);
         }
+
+        if (parts[0] === 'mapping') {
+            loadMapping(view);
+        }
     }
 
     function showSub(tab, name) {
@@ -1226,6 +1445,27 @@ function aniMetaPlusPage(host) {
                 renderBlockRows(view);
             }
         });
+        view.querySelector('#ampMapping').addEventListener('click', function (e) { onMappingClick(view, e); });
+        view.querySelector('#ampMapping').addEventListener('input', function (e) {
+            var field = e.target.getAttribute('data-map-field');
+            if (field && mapEdit) {
+                mapEdit[field] = e.target.value;
+            }
+        });
+        view.querySelector('#ampMapping').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && e.target.getAttribute('data-map-field')) {
+                e.preventDefault();
+                var save = view.querySelector('.amp-map-edit [data-map-act="save"]');
+                if (save) {
+                    save.click();
+                }
+            }
+        });
+        view.querySelector('#ampMapFilterStatus').addEventListener('change', function () { mapPage = 0; renderMapping(view); });
+        view.querySelector('#ampMapFilterText').addEventListener('input', function () { mapPage = 0; renderMapping(view); });
+        view.querySelector('#ampMapPrev').addEventListener('click', function () { mapPage--; renderMapping(view); });
+        view.querySelector('#ampMapNext').addEventListener('click', function () { mapPage++; renderMapping(view); });
+        view.querySelector('#ampMapReload').addEventListener('click', function () { loadMapping(view); });
         view.querySelector('#ampRefreshStatus').addEventListener('click', function () { loadAll(view); });
 
         view.querySelector('#ampProvisional').addEventListener('click', function (e) {
