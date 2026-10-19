@@ -113,6 +113,18 @@ public static class PluginCore
             }
 
             MoveRequestIntervalToSources(plugin, logger);
+
+            // Before 2.16.0 a combined field filled while a paused AniDB was blocked was recorded as
+            // final, and lost AniDB's tags for good. Once, those are marked as waiting for AniDB.
+            if (db.GetState("combined-fields-wait") == null)
+            {
+                var marked = SeriesMerge.WaitForMissingContributors(db, plugin.Configuration, SourceIds.AniDb);
+                db.SetState("combined-fields-wait", "1");
+                if (marked > 0)
+                {
+                    logger.LogInformation("AniMeta+ marked {Count} genre, tag, rating and cast fields filled without AniDB to be filled again once AniDB answers", marked);
+                }
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

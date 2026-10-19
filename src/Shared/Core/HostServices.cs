@@ -36,6 +36,13 @@ public interface IHostRefresher
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns><c>true</c> when the item was found and saved.</returns>
     Task<bool> SaveIds(string itemPath, IReadOnlyDictionary<string, string> ids, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists the series and movies of the libraries where this plugin is turned on as a
+    /// metadata provider.
+    /// </summary>
+    /// <returns>The items.</returns>
+    IReadOnlyList<ScanItem> ListAnimeItems() => [];
 }
 
 /// <summary>

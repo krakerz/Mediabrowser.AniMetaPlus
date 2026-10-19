@@ -550,7 +550,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             context.Ids[provider] = id;
         }
 
-        var linked = await AniDbSeasonProvider.AddLinkedIds(_appPaths, context, animeId, cancellationToken).ConfigureAwait(false);
+        // A show whose ids the owner set keeps them: the mappings do not override its MyAnimeList
+        // and AniList ids, nor replace the ones it carries.
+        var manual = IdCheck.IsManual(info.Path);
+        var linked = manual
+            ? new Dictionary<string, string>()
+            : await AniDbSeasonProvider.AddLinkedIds(_appPaths, context, animeId, cancellationToken).ConfigureAwait(false);
         if (linked.Count > 0 && HostServices.Refresher?.CorrectIds(info.Path ?? string.Empty, linked) is { Count: > 0 } corrected)
         {
             Logger?.LogInformation(

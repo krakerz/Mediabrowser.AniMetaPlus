@@ -134,6 +134,53 @@ public class IgnoreUnmatched : IReturn<UnmatchedRecord>
     public bool Ignore { get; set; } = true;
 }
 
+/// <summary>Lists every show of the anime libraries with its ids and what was decided about them.</summary>
+[Route("/AniMetaPlus/IdRecords", "GET")]
+public class GetIdRecords : IReturn<IdRow[]>
+{
+}
+
+/// <summary>Marks a show's ids as confirmed.</summary>
+[Route("/AniMetaPlus/IdRecords/Verify", "POST")]
+public class VerifyIdRecord : IReturn<IdRow>
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+}
+
+/// <summary>Puts back the ids a show had before the id check corrected them.</summary>
+[Route("/AniMetaPlus/IdRecords/Revert", "POST")]
+public class RevertIdRecord : IReturn<IdRow>
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+}
+
+/// <summary>Sets a show's ids by hand.</summary>
+[Route("/AniMetaPlus/IdRecords/Manual", "POST")]
+public class SetIdRecord : IReturn<IdRow>
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the AniDB id.</summary>
+    public string AniDb { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the MyAnimeList id, or empty for none.</summary>
+    public string Mal { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the AniList id, or empty for none.</summary>
+    public string AniList { get; set; } = string.Empty;
+}
+
+/// <summary>Takes the owner's mark off a show.</summary>
+[Route("/AniMetaPlus/IdRecords/Lift", "POST")]
+public class LiftIdRecord : IReturn<IdRow>
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+}
+
 /// <summary>Lists the mappings made by hand.</summary>
 [Route("/AniMetaPlus/Mappings", "GET")]
 public class GetMappings : IReturn<MappingRecord[]>
@@ -407,6 +454,34 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public object Get(GetMappings request) => AniMetaApi.GetMappings();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Get(GetIdRecords request) => AniMetaApi.GetIdRecords();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(VerifyIdRecord request) => AniMetaApi.VerifyIds(request.Path) ?? throw ShowNotFound(request.Path);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public async Task<object> Post(RevertIdRecord request) => await AniMetaApi.RevertIds(request.Path).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public async Task<object> Post(SetIdRecord request) => await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(LiftIdRecord request) => AniMetaApi.LiftIds(request.Path) ?? throw ShowNotFound(request.Path);
+
+    private static Exception ShowNotFound(string path)
+        => new MediaBrowser.Common.Extensions.ResourceNotFoundException("No show at " + path);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

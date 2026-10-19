@@ -4,6 +4,19 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.16.0] — 2026-10-19
+
+### Added
+- Mapping tab: every identified show with its AniDB, MyAnimeList, AniList, TVDB and TMDB ids, each linking to the show's page on that site, and what the id check did to it (corrected, with the old ids and why, or possibly wrong). Sortable and filterable, 100 shows a page
+  - **Verify** confirms a show's ids; the id check leaves it alone while they stay the same
+  - **Revert** puts back the ids a correction replaced and keeps them by hand
+  - **Set manually** takes the AniDB id, and optionally the MyAnimeList and AniList ids, you enter. The plugin then never decides that show's ids itself, neither in the id check nor when the show is refreshed; its metadata is still fetched from them
+  - **Lift manual** hands the show back to the plugin
+
+### Fixed
+- Genres and tags lost AniDB's tags when a show was refreshed while AniDB was resting, capped or banned and set to Pause: the list built from AniList and MyAnimeList alone was recorded as final. Now a genre, tag, rating or cast list built without one of its sources waits for that source, and the queue fills it in once the source answers. Lists that lost AniDB this way before are marked once at startup to be filled again, within AniDB's limits
+- A stand-in replaced once its source answers now actually changes on the show: the queue refreshes it with its metadata replaced, since both servers keep a title, overview, genres and tags a show already has on a plain refresh
+
 ## [2.15.3] — 2026-10-19
 
 ### Fixed

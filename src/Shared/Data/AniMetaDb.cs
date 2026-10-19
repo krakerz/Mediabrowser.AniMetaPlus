@@ -102,6 +102,11 @@ public sealed class AniMetaDb : IDisposable
     public ILiteCollection<MappingRecord> Mappings => _db.GetCollection<MappingRecord>("mappings");
 
     /// <summary>
+    /// Gets what was decided about the ids of each show.
+    /// </summary>
+    public ILiteCollection<IdRecord> IdRecords => _db.GetCollection<IdRecord>("idrecords");
+
+    /// <summary>
     /// Gets the items nothing identified.
     /// </summary>
     public ILiteCollection<UnmatchedRecord> Unmatched => _db.GetCollection<UnmatchedRecord>("unmatched");

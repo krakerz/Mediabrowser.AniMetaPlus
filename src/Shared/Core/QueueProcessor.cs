@@ -136,7 +136,9 @@ public static class QueueProcessor
             var mode = configuration.GetSource(provenance.PreferredSource).Mode;
             if (mode is FallbackMode.SwitchUpgrade or FallbackMode.Pause || (mode == FallbackMode.SwitchReview && !db.Reviews.Exists(r => r.Id == provenance.Id)))
             {
-                if (Refresh(provenance.ItemPath, false, provenance.PreferredSource == SourceIds.AniDb))
+                // Replacing: both servers keep a title, overview, genres or tags an item already has
+                // on a plain refresh, so the stand-in would stay.
+                if (Refresh(provenance.ItemPath, true, provenance.PreferredSource == SourceIds.AniDb))
                 {
                     _upgradeTried[provenance.ItemPath] = DateTime.UtcNow;
                     upgraded++;

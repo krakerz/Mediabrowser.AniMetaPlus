@@ -124,8 +124,10 @@ public static class SeriesMerge
                     hasData = true;
                 }
 
-                var standIn = blocked != null && configuration.GetSource(blocked).Mode != FallbackMode.Pause;
-                Record(db, provenanceId, context, kind, string.Join(",", contributors.Select(c => c.Source)), standIn ? blocked : null, keepPin: provenance);
+                // A combined field built without a blocked source waits for it whatever its mode: the
+                // others' genres and tags are only part of the list, and AniDB's tags went missing
+                // for good when a paused AniDB's absence was recorded as the field's final answer.
+                Record(db, provenanceId, context, kind, string.Join(",", contributors.Select(c => c.Source)), blocked, keepPin: provenance);
 
                 continue;
             }
@@ -378,9 +380,13 @@ public static class SeriesMerge
 
         foreach (var provenance in db.Provenance.FindAll().Where(p => p.Provisional).ToList())
         {
+            // Every source of a combined field contributes, wherever it is in the order; one still
+            // in the order is still waited for.
             if (Enum.TryParse<DataKind>(provenance.Field, out var kind)
                 && !db.Reviews.Exists(r => r.Id == provenance.Id)
-                && !StillWaitsFor(provenance.PreferredSource, provenance.Source, configuration.GetPriority(kind)))
+                && (SourceDefaults.IsCombined(kind)
+                    ? !configuration.GetPriority(kind).Contains(provenance.PreferredSource, StringComparer.OrdinalIgnoreCase)
+                    : !StillWaitsFor(provenance.PreferredSource, provenance.Source, configuration.GetPriority(kind))))
             {
                 provenance.Provisional = false;
                 provenance.PreferredSource = string.Empty;
@@ -391,6 +397,40 @@ public static class SeriesMerge
         }
 
         return (settled, dropped);
+    }
+
+    /// <summary>
+    /// Marks the combined fields a source took no part in as waiting for it, where it is in the
+    /// field's order: genres and tags, rating, cast. The queue refreshes them once the source
+    /// answers, and a source that has nothing for the field leaves it settled after that one try.
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <param name="configuration">The settings.</param>
+    /// <param name="source">The source.</param>
+    /// <returns>How many fields were marked.</returns>
+    public static int WaitForMissingContributors(AniMetaDb db, PluginConfiguration configuration, string source)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var marked = 0;
+        foreach (var provenance in db.Provenance.FindAll().Where(p => !p.Provisional && !p.Locked).ToList())
+        {
+            if (!Enum.TryParse<DataKind>(provenance.Field, out var kind)
+                || !SourceDefaults.IsCombined(kind)
+                || !configuration.GetPriority(kind).Contains(source, StringComparer.OrdinalIgnoreCase)
+                || provenance.Source.Split(',').Contains(source, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            provenance.Provisional = true;
+            provenance.PreferredSource = source;
+            db.Provenance.Upsert(provenance);
+            marked++;
+        }
+
+        return marked;
     }
 
     private static void Settle(AniMetaDb db, ProvenanceRecord provenance, DataKind kind, FetchContext context)

@@ -49,6 +49,33 @@ public class MapRequest
 }
 
 /// <summary>
+/// A show, by its folder.
+/// </summary>
+public class IdPathRequest
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Ids to set on a show by hand.
+/// </summary>
+public class IdManualRequest
+{
+    /// <summary>Gets or sets the show's folder.</summary>
+    public string Path { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the AniDB id.</summary>
+    public string AniDb { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the MyAnimeList id, or empty for none.</summary>
+    public string Mal { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the AniList id, or empty for none.</summary>
+    public string AniList { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// The replaced posters to revert or acknowledge.
 /// </summary>
 public class ImageSelectionRequest
@@ -162,6 +189,55 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     /// <returns>No content.</returns>
     [HttpDelete("Mappings")]
     public ActionResult Unmap([FromQuery] string itemKey) => AniMetaApi.Unmap(itemKey) ? NoContent() : NotFound();
+
+    /// <summary>Lists every show of the anime libraries with its ids and what was decided about them.</summary>
+    /// <returns>The shows.</returns>
+    [HttpGet("IdRecords")]
+    public IReadOnlyList<IdRow> GetIdRecords() => AniMetaApi.GetIdRecords();
+
+    /// <summary>Marks a show's ids as confirmed.</summary>
+    /// <param name="request">The show.</param>
+    /// <returns>The show.</returns>
+    [HttpPost("IdRecords/Verify")]
+    public ActionResult<IdRow> VerifyIds([FromBody] IdPathRequest request) => AniMetaApi.VerifyIds(request.Path) is { } row ? row : NotFound();
+
+    /// <summary>Puts back the ids a show had before the id check corrected them.</summary>
+    /// <param name="request">The show.</param>
+    /// <returns>The show.</returns>
+    [HttpPost("IdRecords/Revert")]
+    public async Task<ActionResult<IdRow>> RevertIds([FromBody] IdPathRequest request)
+    {
+        try
+        {
+            return await AniMetaApi.RevertIds(request.Path).ConfigureAwait(false) is { } row ? row : NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>Sets a show's ids by hand.</summary>
+    /// <param name="request">The show and its ids.</param>
+    /// <returns>The show.</returns>
+    [HttpPost("IdRecords/Manual")]
+    public async Task<ActionResult<IdRow>> SetIds([FromBody] IdManualRequest request)
+    {
+        try
+        {
+            return await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList).ConfigureAwait(false) is { } row ? row : NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>Takes the owner's mark off a show.</summary>
+    /// <param name="request">The show.</param>
+    /// <returns>The show.</returns>
+    [HttpPost("IdRecords/Lift")]
+    public ActionResult<IdRow> LiftIds([FromBody] IdPathRequest request) => AniMetaApi.LiftIds(request.Path) is { } row ? row : NotFound();
 
     /// <summary>Searches the local titles dump.</summary>
     /// <param name="query">The title.</param>

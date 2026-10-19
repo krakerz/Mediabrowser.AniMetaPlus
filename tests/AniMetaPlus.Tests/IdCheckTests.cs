@@ -5,11 +5,14 @@ namespace AniMetaPlus.Tests;
 
 public class IdCheckTests
 {
+    // The verdict without its reason, which the tests below check apart.
+    private static (string? Fix, bool Suspect) Of(AniDbVerdict verdict) => (verdict.Fix, verdict.Suspect);
+
     // The Beginning After the End held Gekijouban Tiger & Bunny's id (8805): its TVDB id and its
     // folder both say 18935, so it is corrected.
     [Fact]
     public void CorrectsAnIdBothTheTvdbIdAndTheFolderContradict()
-        => Assert.Equal(new AniDbVerdict("18935", false), IdCheck.Judge("8805", "246381", "455684", "18935", "18935"));
+        => Assert.Equal(("18935", false), Of(IdCheck.Judge("8805", "246381", "455684", "18935", "18935")));
 
     [Theory]
     // The id agrees with one of them.
@@ -28,13 +31,13 @@ public class IdCheckTests
     [InlineData("8805", "246381", null, null, "18935")]
     [InlineData("8805", "246381", "455684", "18935", "19381")]
     public void OnlyLogsAnIdWithoutEnoughEvidence(string current, string? currentShow, string? tvdb, string? byShow, string? byFolder)
-        => Assert.Equal(new AniDbVerdict(null, true), IdCheck.Judge(current, currentShow, tvdb, byShow, byFolder));
+        => Assert.Equal((null, true), Of(IdCheck.Judge(current, currentShow, tvdb, byShow, byFolder)));
 
     // !Collection/Natsume Yuujinchou held one of its specials (9904), an entry of the same TVDB
     // show; its TVDB id and its folder both say the first season.
     [Fact]
     public void CorrectsAFranchiseFolderHeldAsOneOfItsSpecials()
-        => Assert.Equal(new AniDbVerdict("5787", false), IdCheck.Judge("9904", "81891", "81891", "5787", "5787"));
+        => Assert.Equal(("5787", false), Of(IdCheck.Judge("9904", "81891", "81891", "5787", "5787")));
 
     // Folders held as another show the fuzzy search found, where only the TVDB id disagreed.
     [Theory]
@@ -48,7 +51,7 @@ public class IdCheckTests
         var likesShow = IdCheck.Likeness(folder, mappedTitles);
         var likesCurrent = IdCheck.Likeness(folder, currentTitles);
 
-        Assert.Equal(new AniDbVerdict("2", false), IdCheck.Judge("1", "100", "200", "2", null, likesShow, likesCurrent));
+        Assert.Equal(("2", false), Of(IdCheck.Judge("1", "100", "200", "2", null, likesShow, likesCurrent)));
     }
 
     // Arslan Senki (1991) holds a title the folder is exactly, so the 2015 show TVDB names is no reason to move it.
@@ -58,7 +61,7 @@ public class IdCheckTests
         var likesShow = IdCheck.Likeness("Arslan Senki", ["Arslan Senki (2015)", "The Heroic Legend of Arslan (2015)"]);
         var likesCurrent = IdCheck.Likeness("Arslan Senki", ["Arslan Senki"]);
 
-        Assert.Equal(new AniDbVerdict(null, true), IdCheck.Judge("519", "70000", "291630", "10910", null, likesShow, likesCurrent));
+        Assert.Equal((null, true), Of(IdCheck.Judge("519", "70000", "291630", "10910", null, likesShow, likesCurrent)));
     }
 
     // A later season in its own folder stays, however its folder reads.
@@ -78,7 +81,7 @@ public class IdCheckTests
     [Fact]
     public void CorrectsASameShowEntryWhenTheFolderHoldsSeasonOne()
     {
-        Assert.Equal(new AniDbVerdict("6327", false), IdCheck.Judge("9183", "102261", "102261", "6327", null, holdsSeasonOne: true));
+        Assert.Equal(("6327", false), Of(IdCheck.Judge("9183", "102261", "102261", "6327", null, holdsSeasonOne: true)));
         Assert.Equal(default, IdCheck.Judge("9183", "102261", "102261", "6327", null, holdsSeasonOne: false));
     }
 

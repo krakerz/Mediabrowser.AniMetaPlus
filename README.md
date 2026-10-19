@@ -27,7 +27,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Cached AniDB, AniList and MyAnimeList answers listed with the date scans reuse them until, and reset per source
 - Request gaps per source can be raised but never set below their defaults
 - Library scan task that identifies the whole library from local data each run; only shows that need a new AniDB answer are paced, by AniDB's bursts, rests and daily cap on the Sources tab
-- Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Review, Blocks, Image overrides, General and Import/Export tabs; recent request log
+- Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Mapping, Review, Blocks, Image overrides, General and Import/Export tabs; recent request log
 - Export/Import of mappings, review decisions and pinned blocks (never keys), usable across Emby and Jellyfin
 - Adult content is always included; AniDB's restricted flag still sets the parental rating
 - Takes over settings and any active ban from the earlier AniDB plugin on first start; existing AniDB ids on items are kept
@@ -110,6 +110,7 @@ Layout:
 - **Titles dump**: location and state of the AniDB titles dump
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
+- **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged, and Verify / Revert / Set manually / Lift manual
 - **Blocks**: remembered failures, sortable and filterable by source, kind, reason or text, with lift, pin and lift-all-shown
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
 - **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, searchable alternative titles, plus the other plugin options
