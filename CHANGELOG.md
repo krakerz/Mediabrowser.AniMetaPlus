@@ -4,6 +4,13 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.15.3] — 2026-10-19
+
+### Fixed
+- The id check confirmed a show held as a later season whenever the show's own year matched it: AniDB titles a later season by its year, "Kusuriya no Hitorigoto (2025)", and that year was the wrong entry's. Only a year written in the folder name is used now. Kusuriya no Hitorigoto, Spy Kyoushitsu, Log Horizon, SHY and others held as a later season are corrected
+- A show whose folder holds a Season 01 folder is corrected to the entry that starts its TVDB show, even when it is held as another season of that show and its folder name matches no title exactly, such as Monogatari held as Monogatari Series: Second Season, or "Kanojo, Okarisimasu" held as its 2nd season. A later season kept in a folder of its own has no Season 01 and is left alone
+- The AniBridge mappings now and then link an AniDB entry to another season's MyAnimeList entry (Bungou Stray Dogs to its 2nd Season). Where AniList's cached answer for the linked entry names a MyAnimeList id, that one is taken, in the id check and when a show or season is refreshed
+
 ## [2.15.2] — 2026-10-19
 
 ### Changed
