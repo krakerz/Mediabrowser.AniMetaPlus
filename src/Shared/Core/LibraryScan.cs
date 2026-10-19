@@ -73,11 +73,8 @@ public static class LibraryScan
             .OrderByDescending(i => i.AddedUtc)
             .ToList();
 
-        // As many as AniDB's burst, hour and day still allow; the rest wait for a later run.
-        var aniDbLimit = SourceGate.RequestsLeft(SourceIds.AniDb);
-
-        // The identified shows are checked first, from local data, and share the same limit.
-        aniDbLimit = Math.Max(0, aniDbLimit - await IdCheck.Run(items, aniDbLimit, logger, cancellationToken).ConfigureAwait(false));
+        // The identified shows are checked first, from local data.
+        await IdCheck.Run(items, logger, cancellationToken).ConfigureAwait(false);
         var identified = 0;
         var askingAniDb = 0;
         var deferred = 0;
@@ -127,14 +124,14 @@ public static class LibraryScan
                 continue;
             }
 
-            // A refresh that only reads cached or local data costs AniDB nothing, and is queued
-            // whatever the limit. One that would ask AniDB waits for a later run once the limit is
-            // reached; it is identified again then, which costs nothing either.
+            // Not held back for AniDB's limits: the refresh fills what the other sources have now,
+            // and a field only AniDB can fill takes a stand-in that the queue replaces once AniDB
+            // answers, paced like any other request.
             var asks = AniDbSeriesProvider.WouldAskAniDb(paths, animeId);
 
-            // While AniDB is banned, resting or capped, a show it has never answered for waits too,
-            // rather than being filled with stand-in values that need replacing later.
-            if ((asks && askingAniDb >= aniDbLimit) || AniDbSeriesProvider.ShouldWaitForAniDb(paths, animeId))
+            // Where AniDB leads the title, overview or dates and is banned, resting or capped, a
+            // show it has never answered for waits, rather than be shown under a stand-in title.
+            if (AniDbSeriesProvider.ShouldWaitForAniDb(paths, animeId))
             {
                 deferred++;
 
@@ -155,13 +152,12 @@ public static class LibraryScan
         }
 
         logger.LogInformation(
-            "AniMeta+ library scan: {Identified} items identified from local data and queued for a refresh ({Cached} need nothing new from AniDB, {AskingAniDb} ask AniDB), {Unmatched} listed for mapping by hand, {Deferred} wait for AniDB in later runs (at most {Limit} per run)",
+            "AniMeta+ library scan: {Identified} items identified from local data and queued for a refresh ({Cached} need nothing new from AniDB, {AskingAniDb} ask AniDB), {Unmatched} listed for mapping by hand, {Deferred} wait for AniDB in later runs",
             identified,
             identified - askingAniDb,
             askingAniDb,
             unmatched,
-            deferred,
-            aniDbLimit);
+            deferred);
 
         db.Checkpoint();
         progress?.Report(100);
