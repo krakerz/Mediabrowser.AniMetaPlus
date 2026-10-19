@@ -84,7 +84,7 @@ public class TitlesRefreshTask(PluginLog<TitlesRefreshTask> logger) : AniMetaTas
     public override string Key => "AniMetaPlusTitlesRefresh";
 
     /// <inheritdoc />
-    public override string Description => "Downloads a fresh AniDB titles dump when the one on disk is older than the interval set in AniMeta+, never more than once every 3 days.";
+    public override string Description => "Downloads a new AniDB titles dump when yours is older than the set interval (at most every 3 days).";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromHours(12))];
@@ -114,7 +114,7 @@ public class QueueTask(PluginLog<QueueTask> logger) : AniMetaTask
     public override string Key => "AniMetaPlusQueues";
 
     /// <inheritdoc />
-    public override string Description => "Refreshes items waiting for a source that answers again, items with values a stand-in supplied, and items mapped by hand.";
+    public override string Description => "Refreshes items waiting for a source, items holding stand-in values, and items mapped by hand.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromMinutes(30))];
@@ -137,7 +137,7 @@ public class LibraryScanTask(ILibraryManager libraryManager, IProviderManager pr
     public override string Key => "AniMetaPlusLibraryScan";
 
     /// <inheritdoc />
-    public override string Description => "Identifies unidentified anime from the mapping sources and the local titles dump, lists what it cannot for mapping by hand, and refreshes a batch at a time, newest first.";
+    public override string Description => "Identifies new anime from local data, lists the rest for mapping by hand, and fixes wrong ids on shows already identified. Stays within the AniDB limits.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromHours(1))];
@@ -170,7 +170,7 @@ public class CachedPosterTask(ILibraryManager libraryManager, IProviderManager p
     public override string Key => "AniMetaPlusCachedPosters";
 
     /// <inheritdoc />
-    public override string Description => "Queues an image refresh for anime without a poster, reading AniDB's picture from the cached answer instead of asking the AniDB API. Anime with nothing cached are skipped. Posters come from AniDB's image server, one at a time. Run by hand.";
+    public override string Description => "Gives anime without a poster AniDB's poster from the cached answer. No AniDB API requests. Run by hand.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
@@ -224,7 +224,7 @@ public class AniDbPosterOverrideTask(ILibraryManager libraryManager, IProviderMa
     public override string Key => "AniMetaPlusOverridePosters";
 
     /// <inheritdoc />
-    public override string Description => "Replaces the poster of every anime with the one AniDB names in its cached answer, without asking the AniDB API. Anime with nothing cached, or no AniDB picture, keep theirs. Posters come from AniDB's image server, one at a time. The previous poster is kept on the Image overrides tab until you acknowledge or revert it; reverted anime are skipped. Other images are left alone. Run by hand.";
+    public override string Description => "Replaces every anime's poster with AniDB's from the cached answer, keeping the old one to revert on the Image overrides tab. No AniDB API requests. Run by hand.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
@@ -353,7 +353,7 @@ public class AlternativeTitlesTask(ILibraryManager libraryManager, IProviderMana
     public override string Key => "AniMetaPlusAlternativeTitles";
 
     /// <inheritdoc />
-    public override string Description => "Writes each anime's short names, English title and synonyms - from the local titles dump, then cached AniList and MyAnimeList answers - into its original title, which the server's search reads, or takes them out when \"Make alternative titles searchable\" is off. The shown title is left alone. No requests, no refresh.";
+    public override string Description => "Puts each anime's other titles into its original title so search finds them, from local and cached data. No requests.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromDays(1))];
@@ -405,7 +405,7 @@ public class FranchiseCollectionsTask(ILibraryManager libraryManager, IProviderM
     public override string Key => "AniMetaPlusFranchiseCollections";
 
     /// <inheritdoc />
-    public override string Description => "Groups anime that are sequels, prequels, side stories, parent stories, summaries or full stories of each other into one collection per franchise, from the relations in the cached AniDB answers. Reads only cached answers and sends no request. Collections you made yourself are left alone, and a collection you renamed keeps its name. Does nothing unless the franchise collections setting is on.";
+    public override string Description => "Groups related anime (sequels, prequels, side stories) into one collection per franchise, from cached AniDB answers. No requests. Needs the franchise collections setting.";
 
     /// <inheritdoc />
     public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromDays(1))];
@@ -471,7 +471,7 @@ public class FranchiseCollectionsTask(ILibraryManager libraryManager, IProviderM
             },
             cancellationToken).ConfigureAwait(false);
 
-        logger.LogInformation("AniMeta+ franchise collections: {Franchises} franchises found, {Created} collections created, {Updated} updated, {Added} items added, {Removed} removed, {Art} images copied", franchises.Count, result.Created, result.Updated, result.Added, result.Removed, result.ArtCopied);
+        logger.LogInformation("AniMeta+ franchise collections: {Franchises} franchises found, {Created} collections created, {Updated} updated, {Deleted} deleted, {Added} items added, {Removed} removed, {Art} images copied", franchises.Count, result.Created, result.Updated, result.Deleted, result.Added, result.Removed, result.ArtCopied);
         progress.Report(100);
     }
 

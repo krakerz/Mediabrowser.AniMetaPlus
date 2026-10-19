@@ -81,6 +81,42 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     }
 
     /// <inheritdoc />
+    public async Task<bool> SaveIds(string itemPath, IReadOnlyDictionary<string, string> ids, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(itemPath) || _libraryManager.FindByPath(itemPath, null) is not { } found)
+        {
+            return false;
+        }
+
+#if EMBY
+        var item = _libraryManager.GetItemById(found.InternalId) ?? found;
+#else
+        var item = _libraryManager.GetItemById(found.Id) ?? found;
+#endif
+
+        foreach (var (provider, id) in ids)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                item.ProviderIds.Remove(provider);
+            }
+            else
+            {
+                item.SetProviderId(provider, id);
+            }
+        }
+
+#if EMBY
+        item.UpdateToRepository(ItemUpdateType.MetadataEdit);
+        await Task.CompletedTask.ConfigureAwait(false);
+#else
+        await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+#endif
+
+        return true;
+    }
+
+    /// <inheritdoc />
     public bool Refresh(string itemPath, bool replaceAll)
     {
         if (string.IsNullOrEmpty(itemPath))
@@ -502,6 +538,17 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
 #else
         await manager.RemoveFromCollectionAsync(Guid.ParseExact(collectionId, "N"), itemIds.Select(id => Guid.ParseExact(id, "N")).ToList()).ConfigureAwait(false);
 #endif
+    }
+
+    /// <inheritdoc />
+    public Task DeleteCollection(string collectionId, CancellationToken cancellationToken)
+    {
+        if (FindItem(collectionId) is BoxSet box)
+        {
+            _libraryManager.DeleteItem(box, new DeleteOptions { DeleteFileLocation = true });
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

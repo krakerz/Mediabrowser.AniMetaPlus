@@ -75,6 +75,9 @@ public static class LibraryScan
 
         // As many as AniDB's burst, hour and day still allow; the rest wait for a later run.
         var aniDbLimit = SourceGate.RequestsLeft(SourceIds.AniDb);
+
+        // The identified shows are checked first, from local data, and share the same limit.
+        aniDbLimit = Math.Max(0, aniDbLimit - await IdCheck.Run(items, aniDbLimit, logger, cancellationToken).ConfigureAwait(false));
         var identified = 0;
         var askingAniDb = 0;
         var deferred = 0;

@@ -105,7 +105,7 @@ public class FranchisesTests
 
         var found = Franchises.Group(library, Relations(("1", "2", "Prequel"), ("2", "3", "Sequel")));
 
-        Assert.Equal("Original", Assert.Single(found).Name);
+        Assert.Equal("Original Collection", Assert.Single(found).Name);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class FranchisesTests
 
         var found = Franchises.Group(library, Relations(("5", "7", "Sequel")));
 
-        Assert.Equal("Five", Assert.Single(found).Name);
+        Assert.Equal("Five Collection", Assert.Single(found).Name);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class FranchisesTests
 
         var found = Franchises.Group(library, Relations(("1", "2", "Sequel")));
 
-        Assert.Equal("Dated", Assert.Single(found).Name);
+        Assert.Equal("Dated Collection", Assert.Single(found).Name);
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public class FranchisesTests
     }
 
     [Fact]
-    public async Task KeepsTheCollectionWhenTheKeyMovesAndLeavesAGoneFranchiseAlone()
+    public async Task KeepsTheCollectionWhenTheKeyMovesAndDeletesAGoneFranchise()
     {
         var host = new FakeCollections();
         var first = await Franchises.Sync(host, [new("5", "Show", ["a", "b"]), new("9", "Gone", ["x", "y"])], [], null, CancellationToken.None);
@@ -250,9 +250,47 @@ public class FranchisesTests
         var second = await Franchises.Sync(host, [new("2", "Show", ["a", "b", "c"])], first.Records, null, CancellationToken.None);
 
         Assert.Equal(0, second.Created);
-        Assert.Equal(2, host.Collections.Count);
-        Assert.Equal(["2", "9"], second.Records.Select(r => r.Id).Order());
-        Assert.Equal(["x", "y"], host.Collections[second.Records.Single(r => r.Id == "9").CollectionId].Members.Order());
+        Assert.Equal(1, second.Deleted);
+        Assert.Equal(["a", "b", "c"], host.Collections.Values.Single().Members.Order());
+        Assert.Equal(["2"], second.Records.Select(r => r.Id));
+    }
+
+    // The Beginning After the End left the Tiger & Bunny franchise once its id was corrected, and
+    // Tiger & Bunny had only the one show left in the library.
+    [Fact]
+    public async Task DeletesTheCollectionOfAFranchiseThatFellToOneShow()
+    {
+        var host = new FakeCollections();
+        var first = await Franchises.Sync(host, [new("8805", "Tiger & Bunny Collection", ["tb", "tbate"])], [], null, CancellationToken.None);
+
+        var second = await Franchises.Sync(host, [], first.Records, null, CancellationToken.None);
+
+        Assert.Equal(1, second.Deleted);
+        Assert.Empty(host.Collections);
+        Assert.Empty(second.Records);
+    }
+
+    [Fact]
+    public async Task KeepsAGoneFranchisesCollectionTheOwnerRenamedAndFilled()
+    {
+        var host = new FakeCollections();
+        var first = await Franchises.Sync(host, [new("1", "Show Collection", ["a", "b"])], [], null, CancellationToken.None);
+        var id = first.Records.Single().CollectionId;
+        host.Collections[id].Name = "My favourites";
+        host.Collections[id].Members.AddRange(["mine1", "mine2"]);
+
+        var second = await Franchises.Sync(host, [], first.Records, null, CancellationToken.None);
+
+        Assert.Equal(0, second.Deleted);
+        Assert.Equal(["mine1", "mine2"], host.Collections[id].Members.Order());
+        Assert.Empty(Assert.Single(second.Records).MemberIds);
+    }
+
+    [Fact]
+    public void NamesTheCollectionOnce()
+    {
+        Assert.Equal("Sword Art Online Collection", Franchises.CollectionName("Sword Art Online"));
+        Assert.Equal("Gundam Collection", Franchises.CollectionName("Gundam Collection"));
     }
 
     private sealed class FakeCollection
@@ -339,6 +377,13 @@ public class FranchisesTests
         public Task RenameCollection(string collectionId, string name, CancellationToken cancellationToken)
         {
             Collections[collectionId].Name = name;
+
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteCollection(string collectionId, CancellationToken cancellationToken)
+        {
+            Collections.Remove(collectionId);
 
             return Task.CompletedTask;
         }

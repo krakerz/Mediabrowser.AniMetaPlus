@@ -56,6 +56,11 @@ public sealed class FranchiseSyncResult
 
     /// <summary>Gets or sets how many images were copied onto collections.</summary>
     public int ArtCopied { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many collections of franchises that no longer exist were deleted.
+    /// </summary>
+    public int Deleted { get; set; }
 }
 
 /// <summary>
@@ -209,7 +214,7 @@ public static class Franchises
             }
 
             var key = component.OrderBy(id => id, IdComparer.Instance).First();
-            result.Add(new Franchise(key, NameOf(members, library), members));
+            result.Add(new Franchise(key, CollectionName(NameOf(members, library)), members));
         }
 
         return result.OrderBy(f => f.Key, IdComparer.Instance).ToList();
@@ -319,11 +324,52 @@ public static class Franchises
             Keep(new FranchiseCollectionRecord { Id = target.Key, CollectionId = record.CollectionId, Name = name, MemberIds = [.. target.ItemIds], ArtSet = record.ArtSet || copied > 0 });
         }
 
-        // Franchises that no longer exist keep their record, and their collection.
-        result.Records.AddRange(unclaimed);
+        // A franchise that no longer exists - a member was identified as another anime, or left
+        // the library - loses the members the task put in. Its collection is deleted once fewer
+        // than two items are left, unless the owner renamed it and something is still in it.
+        foreach (var record in unclaimed)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var state = host.FindCollection(record.CollectionId);
+            if (state == null)
+            {
+                continue;
+            }
+
+            var toRemove = record.MemberIds.Intersect(state.MemberIds).ToList();
+            var left = state.MemberIds.Count - toRemove.Count;
+            var renamed = state.Name != record.Name;
+
+            if (left < 2 && (!renamed || left == 0))
+            {
+                await host.DeleteCollection(record.CollectionId, cancellationToken).ConfigureAwait(false);
+                result.Deleted++;
+
+                continue;
+            }
+
+            if (toRemove.Count > 0)
+            {
+                await host.RemoveFromCollection(record.CollectionId, toRemove, cancellationToken).ConfigureAwait(false);
+                result.Removed += toRemove.Count;
+                result.Updated++;
+            }
+
+            Keep(new FranchiseCollectionRecord { Id = record.Id, CollectionId = record.CollectionId, Name = record.Name, MemberIds = [], ArtSet = record.ArtSet });
+        }
 
         return result;
     }
+
+    /// <summary>
+    /// The name a franchise's collection takes: its first show's, as "Sword Art Online
+    /// Collection", so the collection does not read as the show itself in the library.
+    /// </summary>
+    /// <param name="showName">The name of the franchise's first show.</param>
+    /// <returns>The collection's name.</returns>
+    public static string CollectionName(string showName)
+        => showName.EndsWith(" Collection", StringComparison.OrdinalIgnoreCase) ? showName : showName + " Collection";
 
     private static string NameOf(List<string> members, IReadOnlyDictionary<string, FranchiseNode> library)
     {

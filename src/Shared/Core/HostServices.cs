@@ -27,6 +27,15 @@ public interface IHostRefresher
     /// <param name="ids">The ids, by provider.</param>
     /// <returns>The providers whose id was replaced.</returns>
     IReadOnlyList<string> CorrectIds(string itemPath, IReadOnlyDictionary<string, string> ids);
+
+    /// <summary>
+    /// Writes ids onto the item at a path and saves it, outside any refresh.
+    /// </summary>
+    /// <param name="itemPath">The folder of a series, or the file of a movie or episode.</param>
+    /// <param name="ids">The ids, by provider; an empty one removes that provider's id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns><c>true</c> when the item was found and saved.</returns>
+    Task<bool> SaveIds(string itemPath, IReadOnlyDictionary<string, string> ids, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -99,6 +108,14 @@ public interface IHostCollections
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     Task RenameCollection(string collectionId, string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes a collection. The items in it stay in the library.
+    /// </summary>
+    /// <param name="collectionId">The server's id of the collection.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    Task DeleteCollection(string collectionId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Copies an item's poster and first backdrop onto a collection, from the files the server
