@@ -4,6 +4,13 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.15.1] — 2026-10-19
+
+### Fixed
+- The id check left a folder holding a whole franchise, such as "Natsume Yuujinchou", identified as one of its specials or movies, because that entry belongs to the same TVDB show. Where the TVDB id and the folder name agree on the first entry, it is now corrected
+- An AniDB id only the TVDB id disagreed with was always just logged. It is now corrected where the folder name reads as the TVDB entry's title and clearly not as the current one's, such as "Nakanohito Genome" held as Utawarerumono. A later season kept in its own folder is still left alone
+- A year in the show's folder name, as "Ranma (1989)", now comes before the show's own year when the folder name is looked up, since the show's year may be the wrong entry's
+
 ## [2.15.0] — 2026-10-19
 
 ### Added
