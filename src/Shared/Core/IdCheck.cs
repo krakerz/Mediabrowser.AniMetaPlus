@@ -44,8 +44,9 @@ public static class IdCheck
     /// <param name="byFolder">The AniDB entry the folder name is exactly the title of, if any.</param>
     /// <param name="folderLikesShow">How alike the folder name and the closest title of <paramref name="byShow"/> are, 0 to 100.</param>
     /// <param name="folderLikesCurrent">How alike the folder name and the closest title of <paramref name="current"/> are, 0 to 100.</param>
+    /// <param name="holdsSeasonOne">Whether the show's folder has a Season 01 folder in it.</param>
     /// <returns>The verdict.</returns>
-    public static AniDbVerdict Judge(string current, string? currentShow, string? itemTvdb, string? byShow, string? byFolder, int folderLikesShow = 0, int folderLikesCurrent = 100)
+    public static AniDbVerdict Judge(string current, string? currentShow, string? itemTvdb, string? byShow, string? byFolder, int folderLikesShow = 0, int folderLikesCurrent = 100, bool holdsSeasonOne = false)
     {
         if (string.Equals(current, byShow, StringComparison.Ordinal) || string.Equals(current, byFolder, StringComparison.Ordinal))
         {
@@ -60,10 +61,12 @@ public static class IdCheck
             return new AniDbVerdict(byShow, false);
         }
 
-        // An entry of the same TVDB show: a later season kept in a folder of its own.
+        // An entry of the same TVDB show: a later season kept in a folder of its own - unless the
+        // folder holds the show's Season 01, which only the whole show does. "Monogatari", with
+        // Season 01 to 05, held as Monogatari Series: Second Season.
         if (!string.IsNullOrEmpty(currentShow) && string.Equals(currentShow, itemTvdb, StringComparison.Ordinal))
         {
-            return default;
+            return holdsSeasonOne && !string.IsNullOrEmpty(byShow) ? new AniDbVerdict(byShow, false) : default;
         }
 
         // The TVDB id says another entry, and the folder name reads as that entry's title and not
@@ -125,18 +128,18 @@ public static class IdCheck
         => new(value.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
     /// <summary>
-    /// The year a show's folder says, as "Ranma (1989)", else the year the show has. A parent
-    /// folder named by a year is not read: that is how a library happens to be sorted, not what
-    /// the show is.
+    /// The year a show's folder name says, as "Ranma (1989)". Never the show's own year: that is
+    /// the entry it has now, possibly the wrong one, and AniDB titles a later season by its year -
+    /// "Kusuriya no Hitorigoto (2025)" - so the show's year found the wrong entry and took it for
+    /// right. Nor a parent folder named by a year, which is how a library happens to be sorted.
     /// </summary>
     /// <param name="path">The show's folder.</param>
-    /// <param name="year">The show's year.</param>
-    /// <returns>The year.</returns>
-    public static int? FolderYear(string path, int? year)
+    /// <returns>The year, or <c>null</c>.</returns>
+    public static int? FolderYear(string path)
     {
         var trimmed = (path ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var match = System.Text.RegularExpressions.Regex.Match(Path.GetFileName(trimmed), @"\(((?:19|20)[0-9]{2})\)");
-        return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : year;
+        return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     /// <summary>
@@ -169,7 +172,7 @@ public static class IdCheck
         }
 
         var folders = shows.Select(s => (Show: s, Name: Queues.StripNotes(FolderName(s)))).ToList();
-        var byFolderName = await Equals_check.XmlFindExactIds(folders.Select(f => (f.Name, FolderYear(f.Show.Path, f.Show.Year))), cancellationToken).ConfigureAwait(false);
+        var byFolderName = await Equals_check.XmlFindExactIds(folders.Select(f => (f.Name, FolderYear(f.Show.Path))), cancellationToken).ConfigureAwait(false);
 
         int fixedAniDb = 0, fixedLinks = 0, suspects = 0, askingAniDb = 0, deferred = 0;
 
@@ -184,7 +187,7 @@ public static class IdCheck
             var byShow = !string.IsNullOrEmpty(tvdb) || !string.IsNullOrEmpty(tmdb)
                 ? (await AniDbMappings.ResolveSeriesId(paths, tvdb, tmdb, logger, cancellationToken).ConfigureAwait(false))?.AnimeId
                 : null;
-            var byFolder = byFolderName.GetValueOrDefault(Equals_check.NameKey(folder, FolderYear(show.Path, show.Year)));
+            var byFolder = byFolderName.GetValueOrDefault(Equals_check.NameKey(folder, FolderYear(show.Path)));
             var currentShow = await AniBridgeMappings.ResolveSeriesKey(paths, current, logger, cancellationToken).ConfigureAwait(false);
 
             // Only needed where the TVDB id alone disagrees.
@@ -196,7 +199,7 @@ public static class IdCheck
                 likesCurrent = Likeness(folder, TitlesDump.SearchTitles(paths, current).Select(t => t.Title));
             }
 
-            var verdict = Judge(current, currentShow, tvdb, byShow, byFolder, likesShow, likesCurrent);
+            var verdict = Judge(current, currentShow, tvdb, byShow, byFolder, likesShow, likesCurrent, HoldsSeasonOne(show.Path));
             var animeId = verdict.Fix ?? current;
 
             if (verdict.Suspect)
@@ -221,9 +224,10 @@ public static class IdCheck
                 wanted[ProviderNames.AniDb] = verdict.Fix;
             }
 
-            foreach (var (sourceId, prefix) in new[] { (SourceIds.Mal, "mal"), (SourceIds.AniList, "anilist") })
+            var links = await LinkedIds(paths, animeId, logger, cancellationToken).ConfigureAwait(false);
+            foreach (var sourceId in new[] { SourceIds.Mal, SourceIds.AniList })
             {
-                var linked = await AniBridgeMappings.ResolveLink(paths, animeId, prefix, logger, cancellationToken).ConfigureAwait(false);
+                var linked = links.GetValueOrDefault(sourceId);
                 var has = show.ProviderIds.GetValueOrDefault(sourceId);
 
                 if (!string.IsNullOrEmpty(linked) && !string.Equals(linked, has, StringComparison.Ordinal))
@@ -290,6 +294,66 @@ public static class IdCheck
             deferred);
 
         return askingAniDb;
+    }
+
+    /// <summary>
+    /// Whether a show's folder has a folder for season 1 in it, "Season 01" or "Season 1".
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns><c>true</c> when it has.</returns>
+    internal static bool HoldsSeasonOne(string path)
+    {
+        try
+        {
+            return Directory.Exists(path) && Directory.EnumerateDirectories(path)
+                .Select(Path.GetFileName)
+                .Any(name => System.Text.RegularExpressions.Regex.IsMatch(name ?? string.Empty, @"^season\s*0*1$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The AniList and MyAnimeList ids an AniDB entry is, from the AniBridge mappings. Their
+    /// MyAnimeList link is now and then another season's - Bungou Stray Dogs' first season linked
+    /// to MyAnimeList's 2nd Season - so where AniList's own cached answer for the linked entry
+    /// names a MyAnimeList id, that one is taken. Local and cached data only.
+    /// </summary>
+    /// <param name="paths">The server paths.</param>
+    /// <param name="animeId">The AniDB id.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The ids, by provider.</returns>
+    public static async Task<IReadOnlyDictionary<string, string>> LinkedIds(MediaBrowser.Common.Configuration.IApplicationPaths paths, string? animeId, ILogger logger, CancellationToken cancellationToken)
+    {
+        var ids = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(animeId))
+        {
+            return ids;
+        }
+
+        var aniList = await AniBridgeMappings.ResolveLink(paths, animeId, "anilist", logger, cancellationToken).ConfigureAwait(false);
+        var mal = await AniBridgeMappings.ResolveLink(paths, animeId, "mal", logger, cancellationToken).ConfigureAwait(false);
+
+        if (!string.IsNullOrEmpty(aniList))
+        {
+            ids[SourceIds.AniList] = aniList;
+
+            var named = SourceCache.Read(SourceIds.AniList, "id-" + aniList, TimeSpan.MaxValue)?.Ids.GetValueOrDefault(SourceIds.Mal);
+            if (!string.IsNullOrEmpty(named))
+            {
+                mal = named;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(mal))
+        {
+            ids[SourceIds.Mal] = mal;
+        }
+
+        return ids;
     }
 
     private static string FolderName(ScanItem item)

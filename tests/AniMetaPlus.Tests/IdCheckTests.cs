@@ -66,11 +66,37 @@ public class IdCheckTests
     public void LeavesALaterSeasonOfTheSameShow()
         => Assert.Equal(default, IdCheck.Judge("10376", "259640", "259640", "8692", null, 90, 40));
 
+    // Only the folder name's year: the show's own year is the entry it has, possibly the wrong one.
     [Theory]
-    [InlineData("/mnt/media/Anime/Series/2025/Sorairo Utility (Winter)", 2002, 2002)]
-    [InlineData("/mnt/media/Anime/Series/!Collection/Arslan Senki", 1991, 1991)]
-    [InlineData("/media/anime/Ranma (1989)", null, 1989)]
-    [InlineData("/media/anime/Show", null, null)]
-    public void ReadsTheYearFromTheFolders(string path, int? year, int? expected)
-        => Assert.Equal(expected, IdCheck.FolderYear(path, year));
+    [InlineData("/mnt/media/Anime/Series/2025/Sorairo Utility (Winter)", null)]
+    [InlineData("/mnt/media/Anime/Series/!Collection/Kusuriya no Hitorigoto", null)]
+    [InlineData("/media/anime/Ranma (1989)", 1989)]
+    public void ReadsTheYearFromTheFolderNameOnly(string path, int? expected)
+        => Assert.Equal(expected, IdCheck.FolderYear(path));
+
+    // !Collection/Monogatari holds Season 01 to 05 and was held as its Second Season, an entry of the same TVDB show.
+    [Fact]
+    public void CorrectsASameShowEntryWhenTheFolderHoldsSeasonOne()
+    {
+        Assert.Equal(new AniDbVerdict("6327", false), IdCheck.Judge("9183", "102261", "102261", "6327", null, holdsSeasonOne: true));
+        Assert.Equal(default, IdCheck.Judge("9183", "102261", "102261", "6327", null, holdsSeasonOne: false));
+    }
+
+    [Fact]
+    public void FindsASeasonOneFolder()
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "animetaplus-season-" + System.Guid.NewGuid().ToString("N"));
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "Season 02"));
+            Assert.False(IdCheck.HoldsSeasonOne(root));
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "Season 01"));
+            Assert.True(IdCheck.HoldsSeasonOne(root));
+            Assert.False(IdCheck.HoldsSeasonOne(System.IO.Path.Combine(root, "missing")));
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, true);
+        }
+    }
 }

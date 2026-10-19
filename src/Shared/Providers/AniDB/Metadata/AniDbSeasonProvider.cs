@@ -426,16 +426,11 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
     internal static async Task<IReadOnlyDictionary<string, string>> AddLinkedIds(IApplicationPaths paths, FetchContext context, string? seasonId, CancellationToken cancellationToken)
     {
         var logger = (ILogger?)AniDbSeriesProvider.Logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-        var supplied = new Dictionary<string, string>(StringComparer.Ordinal);
+        var supplied = await IdCheck.LinkedIds(paths, seasonId, logger, cancellationToken).ConfigureAwait(false);
 
-        foreach (var (sourceId, prefix) in new[] { (SourceIds.AniList, "anilist"), (SourceIds.Mal, "mal") })
+        foreach (var (sourceId, linked) in supplied)
         {
-            var linked = await AniBridgeMappings.ResolveLink(paths, seasonId, prefix, logger, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(linked))
-            {
-                context.Ids[sourceId] = linked;
-                supplied[sourceId] = linked;
-            }
+            context.Ids[sourceId] = linked;
         }
 
         return supplied;
