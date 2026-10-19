@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.14.1] — 2026-10-19
+
+### Fixed
+- Review tab: the reviews are one table (item, field, now, proposed, actions), so the columns line up instead of each card's values sitting at a different width
+- Unmatched tab: the items to map are one table too (item and path, tries, guess / search / id, actions)
+
 ## [2.14.0] — 2026-10-18
 
 ### Added

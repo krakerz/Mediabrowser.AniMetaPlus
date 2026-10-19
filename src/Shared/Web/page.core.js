@@ -521,25 +521,25 @@ function aniMetaPlusPage(host) {
     var searchedGuesses = {};
 
     function renderUnmatched(view, items, mappings) {
-        view.querySelector('#ampUnmatched').innerHTML = items.length ? items.map(function (u) {
+        // One table, so every item's fields and buttons line up with the next one's.
+        view.querySelector('#ampUnmatched').innerHTML = items.length ? '<div class="amp-scroll"><table class="amp-table amp-unmatched"><tr><th>Item</th><th>Tried</th><th>Map to</th><th></th></tr>' + items.map(function (u) {
             var guesses = (u.Candidates || []).map(function (c) {
                 return '<option value="' + esc(c.AnimeId) + '">' + esc(c.Title) + ' (' + esc(c.AnimeId) + ', ' + c.Score + '%)</option>';
             }).join('');
             var options = searchedGuesses[u.Id] || '<option value="">Guesses from the titles dump...</option>' + guesses;
-            return '<div class="amp-card" data-key="' + esc(u.Id) + '" style="margin-bottom:1em">'
-                + '<div><b style="font-size:1.1em;display:inline">' + esc(u.Name) + '</b> ' + (u.Year ? '(' + u.Year + ') ' : '') + (u.Ignored ? badge('set aside') : '') + '</div>'
-                + '<div class="amp-small">' + esc(u.Path) + ' - tried ' + u.Attempts + 'x, last ' + when(u.LastAttemptUtc) + '</div>'
-                + '<div class="amp-row" style="margin-top:.5em">'
-                + '<div class="inputContainer"><select class="amp-guess">' + options + '</select></div>'
-                + '<div class="inputContainer"><input type="text" class="amp-search" placeholder="Search the titles dump" value="' + esc(u.Name) + '" /></div>'
-                + '<div class="inputContainer"><input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></div>'
-                + '</div>'
-                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-act="online">Search titles dump, AniList and MyAnimeList</button>'
+            return '<tr data-key="' + esc(u.Id) + '">'
+                + '<td><b>' + esc(u.Name) + '</b> ' + (u.Year ? '(' + u.Year + ') ' : '') + (u.Ignored ? badge('set aside') : '')
+                + '<div class="amp-small amp-path">' + esc(u.Path) + '</div></td>'
+                + '<td class="amp-small">' + u.Attempts + 'x<br/>' + when(u.LastAttemptUtc) + '</td>'
+                + '<td><select class="amp-guess">' + options + '</select>'
+                + '<input type="text" class="amp-search" placeholder="Search the titles dump (Enter)" value="' + esc(u.Name) + '" />'
+                + '<input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></td>'
+                + '<td><div class="amp-unmatched-acts"><button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
                 + '<button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
-                + '<button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
-                + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div>'
-                + '</div>';
-        }).join('') : '<p class="amp-muted">Everything is identified.</p>';
+                + '<button type="button" is="emby-button" class="raised" data-act="online" title="Search the titles dump, AniList and MyAnimeList">Search online</button>'
+                + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div></td>'
+                + '</tr>';
+        }).join('') + '</table></div>' : '<p class="amp-muted">Everything is identified.</p>';
 
         view.querySelector('#ampCountUnmatched').textContent = '(' + items.length + ')';
         renderMappings(view, mappings);
@@ -682,15 +682,17 @@ function aniMetaPlusPage(host) {
     // Review
 
     function renderReviews(view, reviews) {
-        view.querySelector('#ampReviews').innerHTML = reviews.length ? reviews.map(function (r) {
-            return '<div class="amp-card" data-review="' + esc(r.Id) + '" style="margin-bottom:1em">'
-                + '<div><b style="font-size:1.1em;display:inline">' + esc(r.ItemName) + '</b> - ' + esc(kindNames[r.Field] || r.Field) + '</div>'
-                + '<table class="amp-table"><tr><th>Now, from ' + esc(r.CurrentSource) + '</th><th>Proposed, from ' + esc(r.ProposedSource) + '</th></tr>'
-                + '<tr><td>' + esc(r.CurrentValue) + '</td><td>' + esc(r.ProposedValue) + '</td></tr></table>'
-                + '<div class="amp-actions">' + Object.keys(reviewDecisions).map(function (d) {
-                    return '<button type="button" is="emby-button" class="raised' + (d === 'Accepted' ? ' button-submit' : '') + '" data-decide="' + d + '">' + reviewDecisions[d] + '</button>';
-                }).join('') + '</div></div>';
-        }).join('') : '<p class="amp-muted">Nothing to review.</p>';
+        // One table, so every review's columns line up with the next one's.
+        view.querySelector('#ampReviews').innerHTML = reviews.length
+            ? '<div class="amp-scroll"><table class="amp-table amp-reviews"><tr><th>Item</th><th>Field</th><th>Now</th><th>Proposed</th><th></th></tr>' + reviews.map(function (r) {
+                return '<tr data-review="' + esc(r.Id) + '"><td><b>' + esc(r.ItemName) + '</b></td><td>' + esc(kindNames[r.Field] || r.Field) + '</td>'
+                    + '<td>' + esc(r.CurrentValue) + '<div class="amp-small">from ' + esc(r.CurrentSource) + '</div></td>'
+                    + '<td>' + esc(r.ProposedValue) + '<div class="amp-small">from ' + esc(r.ProposedSource) + '</div></td>'
+                    + '<td class="amp-actions">' + Object.keys(reviewDecisions).map(function (d) {
+                        return '<button type="button" is="emby-button" class="raised' + (d === 'Accepted' ? ' button-submit' : '') + '" data-decide="' + d + '">' + reviewDecisions[d] + '</button>';
+                    }).join('') + '</td></tr>';
+            }).join('') + '</table></div>'
+            : '<p class="amp-muted">Nothing to review.</p>';
     }
 
     // Blocks
