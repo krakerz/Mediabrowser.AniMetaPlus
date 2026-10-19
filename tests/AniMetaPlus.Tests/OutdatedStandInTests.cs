@@ -34,6 +34,20 @@ public sealed class OutdatedStandInTests : IDisposable
     public void WaitsOnlyWhileTheSourceStillComesFirst(string waitedFor, string current, string order, bool waits)
         => Assert.Equal(waits, SeriesMerge.StillWaitsFor(waitedFor, current, order.Split(',')));
 
+    // Accepting AniDB's value under an order with MyAnimeList first raised a new review proposing
+    // MyAnimeList on the next refresh: a decided field is reviewed against the source decided about.
+    [Theory]
+    [InlineData(false, "", "AniDB", "AniDB")]
+    [InlineData(false, "", "", "MyAnimeList")]
+    [InlineData(true, "AniList", "AniDB", "AniList")]
+    [InlineData(true, "", "AniDB", "AniDB")]
+    public void ReviewsADecidedFieldAgainstTheSourceDecidedAbout(bool provisional, string waitedFor, string decided, string expected)
+    {
+        var provenance = new ProvenanceRecord { Provisional = provisional, PreferredSource = waitedFor, DecidedSource = decided, PinnedSource = "AniDB" };
+
+        Assert.Equal(expected, SeriesMerge.ReviewedSource(provenance, ["MyAnimeList", "AniList", "AniDB"]));
+    }
+
     // Stand-ins recorded during a ban, under an order with AniDB first, spent a whole AniDB burst
     // on reviews against the owner's new order with MyAnimeList first.
     [Fact]

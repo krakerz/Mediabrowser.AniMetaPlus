@@ -52,6 +52,35 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<string> CorrectIds(string itemPath, IReadOnlyDictionary<string, string> ids)
+    {
+        var changed = new List<string>();
+        if (string.IsNullOrEmpty(itemPath) || _libraryManager.FindByPath(itemPath, null) is not { } found)
+        {
+            return changed;
+        }
+
+        // By id rather than by path: that is the library's cached copy, the one a refresh fills.
+#if EMBY
+        var item = _libraryManager.GetItemById(found.InternalId) ?? found;
+#else
+        var item = _libraryManager.GetItemById(found.Id) ?? found;
+#endif
+
+        foreach (var (provider, id) in ids)
+        {
+            var current = item.GetProviderId(provider);
+            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(current) && !string.Equals(current, id, StringComparison.Ordinal))
+            {
+                item.SetProviderId(provider, id);
+                changed.Add(provider + " " + current + " -> " + id);
+            }
+        }
+
+        return changed;
+    }
+
+    /// <inheritdoc />
     public bool Refresh(string itemPath, bool replaceAll)
     {
         if (string.IsNullOrEmpty(itemPath))

@@ -126,6 +126,7 @@ public partial class PluginConfiguration : BasePluginConfiguration
         CastShowsCharacters = false;
         EnableSimilarItems = true;
         AniDbImagesFromCache = true;
+        LogSettings = true;
     }
 
     /// <summary>
@@ -284,6 +285,13 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// from AniDB's image server either way, which the API ban does not cover.
     /// </summary>
     public bool AniDbImagesFromCache { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the settings are written to the log at startup
+    /// and whenever they are saved, client names and keys left out, so that a problem can be
+    /// matched against the settings without a screenshot of this page.
+    /// </summary>
+    public bool LogSettings { get; set; }
 
     /// <summary>
     /// Gets or sets the AniDB request gap the General tab used to set, in milliseconds. Read once

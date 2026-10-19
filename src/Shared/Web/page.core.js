@@ -840,6 +840,7 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampCastCharacters').checked = !!config.CastShowsCharacters;
         view.querySelector('#ampPublishIds').checked = !!config.PublishMappedIds;
         view.querySelector('#ampUseAniBridge').checked = !!config.UseAniBridgeMappings;
+        view.querySelector('#ampLogSettings').checked = config.LogSettings !== false;
     }
 
     // Image overrides
@@ -1337,6 +1338,7 @@ function aniMetaPlusPage(host) {
                 config.CastShowsCharacters = view.querySelector('#ampCastCharacters').checked;
                 config.PublishMappedIds = view.querySelector('#ampPublishIds').checked;
                 config.UseAniBridgeMappings = view.querySelector('#ampUseAniBridge').checked;
+                config.LogSettings = view.querySelector('#ampLogSettings').checked;
             });
         });
 

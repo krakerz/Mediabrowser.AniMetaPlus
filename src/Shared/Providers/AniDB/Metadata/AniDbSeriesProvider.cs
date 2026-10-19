@@ -373,7 +373,54 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             series.Status = status;
         }
 
+        // Every id the show ends up with on one line, so a wrong one is easy to find. Only for
+        // a show in the library: the season provider asks this for a season's own entry too.
+        if (result.Item is { } item && !string.IsNullOrEmpty(info.Path))
+        {
+            Logger?.LogInformation("{SeriesName} ({Path}) has {Ids}", item.Name ?? info.Name, info.Path, IdSummary(info.ProviderIds, item.ProviderIds));
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// An item's ids for the log, AniDB's first: the ids it carried, with those the refresh
+    /// gave it taking their place. The servers keep an id an item already has, except AniList's
+    /// and MyAnimeList's, which a refresh corrects; this reads them the same way.
+    /// </summary>
+    /// <param name="before">The ids the item carried.</param>
+    /// <param name="found">The ids the refresh gave it.</param>
+    /// <returns>The ids, such as "AniDB 8692, MyAnimeList 11757, AniList 11757, TVDB 259640".</returns>
+    internal static string IdSummary(IReadOnlyDictionary<string, string> before, IReadOnlyDictionary<string, string> found)
+    {
+        var ids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (provider, id) in before)
+        {
+            if (!string.IsNullOrEmpty(id))
+            {
+                ids[provider] = id;
+            }
+        }
+
+        foreach (var (provider, id) in found)
+        {
+            var corrected = provider is SourceIds.Mal or SourceIds.AniList or ProviderNames.AniDb;
+            if (!string.IsNullOrEmpty(id) && (corrected || !ids.ContainsKey(provider)))
+            {
+                ids[provider] = id;
+            }
+        }
+
+        string[] order = [ProviderNames.AniDb, SourceIds.Mal, SourceIds.AniList, "Tvdb", "Tmdb", "Imdb"];
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Tvdb"] = "TVDB", ["Tmdb"] = "TMDB", ["Imdb"] = "IMDb" };
+
+        var listed = ids
+            .OrderBy(pair => Array.FindIndex(order, o => string.Equals(o, pair.Key, StringComparison.OrdinalIgnoreCase)) is var i and >= 0 ? i : order.Length)
+            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => (names.GetValueOrDefault(pair.Key) ?? pair.Key) + " " + pair.Value)
+            .ToList();
+
+        return listed.Count > 0 ? string.Join(", ", listed) : "no ids";
     }
 
     /// <summary>
@@ -501,6 +548,16 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         foreach (var (provider, id) in result.Item.ProviderIds)
         {
             context.Ids[provider] = id;
+        }
+
+        var linked = await AniDbSeasonProvider.AddLinkedIds(_appPaths, context, animeId, cancellationToken).ConfigureAwait(false);
+        if (linked.Count > 0 && HostServices.Refresher?.CorrectIds(info.Path ?? string.Empty, linked) is { Count: > 0 } corrected)
+        {
+            Logger?.LogInformation(
+                "{SeriesName} carried ids of another anime than AniDB {AnimeId}, which the AniBridge mappings link to; replaced {Corrected}",
+                result.Item.Name ?? info.Name,
+                animeId,
+                string.Join(", ", corrected));
         }
 
         if (aniDb.Record is { } record)

@@ -16,6 +16,17 @@ public interface IHostRefresher
     /// <param name="replaceAll">Whether existing metadata is replaced rather than filled in.</param>
     /// <returns><c>true</c> when the item was found and queued.</returns>
     bool Refresh(string itemPath, bool replaceAll);
+
+    /// <summary>
+    /// Puts ids onto the library's own copy of the item at a path, replacing different ones.
+    /// The servers keep an id an item already has when they merge a provider's answer, so a
+    /// wrong id an earlier lookup left would otherwise never go. Written to the copy a refresh
+    /// in progress is filling, which saves it at the end.
+    /// </summary>
+    /// <param name="itemPath">The folder of a series, or the file of a movie or episode.</param>
+    /// <param name="ids">The ids, by provider.</param>
+    /// <returns>The providers whose id was replaced.</returns>
+    IReadOnlyList<string> CorrectIds(string itemPath, IReadOnlyDictionary<string, string> ids);
 }
 
 /// <summary>

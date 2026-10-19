@@ -85,6 +85,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbIm
     /// <inheritdoc />
     public override Guid Id => Guid.Parse("d9211a9c-1ad7-4203-bf8e-9078deb65469");
 
+    /// <inheritdoc />
+    public override void UpdateConfiguration(BasePluginConfiguration configuration)
+    {
+        base.UpdateConfiguration(configuration);
+
+        // Saved from the settings page; written to the log so a later problem can be matched against them.
+        Core.PluginCore.LogSettings(Configuration, AniDbSeriesProvider.Logger, "now runs with");
+    }
+
     /// <summary>
     /// Gets the <see cref="HttpClient"/> every request of the plugin is sent with.
     /// </summary>

@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Xml.Linq;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Data;
@@ -116,6 +117,35 @@ public static class PluginCore
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             logger.LogError(ex, "AniMeta+ could not open its database. Blocks, reviews and mappings made by hand are unavailable until it can");
+        }
+
+        LogSettings(plugin.Configuration, logger, "starts with");
+    }
+
+    /// <summary>
+    /// Writes the settings to the log, without client names or keys.
+    /// </summary>
+    /// <param name="configuration">The settings.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="when">What happened, as in "AniMeta+ 2.14.2 starts with these settings".</param>
+    public static void LogSettings(PluginConfiguration configuration, ILogger? logger, string when)
+    {
+        if (configuration is not { LogSettings: true })
+        {
+            return;
+        }
+
+        try
+        {
+            logger?.LogInformation(
+                "AniMeta+ {Version} {When} these settings: {Settings}",
+                typeof(PluginCore).Assembly.GetName().Version,
+                when,
+                ConfigurationLog.Describe(configuration));
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or JsonException)
+        {
+            logger?.LogDebug(ex, "AniMeta+ could not write its settings to the log");
         }
     }
 
