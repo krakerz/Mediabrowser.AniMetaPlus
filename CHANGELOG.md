@@ -4,6 +4,20 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.15.0] — 2026-10-19
+
+### Added
+- "Identify anime libraries" also checks the shows already identified, from local data only (the mapping sources and the titles dump, no requests):
+  - AniList and MyAnimeList ids that differ from the ones the AniBridge mappings link to the show's AniDB entry are corrected
+  - An AniDB id is corrected where the show's TVDB id and its folder name both point to the same other entry, such as The Beginning After the End holding Gekijouban Tiger & Bunny's id. Where only one of them disagrees, or they disagree with each other, the show is logged as possibly wrong and left as it is
+  - A corrected show is refreshed with its metadata replaced, since both servers keep a title and overview a show already has on a normal refresh. That refresh reuses cached AniDB answers, and one that would ask AniDB counts against the same AniDB limits as the rest of the task
+  - Each correction is logged with the old and new ids. A show checked once is not checked again until its ids change or the server restarts
+
+### Changed
+- Shorter scheduled task descriptions
+- Franchise collections are named "<first show> Collection", such as "Sword Art Online Collection". Collections the task made earlier are renamed on its next run, unless you renamed them
+- A franchise that no longer exists, because a show in it was re-identified as another anime or left the library, loses the shows the task put in, and its collection is deleted once fewer than two items are left. A collection you renamed and added your own items to is kept
+
 ## [2.14.2] — 2026-10-19
 
 ### Added

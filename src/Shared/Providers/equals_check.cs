@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -243,6 +244,76 @@ internal static partial class Equals_check
 
         return FindExact(IndexEntries(xml), name, StripYearRegex().Replace(name, string.Empty).Trim(), year) ?? string.Empty;
     }
+
+    /// <summary>
+    /// Looks up many names at once, each the way <see cref="XmlFindExactId"/> does, reading the
+    /// titles file and indexing its titles once for all of them. The library check looks up a
+    /// name for every show in the library on each run.
+    /// </summary>
+    /// <param name="names">The names, each with the year the series is known to be from.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id each name is exactly the title of, where one entry has it.</returns>
+    public static async Task<IReadOnlyDictionary<string, string>> XmlFindExactIds(IEnumerable<(string Name, int? Year)> names, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var found = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? xml = await ReadTitlesXml(0, cancellationToken).ConfigureAwait(false);
+        if (xml is null)
+        {
+            return found;
+        }
+
+        // Each reduced title, both ways, to the entries that have it.
+        var index = new Dictionary<(string Title, bool Loose), HashSet<string>>();
+        foreach (var (id, entry) in IndexEntries(xml))
+        {
+            foreach (Match title in TitleRegex().Matches(entry))
+            {
+                foreach (var loose in new[] { false, true })
+                {
+                    var key = (NormalizeTitle(title.Groups[1].Value, loose), loose);
+                    if (!index.TryGetValue(key, out var ids))
+                    {
+                        index[key] = ids = new HashSet<string>(StringComparer.Ordinal);
+                    }
+
+                    ids.Add(id);
+                }
+            }
+        }
+
+        foreach (var (name, year) in names)
+        {
+            if (string.IsNullOrWhiteSpace(name) || found.ContainsKey(NameKey(name, year)))
+            {
+                continue;
+            }
+
+            var stripped = StripYearRegex().Replace(name, string.Empty).Trim();
+            foreach (var (candidate, loose) in GetNameCandidates(name, stripped, year))
+            {
+                var wanted = NormalizeTitle(candidate, loose);
+                if (wanted.Length > 0 && index.TryGetValue((wanted, loose), out var ids) && ids.Count == 1)
+                {
+                    found[NameKey(name, year)] = ids.First();
+
+                    break;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The key <see cref="XmlFindExactIds"/> answers a name under.
+    /// </summary>
+    /// <param name="name">The name.</param>
+    /// <param name="year">The year.</param>
+    /// <returns>The key.</returns>
+    public static string NameKey(string name, int? year)
+        => name + "|" + year?.ToString(CultureInfo.InvariantCulture);
 
     private static string? FindExact(IReadOnlyDictionary<string, string> entriesById, string name, string strippedName, int? year)
     {
