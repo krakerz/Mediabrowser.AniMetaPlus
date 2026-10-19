@@ -143,11 +143,10 @@ public static class IdCheck
     /// Checks the identified shows and corrects what it can.
     /// </summary>
     /// <param name="items">The anime libraries' items.</param>
-    /// <param name="aniDbLimit">How many refreshes that ask AniDB may still be queued this run.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>How many refreshes that ask AniDB were queued.</returns>
-    public static async Task<int> Run(IReadOnlyList<ScanItem> items, int aniDbLimit, ILogger logger, CancellationToken cancellationToken)
+    /// <returns>How many of the refreshes queued will ask AniDB.</returns>
+    public static async Task<int> Run(IReadOnlyList<ScanItem> items, ILogger logger, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -244,10 +243,12 @@ public static class IdCheck
                 continue;
             }
 
-            // The refresh that follows reads AniDB for the entry; one that would ask it waits for
-            // a later run once this run's share is used, and is checked again then.
+            // Not held back for AniDB's limits: the refresh fills what the other sources have now,
+            // and a field only AniDB can fill takes a stand-in that the queue replaces once AniDB
+            // answers, paced like any other request. Only where AniDB leads the title, overview or
+            // dates and is held back does the show wait, rather than show a stand-in title.
             var asks = AniDbSeriesProvider.WouldAskAniDb(paths, animeId);
-            if ((asks && askingAniDb >= aniDbLimit) || AniDbSeriesProvider.ShouldWaitForAniDb(paths, animeId))
+            if (AniDbSeriesProvider.ShouldWaitForAniDb(paths, animeId))
             {
                 deferred++;
                 continue;

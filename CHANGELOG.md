@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.15.2] — 2026-10-19
+
+### Changed
+- "Identify anime libraries" no longer holds a correction or a newly identified show back until AniDB has requests to spare. The ids are saved and the show is refreshed straight away, filled from the other sources; a field AniDB has to fill takes a stand-in that the queue replaces once AniDB answers, within its rests, caps and bans as before. Only where AniDB comes first for the title, overview or dates does a show still wait for it, rather than be shown under a stand-in title
+
 ## [2.15.1] — 2026-10-19
 
 ### Fixed
