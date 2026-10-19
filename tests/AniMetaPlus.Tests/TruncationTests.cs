@@ -36,4 +36,15 @@ public class TruncationTests
     [InlineData("MyAnimeList", null, true)]
     public void SpecialsAreNotAskedOfAniListOrMyAnimeList(string source, int? season, bool asked)
         => Assert.Equal(asked, AniDbSeasonProvider.AsksEntryOf(source, season));
+
+    // One line per show for the log, AniDB first; a refresh's AniList and MyAnimeList ids replace the old ones.
+    [Fact]
+    public void SummarisesTheIdsAShowEndsUpWith()
+    {
+        var before = new System.Collections.Generic.Dictionary<string, string> { ["Tvdb"] = "259640", ["MyAnimeList"] = "21881", ["Tmdb"] = "" };
+        var found = new System.Collections.Generic.Dictionary<string, string> { ["AniDB"] = "8692", ["MyAnimeList"] = "11757", ["AniList"] = "11757", ["Tvdb"] = "1" };
+
+        Assert.Equal("AniDB 8692, MyAnimeList 11757, AniList 11757, TVDB 259640", AniDbSeriesProvider.IdSummary(before, found));
+        Assert.Equal("no ids", AniDbSeriesProvider.IdSummary(new System.Collections.Generic.Dictionary<string, string>(), new System.Collections.Generic.Dictionary<string, string>()));
+    }
 }

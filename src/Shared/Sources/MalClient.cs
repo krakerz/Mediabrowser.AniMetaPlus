@@ -68,11 +68,31 @@ public static class MalClient
             throw new KeyNotFoundException("MyAnimeList has no anime called " + title + ".");
         }
 
-        // The search ranks by relevance; the year only breaks a tie between remakes and sequels.
-        var match = year is { } y ? candidates.FirstOrDefault(c => c.Year == y) : null;
-
-        return (match ?? candidates[0]).Id;
+        return Pick(candidates, title, year).Id;
     }
+
+    /// <summary>
+    /// The search result an anime is. MyAnimeList's ranking can put a sequel ahead of the show
+    /// itself, so a result with the title exactly comes before the ranking, and the year breaks
+    /// a tie between a remake and the original.
+    /// </summary>
+    /// <param name="candidates">The results, most relevant first.</param>
+    /// <param name="title">The title searched for.</param>
+    /// <param name="year">The year, when known.</param>
+    /// <returns>The result.</returns>
+    internal static RemoteCandidate Pick(IReadOnlyList<RemoteCandidate> candidates, string title, int? year)
+    {
+        var exact = candidates.Where(c => SameTitle(c.Title, title)).ToList();
+        var pool = exact.Count > 0 ? exact : candidates;
+
+        return (year is { } y ? pool.FirstOrDefault(c => c.Year == y) : null) ?? pool[0];
+    }
+
+    private static bool SameTitle(string a, string b)
+        => string.Equals(TitleKey(a), TitleKey(b), StringComparison.Ordinal);
+
+    private static string TitleKey(string title)
+        => new(title.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     /// <summary>
     /// Lists the anime whose titles match, for the owner to pick from.

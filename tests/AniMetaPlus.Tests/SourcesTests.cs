@@ -359,4 +359,21 @@ public class SourcesTests
     [InlineData("Ranma ½ (1989)", "Ranma ½ (1989)")]
     [InlineData("Plain", "Plain")]
     public void StripsFolderNotesButKeepsYears(string name, string expected) => Assert.Equal(expected, Queues.StripNotes(name));
+
+    // A search that lists the sequel first must still pick the show itself.
+    [Fact]
+    public void PicksTheSearchResultWithTheTitleOverTheFirstOne()
+    {
+        var found = new[]
+        {
+            new RemoteCandidate(SourceIds.Mal, "21881", "Sword Art Online II", 2014, "tv", null),
+            new RemoteCandidate(SourceIds.Mal, "11757", "Sword Art Online", 2012, "tv", null),
+            new RemoteCandidate(SourceIds.Mal, "99999", "Sword Art Online", 2030, "tv", null),
+        };
+
+        Assert.Equal("11757", MalClient.Pick(found, "Sword Art Online", null).Id);
+        Assert.Equal("99999", MalClient.Pick(found, "sword art online", 2030).Id);
+        Assert.Equal("21881", MalClient.Pick(found, "Sword Art Online: Alicization", null).Id);
+        Assert.Equal("21881", MalClient.Pick(found, "Sword Art Online: Alicization", 2014).Id);
+    }
 }

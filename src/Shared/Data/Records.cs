@@ -158,6 +158,14 @@ public class ProvenanceRecord
     /// <summary>Gets or sets a value indicating whether the owner locked the field to its source.</summary>
     public bool Locked { get; set; }
 
+    /// <summary>
+    /// Gets or sets the source a review the owner decided was about, its proposed source. Later
+    /// reviews compare against it rather than against the first source in the order: accepting
+    /// AniDB's value is a decision about AniDB, and a source ahead of it in the order must not
+    /// raise the question again.
+    /// </summary>
+    public string DecidedSource { get; set => field = value ?? string.Empty; } = string.Empty;
+
     /// <summary>Gets or sets the value the owner kept the field over, so it is not proposed again.</summary>
     public string DeclinedValue { get; set => field = value ?? string.Empty; } = string.Empty;
 

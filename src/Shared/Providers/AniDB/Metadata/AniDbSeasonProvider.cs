@@ -43,6 +43,27 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             result.Item.Name = PlainName(info.IndexNumber, info.Name);
         }
 
+        // The season's own entry and what AniList and MyAnimeList are asked by, on one line.
+        var seasonId = result.Item.ProviderIds.GetValueOrDefault(ProviderNames.AniDb) ?? info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
+        if (!string.IsNullOrEmpty(seasonId))
+        {
+            var ids = new Dictionary<string, string>(StringComparer.Ordinal) { [ProviderNames.AniDb] = seasonId };
+            foreach (var (sourceId, prefix) in new[] { (SourceIds.Mal, "mal"), (SourceIds.AniList, "anilist") })
+            {
+                if (await AniBridgeMappings.ResolveLink(appPaths, seasonId, prefix, _logger, cancellationToken).ConfigureAwait(false) is { } linked)
+                {
+                    ids[sourceId] = linked;
+                }
+            }
+
+            _logger.LogInformation(
+                "Season {SeasonNumber} of AniDB series {SeriesId} ({Path}) has {Ids}",
+                info.IndexNumber,
+                info.SeriesProviderIds.GetValueOrDefault(ProviderNames.AniDb),
+                info.Path,
+                AniDbSeriesProvider.IdSummary(ids, new Dictionary<string, string>()));
+        }
+
         return result;
     }
 
@@ -390,19 +411,22 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
                 || string.Equals(source, SourceIds.Mal, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Puts the AniList and MyAnimeList ids the mappings link a season's AniDB entry to into a
-    /// fetch, which saves searching those two by AniDB's spelling of its title - a search that
-    /// misses often enough to have filled the blocks list. Taken over any id on the season,
-    /// which may be the whole show's. Where the mappings link none, the search still runs.
+    /// Puts the AniList and MyAnimeList ids the mappings link an AniDB entry to into a fetch,
+    /// for a season or a whole show. That saves searching those two by AniDB's spelling of the
+    /// title, a search that misses often enough to have filled the blocks list, and that can
+    /// land on a sequel. Taken over any id already on the item: a
+    /// season may carry the whole show's, and a show the id an earlier wrong search gave it.
+    /// Where the mappings link none, the search still runs.
     /// </summary>
     /// <param name="paths">The server paths.</param>
     /// <param name="context">The fetch.</param>
-    /// <param name="seasonId">The season's AniDB entry.</param>
+    /// <param name="seasonId">The AniDB entry.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task.</returns>
-    internal static async Task AddLinkedIds(IApplicationPaths paths, FetchContext context, string? seasonId, CancellationToken cancellationToken)
+    /// <returns>The ids the mappings supplied, by provider.</returns>
+    internal static async Task<IReadOnlyDictionary<string, string>> AddLinkedIds(IApplicationPaths paths, FetchContext context, string? seasonId, CancellationToken cancellationToken)
     {
         var logger = (ILogger?)AniDbSeriesProvider.Logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        var supplied = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (sourceId, prefix) in new[] { (SourceIds.AniList, "anilist"), (SourceIds.Mal, "mal") })
         {
@@ -410,8 +434,11 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
             if (!string.IsNullOrEmpty(linked))
             {
                 context.Ids[sourceId] = linked;
+                supplied[sourceId] = linked;
             }
         }
+
+        return supplied;
     }
 
     /// <summary>

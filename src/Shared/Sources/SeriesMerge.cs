@@ -187,9 +187,11 @@ public static class SeriesMerge
         }
 
         // The ids the sources gave the anime, so that the server and later lookups can use them.
+        // Written even over an id the item has: the fetch began from that id unless the mappings
+        // named a better one, and a wrong one would otherwise stay on the item for good.
         foreach (var provider in new[] { SourceIds.Mal, SourceIds.AniList })
         {
-            if (context.Ids.TryGetValue(provider, out var id) && !string.IsNullOrEmpty(id) && string.IsNullOrEmpty(result.Item.GetProviderId(provider)))
+            if (context.Ids.TryGetValue(provider, out var id) && !string.IsNullOrEmpty(id) && !string.Equals(result.Item.GetProviderId(provider), id, StringComparison.Ordinal))
             {
                 result.Item.SetProviderId(provider, id);
             }
@@ -222,10 +224,17 @@ public static class SeriesMerge
             return;
         }
 
-        // The source the field would come from without the pin.
-        var preferred = provenance.Provisional && !string.IsNullOrEmpty(provenance.PreferredSource)
-            ? provenance.PreferredSource
-            : preferredOrder[0];
+        // A decision made before the decided source was recorded is read from its review, which
+        // keeps the same id until a new review replaces it.
+        if (!provenance.Provisional && string.IsNullOrEmpty(provenance.DecidedSource)
+            && db.Reviews.FindById(provenance.Id) is { Status: not ReviewStatus.Pending } decided
+            && !string.IsNullOrEmpty(decided.ProposedSource))
+        {
+            provenance.DecidedSource = decided.ProposedSource;
+            db.Provenance.Upsert(provenance);
+        }
+
+        var preferred = ReviewedSource(provenance, preferredOrder);
 
         if (string.Equals(preferred, chosen, StringComparison.OrdinalIgnoreCase))
         {
@@ -296,6 +305,25 @@ public static class SeriesMerge
             context.ItemName,
             kind,
             chosen);
+    }
+
+    /// <summary>
+    /// The source a review of a pinned field would propose: the one a stand-in waits for, the
+    /// one the owner already decided about, or else the first in the order. Comparing a decided
+    /// field with the first source asked the owner again after every Accept whenever the
+    /// accepted source was not first - AniDB accepted, then MyAnimeList proposed.
+    /// </summary>
+    /// <param name="provenance">The field's record.</param>
+    /// <param name="order">The field's source order.</param>
+    /// <returns>The source.</returns>
+    internal static string ReviewedSource(ProvenanceRecord provenance, IReadOnlyList<string> order)
+    {
+        ArgumentNullException.ThrowIfNull(provenance);
+        ArgumentNullException.ThrowIfNull(order);
+
+        return provenance.Provisional && !string.IsNullOrEmpty(provenance.PreferredSource) ? provenance.PreferredSource
+            : !string.IsNullOrEmpty(provenance.DecidedSource) ? provenance.DecidedSource
+            : order[0];
     }
 
     /// <summary>

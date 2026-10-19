@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.14.2] — 2026-10-19
+
+### Added
+- The settings are written to the server log at startup and whenever they are saved, as one line: source order per field, gaps, caps, bursts, modes and the rest. Client names and keys are left out, shown only as set or not set. A General tab option turns it off
+- The log has one line per show and per season after each refresh with every id it ends up with, AniDB first, such as "Sword Art Online (/media/anime/Sword Art Online) has AniDB 8692, MyAnimeList 11757, AniList 11757, TVDB 259640, TMDB 45782". A season's line has its own AniDB entry and the MyAnimeList and AniList ids it is looked up by
+
+### Fixed
+- A show could take a sequel's title, "Sword Art Online" becoming "Sword Art Online II", when the MyAnimeList or AniList title search picked the sequel and its id was then kept on the show. A show's AniList and MyAnimeList ids now come from the AniBridge mappings of its AniDB entry, the title search runs only when the mappings link none, and MyAnimeList's search prefers the result with the title exactly over its first result
+- A wrong AniList or MyAnimeList id already on a show is replaced by the mapped one at its next refresh. The servers otherwise keep an id an item already has
+- A review came back after Accept with another source proposed (AniDB accepted, then MyAnimeList proposed), because a decided field was compared with the first source in its order rather than with the source decided about. Accept, Keep and keeping a stand-in now remember that source, and the field is only reviewed again when that source's value changes. Decisions made before this update are read from their review, so they stop coming back too; a review already reopened this way needs deciding once more
+
 ## [2.14.1] — 2026-10-19
 
 ### Fixed

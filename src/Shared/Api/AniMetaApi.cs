@@ -459,6 +459,7 @@ public static class AniMetaApi
         if (decision == ReviewStatus.Accepted)
         {
             provenance.PinnedSource = review.ProposedSource;
+            provenance.DecidedSource = review.ProposedSource;
             provenance.Provisional = false;
             provenance.PreferredSource = string.Empty;
             provenance.DeclinedValue = string.Empty;
@@ -467,6 +468,7 @@ public static class AniMetaApi
         else
         {
             provenance.PinnedSource = review.CurrentSource;
+            provenance.DecidedSource = review.ProposedSource;
             provenance.Provisional = false;
             provenance.PreferredSource = string.Empty;
             provenance.DeclinedValue = review.ProposedValue;
@@ -727,6 +729,7 @@ public static class AniMetaApi
         {
             p.Provisional = false;
             p.PinnedSource = p.Source;
+            p.DecidedSource = p.PreferredSource;
             p.PreferredSource = string.Empty;
             p.UpdatedUtc = DateTime.UtcNow;
             db.Provenance.Upsert(p);
