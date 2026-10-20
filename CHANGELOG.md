@@ -8,6 +8,7 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ### Fixed
 - Stand-in values with no show name on the Status tab, which never went away: a season reading its own AniDB entry ran the show's full lookup, which also asked AniList, MyAnimeList, TVDB and TMDB about the entry and recorded stand-ins for it with no show to refresh. A season now reads only AniDB's answer for its entry, and the stand-ins and reviews left that way are removed once at startup
+- Stand-in values that never got replaced, so "Process queues now" queued nothing: when a show was identified as another AniDB entry (as the id check does), its stand-ins stayed under the old entry. Refreshing the show only ever recorded the new one, so the old stand-ins stayed waiting and the queue kept refreshing the show for them. Each queue run now drops the records kept for an entry the show at that folder no longer has
 
 ## [2.16.0] — 2026-10-19
 

@@ -130,4 +130,28 @@ public sealed class OutdatedStandInTests : IDisposable
         Assert.NotNull(db.Provenance.FindById("anidb:8692|Genres"));
         Assert.Null(db.Reviews.FindById("anidb:10376|Titles"));
     }
+
+    // Sengoku Youko was identified again from 18543 to 18156; its stand-ins under 18543 stayed and the queue refreshed the show for them every run.
+    [Fact]
+    public void DropsRecordsKeptForAnAnimeTheShowNoLongerIs()
+    {
+        using var db = AniMetaDb.Open(_folder, NullLogger.Instance);
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "anidb:18543|Genres", ItemKey = "anidb:18543", Field = "Genres", PreferredSource = "AniDB", Provisional = true, ItemPath = "/a/Sengoku Youko (Winter)" });
+        db.Reviews.Upsert(new ReviewRecord { Id = "anidb:18543|Genres", ItemKey = "anidb:18543", Field = "Genres", Status = ReviewStatus.Pending, ItemPath = "/a/Sengoku Youko (Winter)" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "anidb:18156|Genres", ItemKey = "anidb:18156", Field = "Genres", PreferredSource = "AniDB", Provisional = true, ItemPath = "/a/Sengoku Youko (Winter)" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "anidb:1|Titles", ItemKey = "anidb:1", Field = "Titles", ItemPath = "/a/Gone" });
+        db.Provenance.Upsert(new ProvenanceRecord { Id = "mal:5|Titles", ItemKey = "mal:5", Field = "Titles", ItemPath = "/a/Mapped to MyAnimeList" });
+
+        var library = new System.Collections.Generic.Dictionary<string, string> { ["/a/Sengoku Youko (Winter)"] = "18156" };
+
+        Assert.Equal(2, SeriesMerge.RemoveStale(db, library));
+        Assert.Null(db.Provenance.FindById("anidb:18543|Genres"));
+        Assert.Null(db.Reviews.FindById("anidb:18543|Genres"));
+        Assert.NotNull(db.Provenance.FindById("anidb:18156|Genres"));
+        Assert.Null(db.Provenance.FindById("anidb:1|Titles"));
+        Assert.NotNull(db.Provenance.FindById("mal:5|Titles"));
+
+        // An empty listing - the library could not be read - removes nothing.
+        Assert.Equal(0, SeriesMerge.RemoveStale(db, new System.Collections.Generic.Dictionary<string, string>()));
+    }
 }
