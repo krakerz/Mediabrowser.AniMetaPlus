@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
+using AniMetaPlus.Core;
 using AniMetaPlus.Data;
 #if JELLYFIN
 using Jellyfin.Data.Enums;
@@ -221,7 +222,7 @@ public static class SeriesMerge
         ILogger logger)
         where TItem : BaseItem
     {
-        if (provenance == null || provenance.Locked || string.IsNullOrEmpty(provenance.PinnedSource) || preferredOrder.Count == 0)
+        if (provenance == null || provenance.Locked || string.IsNullOrEmpty(provenance.PinnedSource) || preferredOrder.Count == 0 || string.IsNullOrEmpty(context.ItemPath))
         {
             return;
         }
@@ -433,6 +434,54 @@ public static class SeriesMerge
         return marked;
     }
 
+    /// <summary>
+    /// Deletes the stand-ins and pending reviews that have no item on the library behind them,
+    /// left by lookups made for a season's own entry. Nothing could ever refresh them.
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <returns>How many were deleted.</returns>
+    public static int RemoveOrphans(AniMetaDb db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        return db.Provenance.DeleteMany(p => p.ItemPath == null || p.ItemPath == string.Empty)
+            + db.Reviews.DeleteMany(r => r.Status == ReviewStatus.Pending && (r.ItemPath == null || r.ItemPath == string.Empty));
+    }
+
+    /// <summary>
+    /// Deletes the records kept for an anime a show no longer is: its stand-ins, reviews and
+    /// field records under the AniDB entry it had before it was identified again. A refresh
+    /// records the show under its new entry, so nothing would ever replace the old ones, and the
+    /// queue kept refreshing the show for them.
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <param name="aniDbByPath">The AniDB id of each item in the anime libraries, by its path.</param>
+    /// <returns>How many were deleted.</returns>
+    public static int RemoveStale(AniMetaDb db, IReadOnlyDictionary<string, string> aniDbByPath)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(aniDbByPath);
+
+        if (aniDbByPath.Count == 0)
+        {
+            return 0;
+        }
+
+        var stale = db.Provenance.FindAll()
+            .Where(p => !string.IsNullOrEmpty(p.ItemPath) && p.ItemKey.StartsWith("anidb:", StringComparison.Ordinal))
+            .Where(p => !aniDbByPath.TryGetValue(p.ItemPath, out var id) || !string.Equals(ItemKeys.ForAnime(id), p.ItemKey, StringComparison.Ordinal))
+            .Select(p => p.Id)
+            .ToList();
+
+        foreach (var id in stale)
+        {
+            db.Provenance.Delete(id);
+            db.Reviews.Delete(id);
+        }
+
+        return stale.Count;
+    }
+
     private static void Settle(AniMetaDb db, ProvenanceRecord provenance, DataKind kind, FetchContext context)
     {
         // Only a stand-in still waiting for review; a pending review is left to be decided.
@@ -457,6 +506,13 @@ public static class SeriesMerge
         ProvenanceRecord? keepPin,
         string? pinTo = null)
     {
+        // Nothing on the library to refresh: a lookup made for another reason, such as a season
+        // reading its own entry, keeps no record that the queue would wait on for good.
+        if (string.IsNullOrEmpty(context.ItemPath))
+        {
+            return;
+        }
+
         var record = keepPin ?? new ProvenanceRecord { Id = id, ItemKey = context.ItemKey, Field = kind.ToString() };
 
         record.Source = source;

@@ -116,6 +116,17 @@ public static class PluginCore
 
             // Before 2.16.0 a combined field filled while a paused AniDB was blocked was recorded as
             // final, and lost AniDB's tags for good. Once, those are marked as waiting for AniDB.
+            // Season lookups before 2.16.1 recorded stand-ins and reviews with no show behind them.
+            if (db.GetState("orphan-provenance") == null)
+            {
+                var orphans = SeriesMerge.RemoveOrphans(db);
+                db.SetState("orphan-provenance", "1");
+                if (orphans > 0)
+                {
+                    logger.LogInformation("AniMeta+ removed {Count} stand-in values and reviews that belonged to no show in the library", orphans);
+                }
+            }
+
             if (db.GetState("combined-fields-wait") == null)
             {
                 var marked = SeriesMerge.WaitForMissingContributors(db, plugin.Configuration, SourceIds.AniDb);
