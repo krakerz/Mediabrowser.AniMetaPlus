@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB.Metadata;
 using AniMetaPlus.Sources;
 using Microsoft.Extensions.Logging;
@@ -116,6 +117,18 @@ public static class QueueProcessor
         if (settled + dropped > 0)
         {
             logger.LogInformation("AniMeta+ settled {Settled} stand-in values and dropped {Dropped} reviews that the current source order no longer backs", settled, dropped);
+        }
+
+        // A show identified again keeps its records under the entry it had; they are dropped
+        // here, or the queue would refresh the show for them, every run, for good.
+        var aniDbByPath = (refresher?.ListAnimeItems() ?? [])
+            .Where(i => i.ProviderIds.TryGetValue(ProviderNames.AniDb, out var id) && !string.IsNullOrEmpty(id))
+            .GroupBy(i => i.Path, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().ProviderIds[ProviderNames.AniDb], StringComparer.Ordinal);
+        var stale = SeriesMerge.RemoveStale(db, aniDbByPath);
+        if (stale > 0)
+        {
+            logger.LogInformation("AniMeta+ dropped {Count} stand-in values, reviews and field records kept for an anime a show is no longer identified as", stale);
         }
 
         foreach (var provenance in db.Provenance.Find(p => p.Provisional).ToList())
