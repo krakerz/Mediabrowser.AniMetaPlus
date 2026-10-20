@@ -4,6 +4,15 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.17.0] — 2026-10-20
+
+### Added
+- Mapping tab: a show whose ids are set by hand with a MyAnimeList or AniList id and no AniDB id is linked to the AniDB entry the mappings file under that id, and is filled from AniDB like any other. Where the mappings file none, the show is filled from MyAnimeList and AniList alone, rather than matched to whatever its name comes nearest
+
+### Changed
+- Mapping tab: the AniDB id is no longer needed to set a show's ids by hand, as a show may have no AniDB entry at all. One of the AniDB, MyAnimeList and AniList ids is enough
+- Mapping tab: a show set by hand is listed under Manual only, and no longer under "Needs a look", which is for the ids that need attention
+
 ## [2.16.1] — 2026-10-20
 
 ### Fixed

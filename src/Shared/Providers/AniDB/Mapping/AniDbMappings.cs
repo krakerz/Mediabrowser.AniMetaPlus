@@ -150,6 +150,47 @@ internal static class AniDbMappings
     }
 
     /// <summary>
+    /// The AniDB entry a MyAnimeList or AniList id names, as the mapping sources file it.
+    /// </summary>
+    /// <remarks>
+    /// The AniBridge mappings are the only source carrying those links, so they are the only one
+    /// asked. The links are tried in the order they are given, and the first one a source files
+    /// an entry under answers.
+    /// <para>
+    /// Nothing is asked of AniDB for this: the links are local, and a show AniDB has no entry
+    /// for is filled from the other sources instead.
+    /// </para>
+    /// </remarks>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="links">The links, such as "anilist:123" and "mal:456".</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or <c>null</c> when no source files an entry under those links.</returns>
+    public static async Task<string?> ResolveSeriesIdByLink(
+        IApplicationPaths appPaths,
+        IReadOnlyList<string> links,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        foreach (var link in links)
+        {
+            if (AniDbSeriesProvider.LinkParts(link) is not { } parts)
+            {
+                continue;
+            }
+
+            var animeId = await AniBridgeMappings.ResolveSeriesIdByLink(appPaths, parts.Prefix, parts.Id, logger, cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(animeId))
+            {
+                return animeId;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The AniDB entry a movie is, found from whichever ids another provider has already settled
     /// on, and which of that entry's episodes holds it.
     /// </summary>

@@ -180,9 +180,11 @@ public static class LibraryScan
         }
 
         // An AniList or MyAnimeList id another plugin or an earlier refresh left on the item.
-        return AniDbSeriesProvider.LinkParts(AniDbSeriesProvider.LinkFromIds(item.ProviderIds)) is { } link
-            ? await AniBridgeMappings.ResolveSeriesIdByLink(Plugin.Instance.AppPaths, link.Prefix, link.Id, logger, cancellationToken).ConfigureAwait(false)
-            : null;
+        return await AniDbMappings.ResolveSeriesIdByLink(
+            Plugin.Instance.AppPaths,
+            AniDbSeriesProvider.LinksFromIds(item.ProviderIds),
+            logger,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<string?> FromDump(ScanItem item, CancellationToken cancellationToken)

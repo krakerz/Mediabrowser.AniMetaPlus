@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using AniMetaPlus.Api;
 using AniMetaPlus.Core;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using Xunit;
 
 namespace AniMetaPlus.Tests;
@@ -112,9 +114,22 @@ public class IdRecordTests
         Assert.Equal("55", AniMetaApi.ParseHandIds("1", "55", "66")["MyAnimeList"]);
     }
 
+    [Fact]
+    public void AcceptsHandIdsWithNoAniDb()
+    {
+        var malOnly = AniMetaApi.ParseHandIds("", "100", "");
+        Assert.Equal(string.Empty, malOnly["AniDB"]);
+        Assert.Equal("100", malOnly["MyAnimeList"]);
+
+        var aniListOnly = AniMetaApi.ParseHandIds(null, "", "200");
+        Assert.Equal(string.Empty, aniListOnly["AniDB"]);
+        Assert.Equal("200", aniListOnly["AniList"]);
+    }
+
     [Theory]
     [InlineData("", "", "")]
     [InlineData(null, "", "")]
+    [InlineData(null, null, null)]
     [InlineData("12a", "", "")]
     [InlineData("https://anidb.net/anime/12", "", "")]
     [InlineData("-1", "", "")]
@@ -123,4 +138,64 @@ public class IdRecordTests
     [InlineData("1", "١٢", "")]
     public void RefusesHandIdsThatAreNotDigits(string? aniDb, string? mal, string? aniList)
         => Assert.Throws<ArgumentException>(() => AniMetaApi.ParseHandIds(aniDb, mal, aniList));
+
+    [Fact]
+    public void ReadsAniListBeforeMyAnimeList()
+    {
+        var links = AniDbSeriesProvider.LinksFromIds(new Dictionary<string, string> { ["MyAnimeList"] = "100", ["AniList"] = "200" });
+
+        Assert.Equal(new[] { "anilist:200", "mal:100" }, links);
+    }
+
+    [Fact]
+    public void ReadsNoLinkFromAnIdThatIsNotDigits()
+    {
+        var links = AniDbSeriesProvider.LinksFromIds(new Dictionary<string, string> { ["AniList"] = "x", ["MyAnimeList"] = "100" });
+
+        Assert.Equal(new[] { "mal:100" }, links);
+    }
+
+    [Fact]
+    public void ReadsNoLinkWhereThereIsNoId()
+        => Assert.Empty(AniDbSeriesProvider.LinksFromIds(new Dictionary<string, string> { ["AniDB"] = "1" }));
+
+    [Fact]
+    public async Task KeepsTheAniDbIdTheOwnerGave()
+    {
+        var ids = AniMetaApi.ParseHandIds("123", "", "");
+
+        var animeId = await AniMetaApi.HandAniDbId(ids, _ => Task.FromResult<string?>("999"));
+
+        Assert.Equal("123", animeId);
+        Assert.Equal("123", ids["AniDB"]);
+    }
+
+    [Fact]
+    public async Task TakesTheAniDbIdTheMappingsNameUnderTheOtherIds()
+    {
+        var ids = AniMetaApi.ParseHandIds("", "100", "");
+        IReadOnlyList<string>? asked = null;
+
+        var animeId = await AniMetaApi.HandAniDbId(ids, links =>
+        {
+            asked = links;
+
+            return Task.FromResult<string?>("456");
+        });
+
+        Assert.Equal("456", animeId);
+        Assert.Equal("456", ids["AniDB"]);
+        Assert.Equal(new[] { "mal:100" }, asked);
+    }
+
+    [Fact]
+    public async Task LeavesTheShowWithoutAnAniDbIdWhereTheMappingsNameNone()
+    {
+        var ids = AniMetaApi.ParseHandIds("", "", "200");
+
+        var animeId = await AniMetaApi.HandAniDbId(ids, _ => Task.FromResult<string?>(null));
+
+        Assert.Null(animeId);
+        Assert.Equal(string.Empty, ids["AniDB"]);
+    }
 }

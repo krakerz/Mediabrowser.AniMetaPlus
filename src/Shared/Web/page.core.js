@@ -845,7 +845,7 @@ function aniMetaPlusPage(host) {
 
         return mapList.filter(function (r) {
             var own = mapStatus(r);
-            if (status === 'attention' ? ['Corrected', 'Suspect', 'Manual'].indexOf(own) < 0
+            if (status === 'attention' ? ['Corrected', 'Suspect'].indexOf(own) < 0
                 : status === 'none' ? own !== '' : status !== 'all' && own !== status) {
                 return false;
             }
@@ -911,8 +911,9 @@ function aniMetaPlusPage(host) {
         }
 
         return '<tr class="amp-map-edit" data-path="' + esc(mapEdit.path) + '"><td colspan="' + (mapIds.length + 3) + '"><div class="amp-map-form">'
-            + field('AniDb', 'AniDB id (required)') + field('Mal', 'MyAnimeList id') + field('AniList', 'AniList id')
+            + field('AniDb', 'AniDB id') + field('Mal', 'MyAnimeList id') + field('AniList', 'AniList id')
             + mapButton('save', 'Save', true) + mapButton('cancel', 'Cancel')
+            + '<span class="amp-small amp-muted">An AniDB id left empty is looked up from the MyAnimeList or AniList id; where there is none, the show is filled from those sites alone.</span>'
             + '</div></td></tr>';
     }
 
@@ -998,14 +999,31 @@ function aniMetaPlusPage(host) {
             renderMapping(view);
         } else if (act === 'save' && mapEdit) {
             var aniDb = mapEdit.AniDb.trim();
-            if (!/^[0-9]+$/.test(aniDb)) {
-                notify('The AniDB id is required and must be digits');
+            var malId = mapEdit.Mal.trim();
+            var aniListId = mapEdit.AniList.trim();
+            if (!aniDb && !malId && !aniListId) {
+                notify('At least one id is required');
+                return;
+            }
+
+            if (aniDb && !/^[0-9]+$/.test(aniDb)) {
+                notify('The AniDB id must be digits');
+                return;
+            }
+
+            if (malId && !/^[0-9]+$/.test(malId)) {
+                notify('The MyAnimeList id must be digits');
+                return;
+            }
+
+            if (aniListId && !/^[0-9]+$/.test(aniListId)) {
+                notify('The AniList id must be digits');
                 return;
             }
 
             var edit = mapEdit;
             mapEdit = null;
-            mapAct(view, 'Manual', { Path: path, AniDb: aniDb, Mal: edit.Mal.trim(), AniList: edit.AniList.trim() }, 'Saved; refreshing');
+            mapAct(view, 'Manual', { Path: path, AniDb: aniDb, Mal: malId, AniList: aniListId }, 'Saved; refreshing');
         }
     }
 

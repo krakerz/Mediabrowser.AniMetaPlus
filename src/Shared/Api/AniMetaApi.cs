@@ -690,13 +690,20 @@ public static class AniMetaApi
     /// Sets a show's AniDB, MyAnimeList and AniList ids by hand, marks them as the owner's, and
     /// refreshes the show with its metadata replaced.
     /// </summary>
+    /// <remarks>
+    /// Where the owner gives no AniDB id but a MyAnimeList or AniList one, the AniDB entry the
+    /// mappings file under that id is put on the show with them, and the show is filled from
+    /// AniDB like any other. Where the mappings file none, the show is filled from MyAnimeList
+    /// and AniList alone.
+    /// </remarks>
     /// <param name="path">The show's folder.</param>
-    /// <param name="aniDb">The AniDB id, required, digits only.</param>
+    /// <param name="aniDb">The AniDB id, digits only, or empty for none.</param>
     /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
     /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
+    /// <param name="logger">The logger.</param>
     /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
-    /// <exception cref="ArgumentException">An id is not digits, or the AniDB id is missing.</exception>
-    public static async Task<IdRow?> SetIds(string path, string? aniDb, string? mal, string? aniList)
+    /// <exception cref="ArgumentException">An id is not digits, or no id is given at all.</exception>
+    public static async Task<IdRow?> SetIds(string path, string? aniDb, string? mal, string? aniList, ILogger logger)
     {
         var ids = ParseHandIds(aniDb, mal, aniList);
 
@@ -705,7 +712,56 @@ public static class AniMetaApi
             return null;
         }
 
+        // The owner named the show by its MyAnimeList or AniList id, so the AniDB entry the
+        // mappings file under that id is put on the show with them.
+        var given = ids[ProviderNames.AniDb].Length > 0;
+        var animeId = await HandAniDbId(
+            ids,
+            links => AniDbMappings.ResolveSeriesIdByLink(Plugin.Instance.AppPaths, links, logger, CancellationToken.None)).ConfigureAwait(false);
+
+        if (!given && !string.IsNullOrEmpty(animeId))
+        {
+            logger.LogInformation(
+                "AniMeta+ linked {Show} to AniDB {AnimeId}, which the mappings file under the id the owner gave",
+                show.Name,
+                animeId);
+        }
+        else if (!given)
+        {
+            logger.LogInformation(
+                "AniMeta+ left {Show} without an AniDB id: the mappings file no entry under the id the owner gave, so it is filled from MyAnimeList and AniList alone",
+                show.Name);
+        }
+
         return await SetByHand(show, Db.IdRecords.FindById(path), ids, "Set by the owner").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The AniDB id a show is set to by hand: the one the owner gave, or the one the mappings
+    /// file under the MyAnimeList or AniList id the owner gave, where they gave no AniDB id of
+    /// their own. The id is put among the ids where the mappings name one, so that the show is
+    /// filled from AniDB like any other.
+    /// </summary>
+    /// <param name="ids">The ids the owner gave, by provider.</param>
+    /// <param name="resolve">What the mappings file under a link, as the AniDB id.</param>
+    /// <returns>The AniDB id the show is set to, or <c>null</c> where it has none.</returns>
+    internal static async Task<string?> HandAniDbId(
+        Dictionary<string, string> ids,
+        Func<IReadOnlyList<string>, Task<string?>> resolve)
+    {
+        if (ids[ProviderNames.AniDb].Length > 0)
+        {
+            return ids[ProviderNames.AniDb];
+        }
+
+        var animeId = await resolve(AniDbSeriesProvider.LinksFromIds(ids)).ConfigureAwait(false);
+
+        if (!string.IsNullOrEmpty(animeId))
+        {
+            ids[ProviderNames.AniDb] = animeId;
+        }
+
+        return animeId;
     }
 
     /// <summary>
@@ -733,11 +789,11 @@ public static class AniMetaApi
     /// <summary>
     /// Reads the ids the owner types in by hand.
     /// </summary>
-    /// <param name="aniDb">The AniDB id, required, digits only.</param>
+    /// <param name="aniDb">The AniDB id, digits only, or empty for none.</param>
     /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
     /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
     /// <returns>The ids by provider; an empty one removes that id from the show.</returns>
-    /// <exception cref="ArgumentException">An id is not digits, or the AniDB id is missing.</exception>
+    /// <exception cref="ArgumentException">An id is not digits, or no id is given at all.</exception>
     public static Dictionary<string, string> ParseHandIds(string? aniDb, string? mal, string? aniList)
     {
         var ids = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -747,12 +803,12 @@ public static class AniMetaApi
             [SourceIds.AniList] = (aniList ?? string.Empty).Trim()
         };
 
-        if (ids[ProviderNames.AniDb].Length == 0)
+        if (ids[ProviderNames.AniDb].Length == 0 && ids[SourceIds.Mal].Length == 0 && ids[SourceIds.AniList].Length == 0)
         {
-            throw new ArgumentException("The AniDB id is required.", nameof(aniDb));
+            throw new ArgumentException("At least one id is required.", nameof(aniDb));
         }
 
-        if (!ids[ProviderNames.AniDb].All(char.IsAsciiDigit))
+        if (ids[ProviderNames.AniDb].Length > 0 && !ids[ProviderNames.AniDb].All(char.IsAsciiDigit))
         {
             throw new ArgumentException("The AniDB id is digits only.", nameof(aniDb));
         }
