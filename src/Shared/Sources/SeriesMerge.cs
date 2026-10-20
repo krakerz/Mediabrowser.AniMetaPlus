@@ -221,7 +221,7 @@ public static class SeriesMerge
         ILogger logger)
         where TItem : BaseItem
     {
-        if (provenance == null || provenance.Locked || string.IsNullOrEmpty(provenance.PinnedSource) || preferredOrder.Count == 0)
+        if (provenance == null || provenance.Locked || string.IsNullOrEmpty(provenance.PinnedSource) || preferredOrder.Count == 0 || string.IsNullOrEmpty(context.ItemPath))
         {
             return;
         }
@@ -433,6 +433,20 @@ public static class SeriesMerge
         return marked;
     }
 
+    /// <summary>
+    /// Deletes the stand-ins and pending reviews that have no item on the library behind them,
+    /// left by lookups made for a season's own entry. Nothing could ever refresh them.
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <returns>How many were deleted.</returns>
+    public static int RemoveOrphans(AniMetaDb db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        return db.Provenance.DeleteMany(p => p.ItemPath == null || p.ItemPath == string.Empty)
+            + db.Reviews.DeleteMany(r => r.Status == ReviewStatus.Pending && (r.ItemPath == null || r.ItemPath == string.Empty));
+    }
+
     private static void Settle(AniMetaDb db, ProvenanceRecord provenance, DataKind kind, FetchContext context)
     {
         // Only a stand-in still waiting for review; a pending review is left to be decided.
@@ -457,6 +471,13 @@ public static class SeriesMerge
         ProvenanceRecord? keepPin,
         string? pinTo = null)
     {
+        // Nothing on the library to refresh: a lookup made for another reason, such as a season
+        // reading its own entry, keeps no record that the queue would wait on for good.
+        if (string.IsNullOrEmpty(context.ItemPath))
+        {
+            return;
+        }
+
         var record = keepPin ?? new ProvenanceRecord { Id = id, ItemKey = context.ItemKey, Field = kind.ToString() };
 
         record.Source = source;

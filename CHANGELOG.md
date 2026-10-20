@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.16.1] — 2026-10-20
+
+### Fixed
+- Stand-in values with no show name on the Status tab, which never went away: a season reading its own AniDB entry ran the show's full lookup, which also asked AniList, MyAnimeList, TVDB and TMDB about the entry and recorded stand-ins for it with no show to refresh. A season now reads only AniDB's answer for its entry, and the stand-ins and reviews left that way are removed once at startup
+
 ## [2.16.0] — 2026-10-19
 
 ### Added

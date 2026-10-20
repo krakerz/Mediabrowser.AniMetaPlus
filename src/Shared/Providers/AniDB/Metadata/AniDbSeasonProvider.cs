@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -181,8 +182,8 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
         seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seasonId);
 
-        var seriesResult = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken).ConfigureAwait(false);
-        if (seriesResult.HasMetadata)
+        var seriesResult = await ReadEntry(seasonId, seriesInfo, cancellationToken).ConfigureAwait(false);
+        if (seriesResult is { HasMetadata: true })
         {
             // The first season is the series entry, so taking its title would name the season
             // after the show it sits under. A later season has a title of its own.
@@ -264,8 +265,8 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
 
                 seriesInfo.ProviderIds.Add(ProviderNames.AniDb, seasonId!);
 
-                var found = await _seriesProvider.GetMetadata(seriesInfo, cancellationToken).ConfigureAwait(false);
-                if (!found.HasMetadata)
+                var found = await ReadEntry(seasonId!, seriesInfo, cancellationToken).ConfigureAwait(false);
+                if (found is not { HasMetadata: true })
                 {
                     return null;
                 }
@@ -341,6 +342,33 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
         {
             // AniDB refused this one anime. Only its answer is missing, and the next source is asked.
             _logger.LogDebug("Season {SeasonNumber} could not be read from {Source}: {Message}", info.IndexNumber, source, ex.Message);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads the season's own AniDB entry, and only that. The show's full lookup asked AniList,
+    /// MyAnimeList, TVDB and TMDB about the entry too, and recorded stand-ins for it with no show
+    /// to refresh, which then stayed on the Status tab for good.
+    /// </summary>
+    /// <param name="seasonId">The season's AniDB entry.</param>
+    /// <param name="seriesInfo">The lookup info, for the language.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The entry, or <c>null</c> when AniDB cannot answer for it now.</returns>
+    private async Task<MetadataResult<Series>?> ReadEntry(string seasonId, SeriesInfo seriesInfo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _seriesProvider.GetMetadataForId(seasonId, seriesInfo, cancellationToken, publishShowIds: false).ConfigureAwait(false);
+        }
+        catch (AniDbBannedException ex) when (!PausesFor(ex))
+        {
+            _logger.LogDebug("AniDB anime {SeasonId} is not read for its season while AniDB cannot be asked, for another {RetryAfter}", seasonId, ex.RetryAfter);
+        }
+        catch (Exception ex) when (ex is SourceBlockedException or HttpRequestException or IOException || (ex is InvalidOperationException && !BlockStore.IsShutdown(ex)))
+        {
+            _logger.LogDebug("AniDB anime {SeasonId} could not be read for its season: {Message}", seasonId, ex.Message);
         }
 
         return null;
