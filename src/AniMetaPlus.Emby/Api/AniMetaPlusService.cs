@@ -163,7 +163,7 @@ public class SetIdRecord : IReturn<IdRow>
     /// <summary>Gets or sets the show's folder.</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the AniDB id.</summary>
+    /// <summary>Gets or sets the AniDB id, or empty for none.</summary>
     public string AniDb { get; set; } = string.Empty;
 
     /// <summary>Gets or sets the MyAnimeList id, or empty for none.</summary>
@@ -473,7 +473,7 @@ public class AniMetaPlusService : IService
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
-    public async Task<object> Post(SetIdRecord request) => await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
+    public async Task<object> Post(SetIdRecord request) => await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, _logger).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

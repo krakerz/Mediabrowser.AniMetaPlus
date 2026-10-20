@@ -461,6 +461,18 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             }
         }
 
+        // The owner set the show's ids by hand: a MyAnimeList or AniList id names the show
+        // outright, and is looked up before the name is guessed at. A show AniDB has no entry
+        // for is filled from those sites, rather than matched to whatever its name comes
+        // nearest.
+        if (string.IsNullOrEmpty(animeId) && link is null && IdCheck.IsManual(info.Path))
+        {
+            var links = LinksFromIds(info.ProviderIds);
+
+            animeId = await AniDbMappings.ResolveSeriesIdByLink(_appPaths, links, Logger ?? (ILogger)NullLogger.Instance, cancellationToken).ConfigureAwait(false);
+            link = links.FirstOrDefault();
+        }
+
         if (string.IsNullOrEmpty(animeId) && link is null)
         {
             animeId = await Identify(info, cancellationToken).ConfigureAwait(false);
@@ -614,13 +626,31 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <param name="ids">The item's ids.</param>
     /// <returns>"anilist:123", "mal:123", or <c>null</c>.</returns>
     internal static string? LinkFromIds(IReadOnlyDictionary<string, string> ids)
+        => LinksFromIds(ids).FirstOrDefault();
+
+    /// <summary>
+    /// Gets every AniList and MyAnimeList link an item's own ids make, AniList's first.
+    /// </summary>
+    /// <remarks>
+    /// AniList is read first because it is the id the other sources know a show by, and because
+    /// the AniBridge mappings link it to the right entry more often than they link a
+    /// MyAnimeList id: now and then they link one to another season's entry.
+    /// </remarks>
+    /// <param name="ids">The item's ids.</param>
+    /// <returns>The links, such as "anilist:123" and "mal:456".</returns>
+    internal static IReadOnlyList<string> LinksFromIds(IReadOnlyDictionary<string, string> ids)
     {
-        if (ids.GetValueOrDefault(SourceIds.AniList) is { Length: > 0 } aniList && aniList.All(char.IsAsciiDigit))
+        var links = new List<string>(2);
+
+        foreach (var (source, prefix) in new[] { (SourceIds.AniList, "anilist"), (SourceIds.Mal, "mal") })
         {
-            return "anilist:" + aniList;
+            if (ids.GetValueOrDefault(source) is { Length: > 0 } id && id.All(char.IsAsciiDigit))
+            {
+                links.Add(prefix + ":" + id);
+            }
         }
 
-        return ids.GetValueOrDefault(SourceIds.Mal) is { Length: > 0 } mal && mal.All(char.IsAsciiDigit) ? "mal:" + mal : null;
+        return links;
     }
 
     /// <summary>

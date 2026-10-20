@@ -65,7 +65,7 @@ public class IdManualRequest
     /// <summary>Gets or sets the show's folder.</summary>
     public string Path { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the AniDB id.</summary>
+    /// <summary>Gets or sets the AniDB id, or empty for none.</summary>
     public string AniDb { get; set; } = string.Empty;
 
     /// <summary>Gets or sets the MyAnimeList id, or empty for none.</summary>
@@ -225,7 +225,7 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     {
         try
         {
-            return await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList).ConfigureAwait(false) is { } row ? row : NotFound();
+            return await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, logger).ConfigureAwait(false) is { } row ? row : NotFound();
         }
         catch (ArgumentException ex)
         {
