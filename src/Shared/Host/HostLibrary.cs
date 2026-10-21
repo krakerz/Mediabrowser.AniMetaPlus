@@ -324,6 +324,9 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     }
 
     /// <inheritdoc />
+    public bool ItemExists(string itemId) => FindItem(itemId) != null;
+
+    /// <inheritdoc />
     public async Task<bool> RestorePoster(string itemId, string file, string mimeType, CancellationToken cancellationToken)
     {
         var item = FindItem(itemId);

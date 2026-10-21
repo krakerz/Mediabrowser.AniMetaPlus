@@ -473,6 +473,17 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             link = links.FirstOrDefault();
         }
 
+        // An identify pick of an anime AniDB does not list: the server named the item after the
+        // result, marker and all, and kept only the id the result carried. The id decides, as it
+        // does for an item mapped to AniList or MyAnimeList by hand; the name would only be guessed
+        // at AniDB's titles.
+        if (string.IsNullOrEmpty(animeId) && link is null && IdentifySearch.WithoutMarker(info.Name) is { } plainName)
+        {
+            info.Name = plainName;
+            link = LinkFromIds(info.ProviderIds);
+            animeId = link is null ? null : await AniDbForLink(link, cancellationToken).ConfigureAwait(false);
+        }
+
         if (string.IsNullOrEmpty(animeId) && link is null)
         {
             animeId = await Identify(info, cancellationToken).ConfigureAwait(false);
@@ -1025,51 +1036,78 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     /// <inheritdoc />
     /// <remarks>
-    /// Answers from the titles dump and mappings alone, with a "Local only" poster: an identify that asked
-    /// AniDB for every guess would spend one paced request each, enough to earn a ban. The
+    /// Answers from the titles dump, the mappings and, when <see cref="PluginConfiguration.IdentifySearchOnline"/>
+    /// is on, AniList, MyAnimeList, TheTVDB and TheMovieDb. AniDB is never asked: an identify that
+    /// asked it for every guess would spend one paced request each, enough to earn a ban. The
     /// refresh after a pick fetches the real metadata and images.
     /// </remarks>
-    public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
-    {
-        var results = new List<RemoteSearchResult>();
-        var offered = new HashSet<string>(StringComparer.Ordinal);
+    public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
+        => Search(searchInfo, false, cancellationToken);
 
-        void Offer(string? id, string? title = null)
+    /// <summary>
+    /// Builds an identify's result list, for a show or a movie.
+    /// </summary>
+    /// <param name="searchInfo">What the owner typed: a name, a year and any ids.</param>
+    /// <param name="movie">Whether a movie is identified rather than a show.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The results: the AniDB entries first, then anime AniDB does not list.</returns>
+    internal async Task<IEnumerable<RemoteSearchResult>> Search(ItemLookupInfo searchInfo, bool movie, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance?.Configuration;
+        var online = configuration?.IdentifySearchOnline ?? true;
+        var posters = configuration?.IdentifyRemotePosters ?? true;
+        var labels = configuration?.IdentifyPosterLabels ?? true;
+        var logger = Logger ?? (ILogger)NullLogger.Instance;
+
+        var local = new List<IdentifyResult>();
+        var offered = new Dictionary<string, IdentifyResult>(StringComparer.Ordinal);
+
+        IdentifyResult? Offer(string? id, string? match, string? title = null)
         {
-            if (string.IsNullOrEmpty(id) || !offered.Add(id))
+            if (string.IsNullOrEmpty(id))
             {
-                return;
+                return null;
             }
 
-            var result = new RemoteSearchResult
+            if (offered.TryGetValue(id, out var existing))
             {
-                Name = title ?? TitlesDump.MainTitle(_appPaths, id) ?? "AniDB " + id,
-                ImageUrl = LocalOnlyImage.Url,
-                SearchProviderName = ProviderNames.Display
-            };
-            result.SetProviderId(ProviderNames.AniDb, id);
-            results.Add(result);
+                return existing;
+            }
+
+            var result = new IdentifyResult { AnimeId = id, Name = title ?? TitlesDump.MainTitle(_appPaths, id) ?? "AniDB " + id, Match = match };
+            offered[id] = result;
+            local.Add(result);
+
+            return result;
         }
 
         var allowed = IdentifyIds();
 
         if (allowed.Contains(ProviderNames.AniDb))
         {
-            Offer(searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb));
+            Offer(searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb), "typed AniDB id");
         }
 
         // MyAnimeList and AniList ids are looked up in the mappings, never asked of the
-        // databases themselves.
+        // databases themselves. One the mappings do not know is an anime AniDB does not list, and
+        // is offered as such below.
+        var typedUnlinked = new List<RemoteCandidate>();
         foreach (var (key, prefix) in new[] { (SourceIds.Mal, "mal"), (SourceIds.AniList, "anilist") })
         {
-            if (allowed.Contains(key))
+            if (!allowed.Contains(key) || searchInfo.ProviderIds.GetValueOrDefault(key) is not { Length: > 0 } typed)
             {
-                Offer(await AniBridgeMappings.ResolveSeriesIdByLink(
-                    _appPaths,
-                    prefix,
-                    searchInfo.ProviderIds.GetValueOrDefault(key),
-                    Logger ?? (ILogger)NullLogger.Instance,
-                    cancellationToken).ConfigureAwait(false));
+                continue;
+            }
+
+            var linked = await AniBridgeMappings.ResolveSeriesIdByLink(_appPaths, prefix, typed, logger, cancellationToken).ConfigureAwait(false);
+
+            if (!string.IsNullOrEmpty(linked))
+            {
+                Offer(linked, "typed " + key + " id")?.Ids.TryAdd(key, typed);
+            }
+            else if (!movie && typed.All(char.IsAsciiDigit))
+            {
+                typedUnlinked.Add(new RemoteCandidate(key, typed, string.Empty, null, null, null));
             }
         }
 
@@ -1078,35 +1116,162 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         // hold anime only, so an id they do not carry belongs to something that is not an
         // anime - a live action adaptation sharing the show's name, most often - and an id they
         // do carry names the AniDB entry outright.
-        var mapped = await AniDbMappings.ResolveSeriesId(
-            _appPaths,
-            searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tvdb)),
-            searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tmdb)),
-            Logger ?? (ILogger)NullLogger.Instance,
-            cancellationToken).ConfigureAwait(false);
+        var tvdbId = searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tvdb));
+        var tmdbId = searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tmdb));
 
-        Offer(mapped?.AnimeId);
+        if (movie)
+        {
+            var mappedMovie = await AniDbMappings.ResolveMovieId(
+                _appPaths,
+                tmdbId,
+                searchInfo.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Imdb)),
+                tvdbId,
+                logger,
+                cancellationToken).ConfigureAwait(false);
+
+            Offer(mappedMovie?.Episode.AnimeId, mappedMovie is null ? null : "typed " + mappedMovie.Provider + " id");
+        }
+        else
+        {
+            var mapped = await AniDbMappings.ResolveSeriesId(_appPaths, tvdbId, tmdbId, logger, cancellationToken).ConfigureAwait(false);
+
+            if (Offer(mapped?.AnimeId, mapped is null ? null : "typed " + mapped.Provider + " id") is { } entry && mapped is not null)
+            {
+                entry.Ids.TryAdd(mapped.Provider == "TVDB" ? nameof(MetadataProvider.Tvdb) : nameof(MetadataProvider.Tmdb), mapped.ProviderId);
+            }
+        }
+
+        var remote = new List<RemoteCandidate>();
 
         if (!string.IsNullOrEmpty(searchInfo.Name))
         {
             foreach (var candidate in await Queues.Candidates(searchInfo.Name, cancellationToken).ConfigureAwait(false))
             {
-                Offer(candidate.AnimeId, candidate.Title);
+                Offer(candidate.AnimeId, "title match " + candidate.Score.ToString(CultureInfo.InvariantCulture) + "%", candidate.Title);
+            }
+
+            if (online)
+            {
+                remote.AddRange(await IdentifySearch.SearchOnline(searchInfo.Name, searchInfo.Year, movie, logger, cancellationToken).ConfigureAwait(false));
             }
         }
 
-        return results;
+        // An AniList or MyAnimeList id typed in comes first among the anime AniDB does not list.
+        // The name search may have found it already; if not, its title and year are read from the
+        // site, one request, so that the list says what the id is.
+        var typedFirst = new List<RemoteCandidate>();
+        foreach (var typed in typedUnlinked)
+        {
+            var named = remote.FirstOrDefault(r => r.Source == typed.Source && r.Id == typed.Id && r.AniDbId is null);
+            typedFirst.Add(named ?? (online
+                ? await DescribeTyped(typed, logger, cancellationToken).ConfigureAwait(false)
+                : typed with { Title = typed.Source + " " + typed.Id }));
+        }
+
+        remote.InsertRange(0, typedFirst);
+
+        var results = IdentifySearch.Merge(local, remote, posters, !movie, id => TitlesDump.MainTitle(_appPaths, id));
+
+        if (labels)
+        {
+            foreach (var result in results)
+            {
+                var mappedRole = string.IsNullOrEmpty(result.AnimeId)
+                    ? null
+                    : await AniDbMappings.ResolveRole(_appPaths, result.AnimeId, logger, cancellationToken).ConfigureAwait(false);
+
+                result.Role = IdentifySearch.RoleLabel(mappedRole, result.Format);
+            }
+        }
+
+        return results.Select(result => ToSearchResult(result, labels, _appPaths)).ToList();
+    }
+
+    // The title and year of an AniList or MyAnimeList anime, by id; the id itself as a name
+    // where the site cannot be asked.
+    private static async Task<RemoteCandidate> DescribeTyped(RemoteCandidate typed, ILogger logger, CancellationToken cancellationToken)
+    {
+        var http = Plugin.Instance.GetHttpClient();
+
+        try
+        {
+            var record = await SourceGate.Run(
+                typed.Source,
+                "identify:" + typed.Id,
+                typed.Id,
+                string.Empty,
+                "identify " + typed.Id,
+                ct => typed.Source == SourceIds.AniList ? AniListClient.GetById(http, typed.Id, ct) : MalClient.Get(http, typed.Id, ct),
+                cancellationToken).ConfigureAwait(false);
+
+            var title = record.RomajiTitle ?? record.EnglishTitle;
+
+            return string.IsNullOrEmpty(title) ? typed with { Title = typed.Source + " " + typed.Id } : typed with { Title = title, Year = record.StartDate?.Year };
+        }
+        catch (Exception ex) when (ex is SourceBlockedException or HttpRequestException or KeyNotFoundException or FormatException)
+        {
+            logger.LogDebug("{Source} could not name {Id} for an identify: {Message}", typed.Source, typed.Id, ex.Message);
+
+            return typed with { Title = typed.Source + " " + typed.Id };
+        }
+    }
+
+    private static RemoteSearchResult ToSearchResult(IdentifyResult result, bool labels, IApplicationPaths appPaths)
+    {
+        var search = new RemoteSearchResult
+        {
+            Name = result.Name,
+            ProductionYear = result.Year,
+            ImageUrl = labels
+                ? IdentifyLabel.ResultUrl(new PosterLabel(result.ImageUrl ?? string.Empty, result.Match ?? string.Empty, result.Role ?? string.Empty, IdentifySearch.SitesLine(result)), appPaths)
+                : result.ImageUrl ?? LocalOnlyImage.Url,
+            SearchProviderName = ProviderNames.Display
+        };
+
+        if (!string.IsNullOrEmpty(result.AnimeId))
+        {
+            search.SetProviderId(ProviderNames.AniDb, result.AnimeId);
+        }
+
+        foreach (var (provider, id) in result.Ids)
+        {
+            search.SetProviderId(provider, id);
+        }
+
+        return search;
     }
 
     /// <inheritdoc />
-    public async Task<HostImageResponse> GetImageResponse(string url, CancellationToken cancellationToken)
+    public Task<HostImageResponse> GetImageResponse(string url, CancellationToken cancellationToken)
+        => GetIdentifyImage(url, cancellationToken);
+
+    /// <summary>
+    /// Answers a request for an identify result's picture: a poster with its label band (by the
+    /// server's signed address for it, or the older label url), the "Local only" poster, a poster an online source gave, or - for an AniDB address, as before - AniDB's own.
+    /// </summary>
+    /// <param name="url">The image url.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The server's image response.</returns>
+    internal static Task<HostImageResponse> GetIdentifyImage(string url, CancellationToken cancellationToken)
     {
-        if (LocalOnlyImage.Is(url))
+        if (IdentifyLabel.Is(url))
         {
-            return LocalOnlyImage.Response();
+            return IdentifyLabel.GetImage(url, cancellationToken);
         }
 
-        return await GetAniDbImage(url, cancellationToken).ConfigureAwait(false);
+        if (LocalOnlyImage.Is(url))
+        {
+            return Task.FromResult(LocalOnlyImage.Response());
+        }
+
+        if (IdentifyLabel.TryParseAddress(url, out _, out _))
+        {
+            return IdentifyLabel.GetAddressImage(url, Plugin.Instance.AppPaths, cancellationToken);
+        }
+
+        return IdentifySearch.IsAniDbUrl(url)
+            ? GetAniDbImage(url, cancellationToken)
+            : IdentifySearch.GetRemotePoster(url, cancellationToken);
     }
 
     /// <summary>

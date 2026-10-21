@@ -133,6 +133,9 @@ public partial class PluginConfiguration : BasePluginConfiguration
         FlareSolverrTimeoutSeconds = 90;
         GenreRebuildDaily = true;
         GenreRebuildAskOthers = true;
+        IdentifySearchOnline = true;
+        IdentifyRemotePosters = true;
+        IdentifyPosterLabels = true;
     }
 
     /// <summary>
@@ -175,6 +178,24 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// shows they have no cached answer for, by the id the show has. AniDB is never asked.
     /// </summary>
     public bool GenreRebuildAskOthers { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether Identify also searches AniList, MyAnimeList,
+    /// TheTVDB and TheMovieDb by name, besides the local AniDB titles. AniDB itself is never asked.
+    /// </summary>
+    public bool IdentifySearchOnline { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether Identify results show the posters AniList,
+    /// MyAnimeList, TheTVDB and TheMovieDb gave. AniDB's images are never fetched for Identify.
+    /// </summary>
+    public bool IdentifyRemotePosters { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether Identify posters carry a label band: what the
+    /// result is of its show (base show or which season), how it matched, and its sites.
+    /// </summary>
+    public bool IdentifyPosterLabels { get; set; }
 
     /// <summary>
     /// Gets the language AniDB episode titles are taken in, after <see cref="EpisodeTitlePreference"/>

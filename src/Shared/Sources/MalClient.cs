@@ -109,7 +109,7 @@ public static class MalClient
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             official
-                ? "https://api.myanimelist.net/v2/anime?limit=10&nsfw=true&fields=start_date,media_type&q=" + Uri.EscapeDataString(Truncate(title))
+                ? "https://api.myanimelist.net/v2/anime?limit=10&nsfw=true&fields=start_date,media_type,main_picture&q=" + Uri.EscapeDataString(Truncate(title))
                 : "https://api.jikan.moe/v4/anime?limit=10&q=" + Uri.EscapeDataString(title));
 
         if (official)
@@ -134,10 +134,26 @@ public static class MalClient
 
             var start = Str(node, "start_date") ?? (node.TryGetProperty("aired", out var aired) ? Str(aired, "from") : null);
             var key = id.Value.ToString(CultureInfo.InvariantCulture);
-            candidates.Add(new RemoteCandidate(SourceIds.Mal, key, Str(node, "title") ?? key, ParseDate(start)?.Year, Str(node, "media_type") ?? Str(node, "type"), null));
+            candidates.Add(new RemoteCandidate(SourceIds.Mal, key, Str(node, "title") ?? key, ParseDate(start)?.Year, Str(node, "media_type") ?? Str(node, "type"), null, SearchPoster(node)));
         }
 
         return candidates;
+    }
+
+    // The official API names the picture "main_picture"; Jikan nests it under "images".
+    private static string? SearchPoster(JsonElement node)
+    {
+        if (node.TryGetProperty("main_picture", out var picture) && picture.ValueKind == JsonValueKind.Object)
+        {
+            return NullIfEmpty(Str(picture, "large") ?? Str(picture, "medium"));
+        }
+
+        return node.TryGetProperty("images", out var images)
+            && images.ValueKind == JsonValueKind.Object
+            && images.TryGetProperty("jpg", out var jpg)
+            && jpg.ValueKind == JsonValueKind.Object
+                ? NullIfEmpty(Str(jpg, "large_image_url") ?? Str(jpg, "image_url"))
+                : null;
     }
 
     // The official search rejects queries over 64 characters.

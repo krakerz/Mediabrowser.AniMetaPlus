@@ -44,22 +44,30 @@ internal static class LocalOnlyImage
     /// Answers a request for the poster.
     /// </summary>
     /// <returns>The poster.</returns>
-    public static HostImageResponse Response()
+    public static HostImageResponse Response() => Response(_bytes.Value, "image/png", Url);
+
+    /// <summary>
+    /// Wraps picture bytes in the server's image response.
+    /// </summary>
+    /// <param name="bytes">The picture.</param>
+    /// <param name="contentType">Its media type.</param>
+    /// <param name="url">The url it was asked for by.</param>
+    /// <returns>The response.</returns>
+    public static HostImageResponse Response(byte[] bytes, string contentType, string url)
     {
-        var bytes = _bytes.Value;
 #if EMBY
         var content = new MemoryStream(bytes, false);
         return new HostImageResponse([content])
         {
             Content = content,
-            ContentType = "image/png",
+            ContentType = contentType,
             ContentLength = bytes.Length,
             StatusCode = HttpStatusCode.OK,
-            ResponseUrl = Url
+            ResponseUrl = url
         };
 #else
         var content = new ByteArrayContent(bytes);
-        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         return new HostImageResponse(System.Net.HttpStatusCode.OK) { Content = content };
 #endif
     }

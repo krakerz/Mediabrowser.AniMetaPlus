@@ -199,6 +199,25 @@ internal static class AniBridgeMappings
     }
 
     /// <summary>
+    /// What the mappings say an entry is of its show.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The role, or <c>null</c> where the mappings say nothing about the entry.</returns>
+    public static async Task<MappedRole?> ResolveRole(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.RoleOf(animeId);
+    }
+
+    /// <summary>
     /// The MyAnimeList or AniList entry an AniDB entry is, from the mappings alone. A season
     /// asked about by this id needs no search by its title, which AniDB spells its own way.
     /// </summary>

@@ -38,12 +38,7 @@ public class AniDbImageProvider(IApplicationPaths appPaths) : IRemoteImageProvid
     {
         // Emby fetches a search result's picture through whichever provider shares the
         // result's provider name, which is this one rather than the series provider.
-        if (LocalOnlyImage.Is(url))
-        {
-            return LocalOnlyImage.Response();
-        }
-
-        return await AniDbSeriesProvider.GetAniDbImage(url, cancellationToken).ConfigureAwait(false);
+        return await AniDbSeriesProvider.GetIdentifyImage(url, cancellationToken).ConfigureAwait(false);
     }
 
 #if EMBY

@@ -365,6 +365,25 @@ internal static class AniDbMappings
     }
 
     /// <summary>
+    /// What the mapping sources say an entry is of its show, from what they already hold: no
+    /// request is made for it beyond loading the sources themselves.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The role from the first source that has one, or <c>null</c> where none does.</returns>
+    public static async Task<MappedRole?> ResolveRole(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        return await AniBridgeMappings.ResolveRole(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
+            ?? await AniDbAnimeList.ResolveRole(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// The ids other providers know a show by, as the mapping sources file it. What the image
     /// providers of those sites, and fanart, are keyed by, so this is what lets them fetch
     /// artwork for a show identified here.

@@ -4,9 +4,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Core;
+using AniMetaPlus.Providers.AniDB.Mapping;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace AniMetaPlus.Sources;
 
@@ -21,6 +26,9 @@ namespace AniMetaPlus.Sources;
 /// </remarks>
 public static class DelegatedProviders
 {
+    // Enough for a name's likeliest matches; a search for a common word lists dozens.
+    private const int MaxHits = 10;
+
     private static readonly object _lock = new();
     private static List<IMetadataProvider>? _metadata;
     private static List<IImageProvider>? _images;
@@ -83,6 +91,139 @@ public static class DelegatedProviders
             cancellationToken).ConfigureAwait(false);
 
         return result is { HasMetadata: true } ? result : null;
+    }
+
+#if EMBY
+    /// <summary>
+    /// Asks the server's series provider of a name for all the episodes of a show, aired or not.
+    /// </summary>
+    /// <param name="name">The provider name.</param>
+    /// <param name="info">The lookup info, carrying the ids that provider is keyed by.</param>
+    /// <param name="itemKey">The item key, for blocks and the request log.</param>
+    /// <param name="itemName">The item's name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The episodes, or <c>null</c> when the provider is not installed or cannot list them.</returns>
+    /// <exception cref="SourceBlockedException">The source may not be asked, or the request failed and is now blocked.</exception>
+    internal static async Task<RemoteSearchResult[]?> GetAllEpisodes(string name, SeriesInfo info, string itemKey, string itemName, CancellationToken cancellationToken)
+    {
+        if (Find<Series, SeriesInfo>(name) is not ISeriesMetadataProvider provider)
+        {
+            return null;
+        }
+
+        return await SourceGate.Run(
+            name,
+            itemKey,
+            itemName,
+            "Episodes",
+            "episodes " + itemName,
+            ct => provider.GetAllEpisodes(info, ct),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+#endif
+    /// <summary>
+    /// Searches the server's TheTVDB or TheMovieDb provider by name, for an identify, and keeps
+    /// the hits the mappings file under an AniDB entry.
+    /// </summary>
+    /// <param name="source">The source id, <see cref="SourceIds.Tvdb"/> or <see cref="SourceIds.Tmdb"/>.</param>
+    /// <param name="title">The name searched for.</param>
+    /// <param name="year">The year, when known.</param>
+    /// <param name="movie">Whether a movie is searched for rather than a show.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The hits that map to AniDB; none when the source is off, not installed or blocked.</returns>
+    internal static async Task<IReadOnlyList<RemoteCandidate>> Search(string source, string title, int? year, bool movie, ILogger logger, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(title) || !Plugin.Instance.Configuration.GetSource(source).Enabled)
+        {
+            return [];
+        }
+
+        var paths = Plugin.Instance.AppPaths;
+        var tvdb = string.Equals(source, SourceIds.Tvdb, StringComparison.OrdinalIgnoreCase);
+
+        // A movie is filed under a TVDB or TMDB id by the movie mappings, a show by the show ones.
+        Func<string, CancellationToken, Task<string?>> toAniDb = movie
+            ? async (id, ct) => (await AniDbMappings.ResolveMovieId(paths, tvdb ? null : id, null, tvdb ? id : null, logger, ct).ConfigureAwait(false))?.Episode.AnimeId
+            : async (id, ct) => (await AniDbMappings.ResolveSeriesId(paths, tvdb ? id : null, tvdb ? null : id, logger, ct).ConfigureAwait(false))?.AnimeId;
+
+        try
+        {
+            var hits = movie
+                ? await SearchBy<Movie, MovieInfo>(source, new MovieInfo { Name = title, Year = year, MetadataLanguage = "en" }, cancellationToken).ConfigureAwait(false)
+                : await SearchBy<Series, SeriesInfo>(source, new SeriesInfo { Name = title, Year = year, MetadataLanguage = "en" }, cancellationToken).ConfigureAwait(false);
+
+            return await LinkedCandidates(source, hits, toAniDb, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SourceBlockedException ex)
+        {
+            logger.LogDebug("{Source} could not be searched for {Title}: {Message}", source, title, ex.Message);
+
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Keeps the search hits whose id the mappings file under an AniDB entry. A hit with no such
+    /// entry is dropped: it is not an anime AniDB lists, or the mappings do not know it.
+    /// </summary>
+    /// <param name="source">The source the hits came from.</param>
+    /// <param name="hits">The provider's search results.</param>
+    /// <param name="toAniDb">Gives the AniDB id an id is filed under, or <c>null</c>.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The hits that map, each with its AniDB id.</returns>
+    internal static async Task<IReadOnlyList<RemoteCandidate>> LinkedCandidates(
+        string source,
+        IEnumerable<RemoteSearchResult> hits,
+        Func<string, CancellationToken, Task<string?>> toAniDb,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        ArgumentNullException.ThrowIfNull(toAniDb);
+
+        var key = source == SourceIds.Tvdb ? nameof(MetadataProvider.Tvdb) : nameof(MetadataProvider.Tmdb);
+        var found = new List<RemoteCandidate>();
+
+        foreach (var hit in hits.Take(MaxHits))
+        {
+            var id = hit.ProviderIds?.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            var animeId = await toAniDb(id, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(animeId))
+            {
+                found.Add(new RemoteCandidate(source, id, hit.Name ?? id, hit.ProductionYear, null, animeId, hit.ImageUrl));
+            }
+        }
+
+        return found;
+    }
+
+    private static async Task<IReadOnlyList<RemoteSearchResult>> SearchBy<TItem, TInfo>(string source, TInfo info, CancellationToken cancellationToken)
+        where TItem : BaseItem, IHasLookupInfo<TInfo>, new()
+        where TInfo : ItemLookupInfo, new()
+    {
+        var provider = Find<TItem, TInfo>(source);
+        if (provider == null)
+        {
+            return [];
+        }
+
+        var name = info.Name ?? string.Empty;
+        var found = await SourceGate.Run(
+            source,
+            "search:" + name.ToLowerInvariant(),
+            name,
+            string.Empty,
+            "search " + name,
+            async ct => (await provider.GetSearchResults(info, ct).ConfigureAwait(false)).ToList(),
+            cancellationToken).ConfigureAwait(false);
+
+        return found;
     }
 
     /// <summary>

@@ -194,6 +194,9 @@ public class ImageBackupItem
 
     /// <summary>Gets or sets a value indicating whether the previous poster is held.</summary>
     public bool HasBackup { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the library no longer has the item.</summary>
+    public bool Missing { get; set; }
 }
 
 /// <summary>
@@ -206,6 +209,9 @@ public class ImageBackupPage
 
     /// <summary>Gets or sets how many items the owner reverted, which the task skips.</summary>
     public int RevertedCount { get; set; }
+
+    /// <summary>Gets or sets how many of all those waiting are for items the library no longer has.</summary>
+    public int MissingCount { get; set; }
 
     /// <summary>Gets or sets the page.</summary>
     public List<ImageBackupItem> Items { get; set; } = [];
@@ -239,6 +245,9 @@ public class ImageJobStatus
 
     /// <summary>Gets or sets how many could not be restored.</summary>
     public int Failed { get; set; }
+
+    /// <summary>Gets or sets how many selected items were left out because the library no longer has them.</summary>
+    public int Skipped { get; set; }
 
     /// <summary>Gets or sets when the run started.</summary>
     public DateTime? StartedUtc { get; set; }
@@ -533,10 +542,55 @@ public static class AniMetaApi
     public static ReviewRecord? DecideReview(string id, ReviewStatus decision)
     {
         var db = Db;
-        var review = db.Reviews.FindById(id);
-        if (review == null || decision == ReviewStatus.Pending)
+        if (!TryDecide(db, id, decision, out var review))
         {
             return review;
+        }
+
+        db.DecisionChanged();
+
+        if (decision == ReviewStatus.Accepted && !string.IsNullOrEmpty(review!.ItemPath))
+        {
+            HostServices.Refresher?.Refresh(review.ItemPath, false);
+        }
+
+        return review;
+    }
+
+    /// <summary>
+    /// Decides several reviews at once, without refreshing their items: a few hundred
+    /// refreshes at once would each ask the sources again, AniDB among them. An accepted
+    /// value applies at the item's next refresh.
+    /// </summary>
+    /// <param name="ids">The review ids.</param>
+    /// <param name="decision">Accepted, Kept or Locked.</param>
+    /// <returns>How many were decided.</returns>
+    public static int DecideReviews(IEnumerable<string> ids, ReviewStatus decision) => DecideReviews(Db, ids, decision);
+
+    internal static int DecideReviews(AniMetaDb db, IEnumerable<string> ids, ReviewStatus decision)
+    {
+        if (decision == ReviewStatus.Pending)
+        {
+            return 0;
+        }
+
+        var decided = (ids ?? []).Distinct(StringComparer.Ordinal).Count(id => TryDecide(db, id, decision, out _));
+        if (decided > 0)
+        {
+            db.DecisionChanged();
+        }
+
+        return decided;
+    }
+
+    // The part of a decision both the single and the bulk path share. The caller saves the
+    // decisions file, once.
+    private static bool TryDecide(AniMetaDb db, string id, ReviewStatus decision, out ReviewRecord? review)
+    {
+        review = db.Reviews.FindById(id);
+        if (review == null || decision == ReviewStatus.Pending)
+        {
+            return false;
         }
 
         var provenance = db.Provenance.FindById(id) ?? new ProvenanceRecord { Id = id, ItemKey = review.ItemKey, Field = review.Field };
@@ -566,14 +620,7 @@ public static class AniMetaApi
         review.Status = decision;
         review.DecidedUtc = DateTime.UtcNow;
         db.Reviews.Update(review);
-        db.DecisionChanged();
-
-        if (decision == ReviewStatus.Accepted && !string.IsNullOrEmpty(review.ItemPath))
-        {
-            HostServices.Refresher?.Refresh(review.ItemPath, false);
-        }
-
-        return review;
+        return true;
     }
 
     /// <summary>
@@ -1049,11 +1096,14 @@ public static class AniMetaApi
     {
         var backups = PosterBackups.Current;
         var pending = backups.ListPending();
+        var exists = ItemExists();
+        var missing = exists == null ? [] : pending.Where(r => !exists(r.Id)).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
         return new ImageBackupPage
         {
             TotalCount = pending.Count,
             RevertedCount = backups.CountReverted(),
+            MissingCount = missing.Count,
             Items = pending.Skip(Math.Max(start, 0)).Take(limit > 0 ? limit : 24).Select(r => new ImageBackupItem
             {
                 Id = r.Id,
@@ -1063,7 +1113,8 @@ public static class AniMetaApi
                 SeriesName = r.SeriesName ?? string.Empty,
                 Kind = r.Kind ?? string.Empty,
                 ReplacedUtc = r.ReplacedUtc,
-                HasBackup = !string.IsNullOrEmpty(r.BackupFile)
+                HasBackup = !string.IsNullOrEmpty(r.BackupFile),
+                Missing = missing.Contains(r.Id)
             }).ToList()
         };
     }
@@ -1098,6 +1149,15 @@ public static class AniMetaApi
     /// <param name="all">Whether to take every item waiting.</param>
     /// <returns>How many were handled.</returns>
     public static ImageDoneResult AcknowledgeImages(IEnumerable<string>? ids, bool all) => new() { Done = PosterBackups.Current.Acknowledge(ids, all) };
+
+    // Null when the host cannot be asked, so that nothing is taken for missing.
+    private static Func<string, bool>? ItemExists() => HostServices.Images is { } images ? images.ItemExists : null;
+
+    /// <summary>
+    /// Forgets the posters kept for items the library no longer has, and deletes their files.
+    /// </summary>
+    /// <returns>How many were forgotten.</returns>
+    public static int ForgetMissingImages() => ItemExists() is { } exists ? PosterBackups.Current.ForgetMissing(exists) : 0;
 
     /// <summary>
     /// Forgets the reverted items, so that the next task run replaces their posters again.

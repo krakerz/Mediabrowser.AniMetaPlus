@@ -1,7 +1,7 @@
 name: "AniMeta+"
 guid: "d9211a9c-1ad7-4203-bf8e-9078deb65469"
 imageUrl: https://raw.githubusercontent.com/krakerz/Mediabrowser.AniMetaPlus/manifest/banner.jpg
-version: "2.20.0.0"
+version: "2.22.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 owner: "krakerz"

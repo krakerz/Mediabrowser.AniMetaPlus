@@ -168,6 +168,9 @@ It is blocked and retried with backoff. Depending on the mode, the item either p
 **A refresh does not change anything.**
 Scans and scheduled tasks reuse fetched answers for the days set under General. A refresh you start by hand asks AniList and MyAnimeList again, and AniDB once its answer is a day old: AniDB asks clients not to fetch the same anime more often.
 
+**How do I get upcoming episodes?**
+On Emby it is automatic: AniMeta+ lists a show's episodes from TheTVDB, renumbered to the library's seasons, or from AniDB air dates it has already fetched, and nothing extra is asked of AniDB. On Jellyfin, tick TheTVDB and its Missing Episode Fetcher below AniMeta+ in the anime library, and turn on "Display missing episodes" in each user's settings to see them inside seasons.
+
 **Can I move my mappings between Emby and Jellyfin?**
 Yes, using Import/Export.
 

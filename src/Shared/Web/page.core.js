@@ -84,6 +84,43 @@ function aniMetaPlusPage(host) {
         }, fail);
     }
 
+    // Paging. Every list has a pager in its toolbar (data-pager="name"); the page lives here, so
+    // a reload that redraws the list keeps it.
+
+    var pagerSizes = { mapping: 100, blocks: 100, unmatched: 25, review: 50, waiting: 50, provisional: 50, requests: 50, images: 24 };
+    var pagers = {};
+    var pagerRenders = {};
+
+    function pagerState(name) {
+        return pagers[name] || (pagers[name] = { page: 0, size: pagerSizes[name] });
+    }
+
+    // Clamps the list's page, draws its arrows and label, and returns the index its page starts at.
+    function pageStart(view, name, total) {
+        var state = pagerState(name);
+        var pages = Math.max(1, Math.ceil(total / state.size));
+        state.page = Math.min(Math.max(state.page, 0), pages - 1);
+
+        var pager = view.querySelector('[data-pager="' + name + '"]');
+        if (pager) {
+            pager.style.display = pages > 1 ? '' : 'none';
+            pager.querySelector('[data-page-label]').textContent = (state.page + 1) + ' / ' + pages;
+            pager.querySelector('[data-page="-1"]').disabled = state.page <= 0;
+            pager.querySelector('[data-page="1"]').disabled = state.page >= pages - 1;
+        }
+
+        return state.page * state.size;
+    }
+
+    function pageRows(view, name, list) {
+        var start = pageStart(view, name, list.length);
+        return list.slice(start, start + pagerState(name).size);
+    }
+
+    function resetPage(name) {
+        pagerState(name).page = 0;
+    }
+
     // Status
 
     function entries(count) {
@@ -140,6 +177,10 @@ function aniMetaPlusPage(host) {
         });
     }
 
+    var waitingList = [];
+    var provisionalList = [];
+    var requestList = [];
+
     function renderStatus(view, overview, waiting, provisional, requests) {
         var cards = [
             ['Unmatched', overview.Unmatched, 'unmatched'],
@@ -190,23 +231,43 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampCountProvisional').textContent = '(' + provisional.length + ')';
         view.querySelector('#ampCountRequests').textContent = '(' + requests.length + ')';
 
-        view.querySelector('#ampWaiting').innerHTML = waiting.length
-            ? '<tr><th>Item</th><th>Waits for</th><th>Since</th></tr>' + waiting.map(function (w) {
+        [['Unmatched', overview.Unmatched], ['Review', overview.PendingReviews], ['Blocks', overview.ActiveBlocks]].forEach(function (c) {
+            view.querySelector('#ampTabCount' + c[0]).textContent = c[1] > 0 ? c[1] : '';
+        });
+
+        waitingList = waiting;
+        provisionalList = provisional;
+        requestList = requests;
+        renderWaiting(view);
+        renderProvisional(view);
+        renderRequests(view);
+    }
+
+    function renderWaiting(view) {
+        var rows = pageRows(view, 'waiting', waitingList);
+        view.querySelector('#ampWaiting').innerHTML = rows.length
+            ? '<tr><th>Item</th><th>Waits for</th><th>Since</th></tr>' + rows.map(function (w) {
                 return '<tr><td>' + esc(w.ItemName) + '</td><td>' + esc(w.Source) + ' (' + esc(w.Reason) + ')</td><td>' + when(w.AddedUtc) + '</td></tr>';
             }).join('')
             : '<tr><td class="amp-muted">Nothing is waiting.</td></tr>';
+    }
 
-        view.querySelector('#ampProvisional').innerHTML = provisional.length
-            ? '<tr><th>Item</th><th>Field</th><th>Supplied by</th><th>Instead of</th><th>Held by</th><th></th></tr>' + provisional.map(function (p) {
+    function renderProvisional(view) {
+        var rows = pageRows(view, 'provisional', provisionalList);
+        view.querySelector('#ampProvisional').innerHTML = rows.length
+            ? '<tr><th>Item</th><th>Field</th><th>Supplied by</th><th>Instead of</th><th>Held by</th><th></th></tr>' + rows.map(function (p) {
                 var held = p.HeldBy ? esc(p.HeldBy) + (p.HeldUntilUtc ? ' (until ' + when(p.HeldUntilUtc) + ')' : '') : '<span class="amp-muted">Nothing known; retried on the next queue run</span>';
                 return '<tr><td>' + esc(p.ItemName) + '</td><td>' + esc(kindNames[p.Field] || p.Field) + '</td><td>' + esc(p.Source) + '</td><td>' + esc(p.PreferredSource) + '</td><td class="amp-small">' + held + '</td>'
                     + '<td><span class="amp-actions"><button is="emby-button" type="button" class="raised" data-standin-keep="' + esc(p.Id) + '"><span>Keep</span></button>'
                     + '<button is="emby-button" type="button" class="raised" data-standin-retry="' + esc(p.Id) + '"><span>Retry now</span></button></span></td></tr>';
             }).join('')
             : '<tr><td class="amp-muted">None.</td></tr>';
+    }
 
-        view.querySelector('#ampRequests').innerHTML = requests.length
-            ? '<tr><th>When</th><th>Source</th><th>What</th><th>Result</th><th>ms</th></tr>' + requests.map(function (r) {
+    function renderRequests(view) {
+        var rows = pageRows(view, 'requests', requestList);
+        view.querySelector('#ampRequests').innerHTML = rows.length
+            ? '<tr><th>When</th><th>Source</th><th>What</th><th>Result</th><th>ms</th></tr>' + rows.map(function (r) {
                 var ok = r.Outcome === 'ok';
                 return '<tr><td>' + when(r.AtUtc) + '</td><td>' + esc(r.Source) + '</td><td>' + esc(r.Target) + '</td><td>' + badge(r.Outcome + (r.HttpStatus ? ' ' + r.HttpStatus : ''), ok ? 'amp-ok' : 'amp-warn') + '</td><td>' + r.DurationMs + '</td></tr>';
             }).join('')
@@ -562,28 +623,76 @@ function aniMetaPlusPage(host) {
     // takes a while, and a reload must not throw the results away.
     var searchedGuesses = {};
 
-    function renderUnmatched(view, items) {
-        // One table, so every item's fields and buttons line up with the next one's.
-        view.querySelector('#ampUnmatched').innerHTML = items.length ? '<div class="amp-scroll"><table class="amp-table amp-unmatched"><tr><th>Item</th><th>Tried</th><th>Map to</th><th></th></tr>' + items.map(function (u) {
-            var guesses = (u.Candidates || []).map(function (c) {
-                return '<option value="' + esc(c.AnimeId) + '">' + esc(c.Title) + ' (' + esc(c.AnimeId) + ', ' + c.Score + '%)</option>';
-            }).join('');
-            var options = searchedGuesses[u.Id] || '<option value="">Guesses from the titles dump...</option>' + guesses;
-            return '<tr data-key="' + esc(u.Id) + '">'
-                + '<td><b>' + esc(u.Name) + '</b> ' + (u.Year ? '(' + u.Year + ') ' : '') + (u.Ignored ? badge('set aside') : '')
-                + '<div class="amp-small amp-path">' + esc(u.Path) + '</div></td>'
-                + '<td class="amp-small">' + u.Attempts + 'x<br/>' + when(u.LastAttemptUtc) + '</td>'
-                + '<td><select class="amp-guess">' + options + '</select>'
-                + '<input type="text" class="amp-search" placeholder="Search the titles dump (Enter)" value="' + esc(u.Name) + '" />'
-                + '<input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></td>'
-                + '<td><div class="amp-unmatched-acts"><button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
-                + '<button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
-                + '<button type="button" is="emby-button" class="raised" data-act="online" title="Search the titles dump, AniList and MyAnimeList">Search online</button>'
-                + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div></td>'
-                + '</tr>';
-        }).join('') + '</table></div>' : '<p class="amp-muted">Everything is identified.</p>';
+    var unmatchedList = [];
 
-        view.querySelector('#ampCountUnmatched').textContent = '(' + items.length + ')';
+    function unmatchedRow(u) {
+        var guesses = (u.Candidates || []).map(function (c) {
+            return '<option value="' + esc(c.AnimeId) + '">' + esc(c.Title) + ' (' + esc(c.AnimeId) + ', ' + c.Score + '%)</option>';
+        }).join('');
+        var options = searchedGuesses[u.Id] || '<option value="">Guesses from the titles dump...</option>' + guesses;
+        return '<tr data-key="' + esc(u.Id) + '">'
+            + '<td><b>' + esc(u.Name) + '</b> ' + (u.Year ? '(' + u.Year + ') ' : '') + (u.Ignored ? badge('set aside') : '')
+            + '<div class="amp-small amp-path">' + esc(u.Path) + '</div></td>'
+            + '<td class="amp-small">' + u.Attempts + 'x<br/>' + when(u.LastAttemptUtc) + '</td>'
+            + '<td><select class="amp-guess">' + options + '</select>'
+            + '<input type="text" class="amp-search" placeholder="Search the titles dump (Enter)" value="' + esc(u.Name) + '" />'
+            + '<input type="text" class="amp-id" placeholder="AniDB, AniList or MyAnimeList id or link" /></td>'
+            + '<td><div class="amp-unmatched-acts"><button type="button" is="emby-button" class="raised button-submit" data-act="mapnow">Map now</button>'
+            + '<button type="button" is="emby-button" class="raised" data-act="map">Map</button>'
+            + '<button type="button" is="emby-button" class="raised" data-act="online" title="Search the titles dump, AniList and MyAnimeList">Search online</button>'
+            + '<button type="button" is="emby-button" class="raised" data-act="ignore">' + (u.Ignored ? 'Bring back' : 'Set aside') + '</button></div></td>'
+            + '</tr>';
+    }
+
+    var unmatchedSort = null;
+
+    var unmatchedColumns = [
+        ['item', 'Item', function (u) { return (u.Name || '').toLowerCase(); }],
+        ['tried', 'Tried', function (u) { return new Date(u.LastAttemptUtc).getTime() || 0; }]
+    ];
+
+    // The items the filter box lets through, in the order the headers say (the server's until one is clicked).
+    function shownUnmatched(view) {
+        var text = view.querySelector('#ampUnmatchedFilter').value.trim().toLowerCase();
+        var shown = unmatchedList.filter(function (u) {
+            return !text || [u.Name, u.Path].join(' ').toLowerCase().indexOf(text) >= 0;
+        });
+        if (!unmatchedSort) {
+            return shown;
+        }
+
+        var column = unmatchedColumns.filter(function (c) { return c[0] === unmatchedSort.key; })[0];
+        return shown.sort(function (a, b) {
+            var x = column[2](a), y = column[2](b);
+            var order = x < y ? -1 : x > y ? 1 : 0;
+            if (!order && unmatchedSort.key === 'tried') {
+                order = (a.Attempts || 0) - (b.Attempts || 0);
+            }
+
+            return order * unmatchedSort.dir;
+        });
+    }
+
+    // The clickable header cell of a sortable column, with its arrow.
+    function sortHeader(sort, column) {
+        var arrow = sort && column[0] === sort.key ? (sort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
+        return '<th data-sort="' + column[0] + '" style="cursor:pointer" title="Sort">' + column[1] + arrow + '</th>';
+    }
+
+    function renderUnmatchedCount(view, shown) {
+        view.querySelector('#ampUnmatchedCount').textContent = unmatchedList.length ? shown.length + ' of ' + unmatchedList.length : '';
+        view.querySelector('#ampCountUnmatched').textContent = '(' + unmatchedList.length + ')';
+    }
+
+    function renderUnmatched(view) {
+        var shown = shownUnmatched(view);
+        var rows = pageRows(view, 'unmatched', shown);
+        renderUnmatchedCount(view, shown);
+
+        // One table, so every item's fields and buttons line up with the next one's.
+        view.querySelector('#ampUnmatched').innerHTML = rows.length
+            ? '<div class="amp-scroll"><table class="amp-table amp-unmatched"><tr>' + unmatchedColumns.map(function (c) { return sortHeader(unmatchedSort, c); }).join('') + '<th>Map to</th><th></th></tr>' + rows.map(unmatchedRow).join('') + '</table></div>'
+            : '<p class="amp-muted">' + (unmatchedList.length ? 'No items match the filter.' : 'Everything is identified.') + '</p>';
     }
 
     function onUnmatchedClick(view, e) {
@@ -631,12 +740,26 @@ function aniMetaPlusPage(host) {
     }
 
     function removeCard(view, card) {
-        delete searchedGuesses[card.getAttribute('data-key')];
+        var key = card.getAttribute('data-key');
+        delete searchedGuesses[key];
+        unmatchedList = unmatchedList.filter(function (u) { return u.Id !== key; });
         card.remove();
-        view.querySelector('#ampCountUnmatched').textContent = '(' + view.querySelectorAll('#ampUnmatched [data-key]').length + ')';
 
-        if (!view.querySelector('#ampUnmatched [data-key]')) {
-            view.querySelector('#ampUnmatched').innerHTML = '<p class="amp-muted">Everything is identified.</p>';
+        // The other rows stay as they are, typed text included; only an emptied page is redrawn.
+        var cards = view.querySelectorAll('#ampUnmatched [data-key]').length;
+        if (!cards) {
+            renderUnmatched(view);
+            return;
+        }
+
+        var shown = shownUnmatched(view);
+        var start = pageStart(view, 'unmatched', shown.length);
+        renderUnmatchedCount(view, shown);
+
+        // The next item moves up into the gap, so paging on does not skip it.
+        var missing = shown.slice(start + cards, start + pagerState('unmatched').size);
+        if (missing.length) {
+            view.querySelector('#ampUnmatched tr').parentNode.insertAdjacentHTML('beforeend', missing.map(unmatchedRow).join(''));
         }
     }
 
@@ -675,7 +798,7 @@ function aniMetaPlusPage(host) {
         var withResults = 0;
 
         if (!cards.length) {
-            status.innerHTML = 'Nothing listed to search.';
+            status.innerHTML = 'Nothing on this page to search.';
             return;
         }
 
@@ -690,7 +813,7 @@ function aniMetaPlusPage(host) {
             });
         }, Promise.resolve()).then(function () {
             button.disabled = false;
-            status.innerHTML = 'Searched ' + cards.length + ' items; ' + withResults + ' have results to pick from.';
+            status.innerHTML = 'Searched ' + cards.length + ' items on this page; ' + withResults + ' have results to pick from.';
         });
     }
 
@@ -712,18 +835,80 @@ function aniMetaPlusPage(host) {
 
     // Review
 
-    function renderReviews(view, reviews) {
+    var reviewList = [];
+    var reviewSort = null;
+
+    function reviewField(r) {
+        return kindNames[r.Field] || r.Field;
+    }
+
+    var reviewColumns = [
+        ['item', 'Item', function (r) { return (r.ItemName || '').toLowerCase(); }],
+        ['field', 'Field', function (r) { return reviewField(r).toLowerCase(); }],
+        ['now', 'Now', function (r) { return ((r.CurrentSource || '') + ' ' + (r.CurrentValue || '')).toLowerCase(); }],
+        ['proposed', 'Proposed', function (r) { return ((r.ProposedSource || '') + ' ' + (r.ProposedValue || '')).toLowerCase(); }]
+    ];
+
+    // The reviews the filters let through, in the order the headers say (the server's until one is clicked).
+    function shownReviews(view) {
+        var field = view.querySelector('#ampReviewFilterField').value;
+        var text = view.querySelector('#ampReviewFilterText').value.trim().toLowerCase();
+        var shown = reviewList.filter(function (r) {
+            return (!field || reviewField(r) === field)
+                && (!text || [r.ItemName, r.CurrentValue, r.ProposedValue].join(' ').toLowerCase().indexOf(text) >= 0);
+        });
+        if (!reviewSort) {
+            return shown;
+        }
+
+        var column = reviewColumns.filter(function (c) { return c[0] === reviewSort.key; })[0];
+        return shown.sort(function (a, b) {
+            var x = column[2](a), y = column[2](b);
+            return (x < y ? -1 : x > y ? 1 : 0) * reviewSort.dir;
+        });
+    }
+
+    function renderReviews(view) {
+        fillFilter(view.querySelector('#ampReviewFilterField'), 'Field', distinct(reviewList, reviewField));
+        var shown = shownReviews(view);
+        var rows = pageRows(view, 'review', shown);
+        view.querySelector('#ampReviewCount').textContent = reviewList.length ? shown.length + ' of ' + reviewList.length : '';
+
+        Object.keys(reviewDecisions).forEach(function (d) {
+            var button = view.querySelector('[data-decide-all="' + d + '"]');
+            button.disabled = !shown.length;
+            button.querySelector('span').textContent = reviewDecisions[d] + ' all matching (' + shown.length + ')';
+        });
+
         // One table, so every review's columns line up with the next one's.
-        view.querySelector('#ampReviews').innerHTML = reviews.length
-            ? '<div class="amp-scroll"><table class="amp-table amp-reviews"><tr><th>Item</th><th>Field</th><th>Now</th><th>Proposed</th><th></th></tr>' + reviews.map(function (r) {
-                return '<tr data-review="' + esc(r.Id) + '"><td><b>' + esc(r.ItemName) + '</b></td><td>' + esc(kindNames[r.Field] || r.Field) + '</td>'
+        view.querySelector('#ampReviews').innerHTML = rows.length
+            ? '<div class="amp-scroll"><table class="amp-table amp-reviews"><tr>' + reviewColumns.map(function (c) { return sortHeader(reviewSort, c); }).join('') + '<th></th></tr>' + rows.map(function (r) {
+                return '<tr data-review="' + esc(r.Id) + '"><td><b>' + esc(r.ItemName) + '</b></td><td>' + esc(reviewField(r)) + '</td>'
                     + '<td>' + esc(r.CurrentValue) + '<div class="amp-small">from ' + esc(r.CurrentSource) + '</div></td>'
                     + '<td>' + esc(r.ProposedValue) + '<div class="amp-small">from ' + esc(r.ProposedSource) + '</div></td>'
                     + '<td class="amp-actions">' + Object.keys(reviewDecisions).map(function (d) {
                         return '<button type="button" is="emby-button" class="raised' + (d === 'Accepted' ? ' button-submit' : '') + '" data-decide="' + d + '">' + reviewDecisions[d] + '</button>';
                     }).join('') + '</td></tr>';
             }).join('') + '</table></div>'
-            : '<p class="amp-muted">Nothing to review.</p>';
+            : '<p class="amp-muted">' + (reviewList.length ? 'No reviews match the filters.' : 'Nothing to review.') + '</p>';
+    }
+
+    var reviewConfirms = {
+        Accepted: 'Accept the {n} reviews matching the filters? Their items are not refreshed now; each takes the accepted value at its next refresh.',
+        Kept: 'Keep the current value for the {n} reviews matching the filters?',
+        Locked: 'Lock the current value for good for the {n} reviews matching the filters?'
+    };
+
+    function decideShown(view, decision) {
+        var ids = shownReviews(view).map(function (r) { return r.Id; });
+        if (!ids.length || !window.confirm(reviewConfirms[decision].replace('{n}', ids.length))) {
+            return;
+        }
+
+        post('Reviews/DecideMany', null, { Ids: ids, Decision: decision }).then(function (r) {
+            notify('Decided ' + (r && r.Decided !== undefined ? r.Decided : ids.length) + ' reviews');
+            loadAll(view);
+        }, fail);
     }
 
     // Blocks
@@ -790,18 +975,16 @@ function aniMetaPlusPage(host) {
 
     function renderBlockRows(view) {
         var blocks = shownBlocks(view);
-        view.querySelector('#ampBlockCount').textContent = blockList.length ? blocks.length + ' of ' + blockList.length + ' shown' : '';
+        var rows = pageRows(view, 'blocks', blocks);
+        view.querySelector('#ampBlockCount').textContent = blockList.length ? blocks.length + ' of ' + blockList.length : '';
         var liftable = blocks.filter(function (b) { return !b.Pinned; }).length;
         var liftButton = view.querySelector('#ampLiftShown');
         liftButton.disabled = !liftable;
-        liftButton.querySelector('span').textContent = 'Lift all shown (' + liftable + ')';
+        liftButton.querySelector('span').textContent = 'Lift all matching (' + liftable + ')';
         liftButton.title = liftable < blocks.length ? 'Pinned blocks are left alone; lift those one at a time.' : '';
 
-        view.querySelector('#ampBlocks').innerHTML = blocks.length
-            ? '<tr>' + blockColumns.map(function (c) {
-                var arrow = c[0] === blockSort.key ? (blockSort.dir < 0 ? ' &#9660;' : ' &#9650;') : '';
-                return '<th data-sort="' + c[0] + '" style="cursor:pointer" title="Sort">' + c[1] + arrow + '</th>';
-            }).join('') + '<th></th></tr>' + blocks.map(function (b) {
+        view.querySelector('#ampBlocks').innerHTML = rows.length
+            ? '<tr>' + blockColumns.map(function (c) { return sortHeader(blockSort, c); }).join('') + '<th></th></tr>' + rows.map(function (b) {
                 var scope = enumName(b.Scope, ['Source', 'Item']);
                 return '<tr><td>' + esc(b.Source) + '</td><td>' + (scope === 'Source' ? badge('whole source', 'amp-bad') : esc(b.ItemName || b.ItemKey)) + '</td><td>' + esc(b.Kind || 'all') + '</td>'
                     + '<td>' + esc(blockText(b)) + '<div class="amp-small">' + esc(b.Message) + (b.HttpStatus ? ' (HTTP ' + b.HttpStatus + ')' : '') + '</div></td>'
@@ -817,7 +1000,7 @@ function aniMetaPlusPage(host) {
         var ids = blocks.filter(function (b) { return !b.Pinned; }).map(function (b) { return b.Id; });
         var pinned = blocks.length - ids.length;
 
-        if (!ids.length || !window.confirm('Lift the ' + ids.length + ' blocks shown?' + (pinned ? ' Pinned blocks stay (' + pinned + ').' : '')
+        if (!ids.length || !window.confirm('Lift the ' + ids.length + ' blocks matching the filters?' + (pinned ? ' Pinned blocks stay (' + pinned + ').' : '')
             + " Their items are not refreshed now; each is asked again at its next refresh, AniDB included where a block was AniDB's.")) {
             return;
         }
@@ -829,8 +1012,6 @@ function aniMetaPlusPage(host) {
 
     var mapList = [];
     var mapSort = { key: 'status', dir: 1 };
-    var mapPage = 0;
-    var mapPageSize = 100;
     var mapEdit = null;
     var mapStatusOrder = ['Corrected', 'Suspect', 'Manual', 'Verified', ''];
 
@@ -965,14 +1146,9 @@ function aniMetaPlusPage(host) {
 
     function renderMapping(view) {
         var shown = shownMapping(view);
-        var pages = Math.max(1, Math.ceil(shown.length / mapPageSize));
-        mapPage = Math.min(Math.max(mapPage, 0), pages - 1);
-        var rows = shown.slice(mapPage * mapPageSize, (mapPage + 1) * mapPageSize);
+        var rows = pageRows(view, 'mapping', shown);
 
         view.querySelector('#ampMapCount').textContent = mapList.length ? shown.length + ' of ' + mapList.length : '';
-        view.querySelector('#ampMapPage').textContent = shown.length ? (mapPage + 1) + ' / ' + pages : '';
-        view.querySelector('#ampMapPrev').disabled = mapPage <= 0;
-        view.querySelector('#ampMapNext').disabled = mapPage >= pages - 1;
 
         view.querySelector('#ampMapping').innerHTML = rows.length
             ? '<tr>' + mapColumns.map(function (c) {
@@ -1008,7 +1184,7 @@ function aniMetaPlusPage(host) {
         if (header) {
             var key = header.getAttribute('data-sort');
             mapSort = { key: key, dir: mapSort.key === key ? -mapSort.dir : 1 };
-            mapPage = 0;
+            resetPage('mapping');
             renderMapping(view);
             return;
         }
@@ -1112,6 +1288,82 @@ function aniMetaPlusPage(host) {
             }).join('');
     }
 
+    // A setting with data-needs="<checkbox id>" is greyed out and disabled while that box is off;
+    // its value stays and is still saved, since the save reads the inputs directly.
+    function applyNeeds(view) {
+        Array.prototype.forEach.call(view.querySelectorAll('[data-needs]'), function (box) {
+            var parent = view.querySelector('#' + box.getAttribute('data-needs'));
+            var off = !!parent && !parent.checked;
+            box.classList.toggle('amp-off', off);
+            Array.prototype.forEach.call(box.querySelectorAll('input, select'), function (input) {
+                input.disabled = off;
+            });
+        });
+    }
+
+    // The save bar must hide what scrolls under it, so it takes the page's own background.
+    function tintSaveBar(view) {
+        var bar = view.querySelector('#ampSaveBar');
+        var color = '';
+        for (var el = view; el && el.nodeType === 1; el = el.parentElement) {
+            var c = window.getComputedStyle(el).backgroundColor;
+            if (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') {
+                color = c;
+                break;
+            }
+        }
+
+        bar.style.backgroundColor = color;
+    }
+
+    // position: sticky fails under Jellyfin's scrolling ancestors, so the bar is pinned with fixed
+    // positioning while its natural spot (the sentinel) is below the viewport.
+    var saveBarObserver = null;
+
+    function pinSaveBar(view) {
+        var bar = view.querySelector('#ampSaveBar');
+        var spot = view.querySelector('#ampSaveSpot');
+        var box = spot.parentElement;
+        // Measured each time: the observer only fires on crossing the viewport edge, and a tab
+        // drawn while hidden never crosses it when it is shown.
+        var pin = spot.offsetParent !== null && spot.getBoundingClientRect().top > (window.innerHeight || document.documentElement.clientHeight);
+        if (pin) {
+            var r = box.getBoundingClientRect();
+            spot.style.height = bar.offsetHeight + 'px';
+            bar.style.left = r.left + 'px';
+            bar.style.width = r.width + 'px';
+        } else {
+            spot.style.height = '';
+            bar.style.left = '';
+            bar.style.width = '';
+        }
+
+        bar.classList.toggle('amp-savebar-pinned', pin);
+    }
+
+    function unwatchSaveBar(view) {
+        if (saveBarObserver) {
+            saveBarObserver.disconnect();
+            saveBarObserver = null;
+        }
+
+        var bar = view.querySelector('#ampSaveBar');
+        view.querySelector('#ampSaveSpot').style.height = '';
+        bar.style.left = '';
+        bar.style.width = '';
+        bar.classList.remove('amp-savebar-pinned');
+    }
+
+    function watchSaveBar(view) {
+        var spot = view.querySelector('#ampSaveSpot');
+        if (!saveBarObserver && window.IntersectionObserver) {
+            saveBarObserver = new IntersectionObserver(function () { pinSaveBar(view); });
+            saveBarObserver.observe(spot);
+        }
+
+        pinSaveBar(view);
+    }
+
     function renderGeneral(view, config) {
         view.querySelector('#ampTitlePreference').value = enumName(config.TitlePreference, titlePreferences) || 'Localized';
         view.querySelector('#ampEpisodeTitlePreference').value = config.EpisodeTitlePreference || '';
@@ -1131,16 +1383,21 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampPublishIds').checked = !!config.PublishMappedIds;
         view.querySelector('#ampUseAniBridge').checked = !!config.UseAniBridgeMappings;
         view.querySelector('#ampUseAnnExtras').checked = config.UseAnnExtras !== false;
+        view.querySelector('#ampIdentifySearchOnline').checked = config.IdentifySearchOnline !== false;
+        view.querySelector('#ampIdentifyRemotePosters').checked = config.IdentifyRemotePosters !== false;
+        view.querySelector('#ampIdentifyPosterLabels').checked = config.IdentifyPosterLabels !== false;
         view.querySelector('#ampAnnEnglishCast').checked = !!config.AnnEnglishCast;
         view.querySelector('#ampFlareSolverrUrl').value = config.FlareSolverrUrl || '';
         view.querySelector('#ampFlareSolverrTimeout').value = config.FlareSolverrTimeoutSeconds || 90;
         view.querySelector('#ampLogSettings').checked = config.LogSettings !== false;
+        applyNeeds(view);
+        tintSaveBar(view);
+        watchSaveBar(view);
     }
 
     // Image overrides
 
-    var imageSize = 24;
-    var imageState = { page: 0, total: 0, reverted: 0, selected: {}, token: 0, watching: false, running: false };
+    var imageState = { total: 0, reverted: 0, missing: 0, selected: {}, token: 0, watching: false, watchId: 0, running: false };
 
     function selectedImages() {
         return Object.keys(imageState.selected);
@@ -1151,31 +1408,36 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampImgSelected').textContent = count + ' selected of ' + imageState.total;
         view.querySelector('#ampImgForget').style.display = imageState.reverted > 0 ? '' : 'none';
         view.querySelector('#ampImgForgetText').textContent = 'Forget ' + imageState.reverted + ' reverted';
+        view.querySelector('#ampImgForgetMissing').style.display = imageState.missing > 0 ? '' : 'none';
+        view.querySelector('#ampImgForgetMissingText').textContent = 'Forget missing (' + imageState.missing + ')';
     }
 
     function renderImages(view, page) {
         imageState.total = page.TotalCount;
         imageState.reverted = page.RevertedCount || 0;
+        imageState.missing = page.MissingCount || 0;
 
-        var pages = Math.max(1, Math.ceil(page.TotalCount / imageSize));
-        view.querySelector('#ampImgPage').textContent = 'Page ' + (imageState.page + 1) + ' of ' + pages;
-        view.querySelector('#ampImgPrev').disabled = imageState.page <= 0;
-        view.querySelector('#ampImgNext').disabled = imageState.page + 1 >= pages;
+        pageStart(view, 'images', page.TotalCount);
 
         // One tag per load keeps a replaced poster from showing from the browser's cache.
         var tag = String(Date.now());
         view.querySelector('#ampImages').innerHTML = page.Items.length ? page.Items.map(function (item) {
-            var now = ApiClient.getImageUrl(item.Id, { type: 'Primary', maxHeight: 240, tag: tag });
-            var full = ApiClient.getImageUrl(item.Id, { type: 'Primary', tag: tag });
+            // The server has no image for an item it no longer has, so none is asked for.
+            var now = item.Missing ? '' : ApiClient.getImageUrl(item.Id, { type: 'Primary', maxHeight: 240, tag: tag });
+            var full = item.Missing ? '' : ApiClient.getImageUrl(item.Id, { type: 'Primary', tag: tag });
             return '<div class="amp-imgcard" data-img="' + esc(item.Id) + '">'
                 + '<label><input type="checkbox" class="amp-imgcheck"' + (imageState.selected[item.Id] ? ' checked' : '') + ' /><span class="amp-imgname">' + esc(item.SeriesName || item.ItemName) + '</span></label>'
-                + '<div class="amp-small">' + esc(item.Kind) + (item.SeriesName ? ' - ' + esc(item.ItemName) : '') + ' - replaced ' + when(item.ReplacedUtc) + '</div>'
+                + '<div class="amp-small">' + esc(item.Kind) + (item.SeriesName ? ' - ' + esc(item.ItemName) : '') + ' - replaced ' + when(item.ReplacedUtc) + (item.Missing ? ' ' + badge('not in library', 'amp-warn') : '') + '</div>'
                 + '<div class="amp-imgpair">'
                 + '<figure><div class="amp-imgbox" data-old="1">' + (item.HasBackup ? 'Loading...' : 'None') + '</div><figcaption>Previous</figcaption></figure>'
-                + '<figure><img src="' + esc(now) + '" data-full="' + esc(full) + '" alt="" /><figcaption>Now (AniDB)</figcaption></figure>'
+                + (item.Missing
+                    ? '<figure><div class="amp-imgbox">No longer in the library</div><figcaption>Now (AniDB)</figcaption></figure>'
+                    : '<figure><img src="' + esc(now) + '" data-full="' + esc(full) + '" alt="" /><figcaption>Now (AniDB)</figcaption></figure>')
                 + '</div>'
-                + '<div class="amp-actions"><button type="button" is="emby-button" class="raised" data-img-act="Revert">Revert</button>'
-                + '<button type="button" is="emby-button" class="raised" data-img-act="Acknowledge">Acknowledge</button></div>'
+                + '<div class="amp-actions">' + (item.Missing
+                    ? '<button type="button" is="emby-button" class="raised" data-img-act="Forget">Forget</button>'
+                    : '<button type="button" is="emby-button" class="raised" data-img-act="Revert">Revert</button>'
+                    + '<button type="button" is="emby-button" class="raised" data-img-act="Acknowledge">Acknowledge</button>') + '</div>'
                 + '</div>';
         }).join('') : '<p class="amp-muted">No replaced posters are waiting for a decision.</p>';
 
@@ -1205,15 +1467,16 @@ function aniMetaPlusPage(host) {
     }
 
     function loadImages(view) {
-        return get('Images/Backups', { Start: imageState.page * imageSize, Limit: imageSize }).then(function (page) {
+        var state = pagerState('images');
+        return get('Images/Backups', { Start: state.page * state.size, Limit: state.size }).then(function (page) {
             // The last page can empty out once its items are decided.
-            if (imageState.page > 0 && !page.Items.length && page.TotalCount > 0) {
-                imageState.page = Math.ceil(page.TotalCount / imageSize) - 1;
+            if (state.page > 0 && !page.Items.length && page.TotalCount > 0) {
+                state.page = Math.ceil(page.TotalCount / state.size) - 1;
                 return loadImages(view);
             }
 
             if (!page.TotalCount) {
-                imageState.page = 0;
+                state.page = 0;
             }
 
             renderImages(view, page);
@@ -1227,15 +1490,21 @@ function aniMetaPlusPage(host) {
     }
 
     function setImagesBusy(view, busy) {
-        view.querySelectorAll('#ampImgRevert, #ampImgAck, [data-img-act]').forEach(function (button) {
+        view.querySelectorAll('#ampImgRevert, #ampImgAck, #ampImgForgetMissing, [data-img-act]').forEach(function (button) {
             button.disabled = busy;
         });
     }
 
     // Reverting runs on the server in the background; this follows it until it ends.
     function watchRevert(view) {
+        // A newer watch replaces an older one, whose answer may predate the run it would report.
+        var watchId = ++imageState.watchId;
         imageState.watching = true;
         get('Images/RevertStatus').then(function (s) {
+            if (watchId !== imageState.watchId) {
+                return;
+            }
+
             var line = view.querySelector('#ampImgJob');
             var wasRunning = imageState.running;
             imageState.running = !!s.Running;
@@ -1244,11 +1513,15 @@ function aniMetaPlusPage(host) {
             if (s.Running) {
                 line.textContent = 'Putting previous posters back: ' + (s.Done + s.Failed) + ' of ' + s.Total + (s.Failed ? ' (' + s.Failed + ' failed)' : '') + '. You can leave this page; it carries on.';
                 if (document.body.contains(view)) {
-                    setTimeout(function () { watchRevert(view); }, 1500);
+                    setTimeout(function () {
+                        if (watchId === imageState.watchId) {
+                            watchRevert(view);
+                        }
+                    }, 1500);
                     return;
                 }
             } else if (wasRunning) {
-                line.textContent = 'Put the previous poster back on ' + s.Done + ' items' + (s.Failed ? ', ' + s.Failed + ' failed' : '') + '.';
+                line.textContent = 'Put the previous poster back on ' + s.Done + ' items' + (s.Failed ? ', ' + s.Failed + ' failed' : '') + (s.Skipped ? ', ' + s.Skipped + ' skipped as no longer in the library' : '') + '.';
                 imageState.watching = false;
                 loadImages(view);
                 return;
@@ -1256,7 +1529,9 @@ function aniMetaPlusPage(host) {
 
             imageState.watching = false;
         }, function () {
-            imageState.watching = false;
+            if (watchId === imageState.watchId) {
+                imageState.watching = false;
+            }
         });
     }
 
@@ -1273,23 +1548,28 @@ function aniMetaPlusPage(host) {
             return;
         }
 
+        // Forgetting one missing item is acknowledging it: the backup and the record go.
+        var action = kind === 'Forget' ? 'Acknowledge' : kind;
         host.showLoading();
-        post('Images/' + kind, null, { Ids: ids, All: false }).then(function (r) {
+        post('Images/' + action, null, { Ids: ids, All: false }).then(function (r) {
             host.hideLoading();
             ids.forEach(function (id) { delete imageState.selected[id]; });
 
             if (kind === 'Revert') {
                 // Started in the background; the status line follows it.
-                notify(r.Started ? 'Putting back ' + r.Total + ' posters' : r.Running ? 'A revert is already running' : 'Nothing to put back');
+                notify(r.Started ? 'Putting back ' + r.Total + ' posters' : r.Running ? 'A revert is already running' : r.Skipped ? 'Nothing to put back: ' + r.Skipped + ' no longer in the library' : 'Nothing to put back');
                 imageState.running = !!r.Running;
-                if (!imageState.watching) {
+
+                // The list reloads once the status reports the run done, not before.
+                if (r.Running) {
                     watchRevert(view);
+                    return;
                 }
 
-                return;
+                return loadImages(view);
             }
 
-            notify('Acknowledged ' + r.Done);
+            notify((kind === 'Forget' ? 'Forgot ' : 'Acknowledged ') + r.Done);
             return loadImages(view);
         }, fail);
     }
@@ -1348,16 +1628,6 @@ function aniMetaPlusPage(host) {
             }
         });
 
-        view.querySelector('#ampImgPrev').addEventListener('click', function () {
-            imageState.page = Math.max(0, imageState.page - 1);
-            loadImages(view);
-        });
-
-        view.querySelector('#ampImgNext').addEventListener('click', function () {
-            imageState.page++;
-            loadImages(view);
-        });
-
         view.querySelector('#ampImgSelectAll').addEventListener('click', function () {
             // Every id, across pages: the list holds no pictures, so it is cheap to fetch whole.
             get('Images/Backups', { Start: 0, Limit: 100000 }).then(function (all) {
@@ -1391,6 +1661,17 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampImgRevert').addEventListener('click', function () { decideImages(view, 'Revert', selectedImages()); });
         view.querySelector('#ampImgAck').addEventListener('click', function () { decideImages(view, 'Acknowledge', selectedImages()); });
 
+        view.querySelector('#ampImgForgetMissing').addEventListener('click', function () {
+            if (!window.confirm('Forget the ' + imageState.missing + ' posters kept for shows no longer in the library? Their backup files are deleted.')) {
+                return;
+            }
+
+            post('Images/ForgetMissing').then(function (r) {
+                notify('Forgot ' + r.Forgotten);
+                loadImages(view);
+            }, fail);
+        });
+
         view.querySelector('#ampImgForget').addEventListener('click', function () {
             if (!window.confirm('Forget the ' + imageState.reverted + " reverted items? The next run of the task replaces their posters with AniDB's again.")) {
                 return;
@@ -1422,8 +1703,10 @@ function aniMetaPlusPage(host) {
             renderSources(view, overview);
             renderClients(view, config);
             renderTitles(view, config, overview);
-            renderUnmatched(view, r[5]);
-            renderReviews(view, r[6]);
+            unmatchedList = r[5];
+            renderUnmatched(view);
+            reviewList = r[6];
+            renderReviews(view);
             renderBlocks(view, r[7]);
             renderGeneral(view, config);
             renderGenreRebuild(view, config);
@@ -1447,6 +1730,9 @@ function aniMetaPlusPage(host) {
             showSub(view.querySelector('.amp-tab[data-tab="' + parts[0] + '"]'), parts[1]);
         }
 
+        // Tab switches change the sentinel's visibility without scrolling, so re-check after layout.
+        window.setTimeout(function () { pinSaveBar(view); }, 0);
+
         if (parts[0] === 'images') {
             loadImages(view);
         }
@@ -1454,6 +1740,34 @@ function aniMetaPlusPage(host) {
         if (parts[0] === 'mapping') {
             loadMapping(view);
         }
+
+        rememberTab(view);
+    }
+
+    // The tab on show, with its sub-tab where it has one, survives a reload of the page.
+    function rememberTab(view) {
+        var tab = view.querySelector('.amp-tab.active');
+        var sub = tab && tab.querySelector('.amp-sub.active');
+        try {
+            sessionStorage.setItem('animetaplus.tab', tab.getAttribute('data-tab') + (sub ? ':' + sub.getAttribute('data-sub') : ''));
+        } catch (e) { /* storage can be blocked; the page then opens on Status */ }
+    }
+
+    function restoreTab(view) {
+        var saved = '';
+        try {
+            saved = sessionStorage.getItem('animetaplus.tab') || '';
+        } catch (e) { /* see rememberTab */ }
+
+        var parts = saved.split(':');
+        // No backslashes anywhere in this file: the build's WriteLinesToFile turns them into slashes on Linux.
+        var tab = /^[a-z]+$/.test(parts[0]) && view.querySelector('.amp-tab[data-tab="' + parts[0] + '"]');
+        if (!tab || (parts[1] && !(/^[a-z]+$/.test(parts[1]) && tab.querySelector('.amp-sub[data-sub="' + parts[1] + '"]')))) {
+            return false;
+        }
+
+        showTab(view, saved);
+        return true;
     }
 
     function showSub(tab, name) {
@@ -1464,6 +1778,12 @@ function aniMetaPlusPage(host) {
 
     return function (view) {
         var malVisible = false;
+        pagerRenders = {
+            mapping: renderMapping, blocks: renderBlockRows, unmatched: renderUnmatched, review: renderReviews,
+            waiting: renderWaiting, provisional: renderProvisional, requests: renderRequests, images: loadImages
+        };
+        // Hidden until their list first draws them, so no empty pager flashes up.
+        Array.prototype.forEach.call(view.querySelectorAll('[data-pager]'), function (pager) { pager.style.display = 'none'; });
         view.querySelector('#ampToggleMal').innerHTML = eyeIcon;
 
         view.addEventListener('click', function (e) {
@@ -1476,6 +1796,16 @@ function aniMetaPlusPage(host) {
             var sub = e.target.closest('.amp-subtabs button[data-sub]');
             if (sub) {
                 showSub(sub.closest('.amp-tab'), sub.getAttribute('data-sub'));
+                window.setTimeout(function () { pinSaveBar(view); }, 0);
+                rememberTab(view);
+                return;
+            }
+
+            var pageButton = e.target.closest('[data-pager] [data-page]');
+            if (pageButton) {
+                var name = pageButton.closest('[data-pager]').getAttribute('data-pager');
+                pagerState(name).page += parseInt(pageButton.getAttribute('data-page'), 10);
+                pagerRenders[name](view);
                 return;
             }
 
@@ -1507,13 +1837,23 @@ function aniMetaPlusPage(host) {
 
         view.querySelector('#ampUnmatched').addEventListener('click', function (e) { onUnmatchedClick(view, e); });
         view.querySelector('#ampUnmatched').addEventListener('keydown', onUnmatchedSearch);
+        view.querySelector('#ampUnmatchedFilter').addEventListener('input', function () { resetPage('unmatched'); renderUnmatched(view); });
+        view.querySelector('#ampUnmatched').addEventListener('click', function (e) {
+            var header = e.target.closest('[data-sort]');
+            if (header) {
+                var key = header.getAttribute('data-sort');
+                unmatchedSort = { key: key, dir: unmatchedSort && unmatchedSort.key === key ? -unmatchedSort.dir : 1 };
+                resetPage('unmatched');
+                renderUnmatched(view);
+            }
+        });
         view.querySelector('#ampSearchAllUnmatched').addEventListener('click', function () { searchAllUnmatched(view); });
         view.querySelector('#ampShowIgnored').addEventListener('change', function () { loadAll(view); });
         view.querySelector('#ampShowExpired').addEventListener('change', function () { loadAll(view); });
         ['#ampBlockFilterSource', '#ampBlockFilterKind', '#ampBlockFilterReason'].forEach(function (id) {
-            view.querySelector(id).addEventListener('change', function () { renderBlockRows(view); });
+            view.querySelector(id).addEventListener('change', function () { resetPage('blocks'); renderBlockRows(view); });
         });
-        view.querySelector('#ampBlockFilterText').addEventListener('input', function () { renderBlockRows(view); });
+        view.querySelector('#ampBlockFilterText').addEventListener('input', function () { resetPage('blocks'); renderBlockRows(view); });
         view.querySelector('#ampLiftShown').addEventListener('click', function () { liftShown(view); });
         view.querySelector('#ampBlocks').addEventListener('click', function (e) {
             var header = e.target.closest('[data-sort]');
@@ -1521,6 +1861,20 @@ function aniMetaPlusPage(host) {
                 var key = header.getAttribute('data-sort');
                 blockSort = { key: key, dir: blockSort.key === key ? -blockSort.dir : (key === 'seen' ? -1 : 1) };
                 renderBlockRows(view);
+            }
+        });
+        view.querySelector('#ampReviewFilterField').addEventListener('change', function () { resetPage('review'); renderReviews(view); });
+        view.querySelector('#ampReviewFilterText').addEventListener('input', function () { resetPage('review'); renderReviews(view); });
+        Object.keys(reviewDecisions).forEach(function (d) {
+            view.querySelector('[data-decide-all="' + d + '"]').addEventListener('click', function () { decideShown(view, d); });
+        });
+        view.querySelector('#ampReviews').addEventListener('click', function (e) {
+            var header = e.target.closest('[data-sort]');
+            if (header) {
+                var key = header.getAttribute('data-sort');
+                reviewSort = { key: key, dir: reviewSort && reviewSort.key === key ? -reviewSort.dir : 1 };
+                resetPage('review');
+                renderReviews(view);
             }
         });
         view.querySelector('#ampMapping').addEventListener('click', function (e) { onMappingClick(view, e); });
@@ -1539,10 +1893,8 @@ function aniMetaPlusPage(host) {
                 }
             }
         });
-        view.querySelector('#ampMapFilterStatus').addEventListener('change', function () { mapPage = 0; renderMapping(view); });
-        view.querySelector('#ampMapFilterText').addEventListener('input', function () { mapPage = 0; renderMapping(view); });
-        view.querySelector('#ampMapPrev').addEventListener('click', function () { mapPage--; renderMapping(view); });
-        view.querySelector('#ampMapNext').addEventListener('click', function () { mapPage++; renderMapping(view); });
+        view.querySelector('#ampMapFilterStatus').addEventListener('change', function () { resetPage('mapping'); renderMapping(view); });
+        view.querySelector('#ampMapFilterText').addEventListener('input', function () { resetPage('mapping'); renderMapping(view); });
         view.querySelector('#ampMapReload').addEventListener('click', function () { loadMapping(view); });
         view.querySelector('#ampRefreshStatus').addEventListener('click', function () { loadAll(view); });
 
@@ -1645,6 +1997,8 @@ function aniMetaPlusPage(host) {
             }).then(function () { loadAll(view); }, fail);
         });
 
+        view.querySelector('.amp-sub[data-sub="settings"]').addEventListener('change', function () { applyNeeds(view); });
+
         view.querySelector('#ampSaveGeneral').addEventListener('click', function () {
             withConfig(view, function (config) {
                 config.TitlePreference = view.querySelector('#ampTitlePreference').value;
@@ -1665,6 +2019,9 @@ function aniMetaPlusPage(host) {
                 config.PublishMappedIds = view.querySelector('#ampPublishIds').checked;
                 config.UseAniBridgeMappings = view.querySelector('#ampUseAniBridge').checked;
                 config.UseAnnExtras = view.querySelector('#ampUseAnnExtras').checked;
+                config.IdentifySearchOnline = view.querySelector('#ampIdentifySearchOnline').checked;
+                config.IdentifyRemotePosters = view.querySelector('#ampIdentifyRemotePosters').checked;
+                config.IdentifyPosterLabels = view.querySelector('#ampIdentifyPosterLabels').checked;
                 config.AnnEnglishCast = view.querySelector('#ampAnnEnglishCast').checked;
                 config.FlareSolverrUrl = view.querySelector('#ampFlareSolverrUrl').value.trim();
                 config.FlareSolverrTimeoutSeconds = Math.min(600, Math.max(10, parseInt(view.querySelector('#ampFlareSolverrTimeout').value, 10) || 90));
@@ -1718,8 +2075,22 @@ function aniMetaPlusPage(host) {
 
         wireImages(view);
 
+        window.addEventListener('resize', function () { pinSaveBar(view); });
+        view.addEventListener('viewbeforehide', function () { unwatchSaveBar(view); });
+        view.addEventListener('viewhide', function () { unwatchSaveBar(view); });
+
+        var restored = false;
         view.addEventListener('viewshow', function () {
+            watchSaveBar(view);
             loadAll(view);
+
+            // The first show opens the tab last used; showTab starts its own loader.
+            if (!restored) {
+                restored = true;
+                if (restoreTab(view)) {
+                    return;
+                }
+            }
 
             if (view.querySelector('.amp-tab[data-tab="images"]').classList.contains('active')) {
                 loadImages(view);

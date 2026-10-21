@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,6 +69,13 @@ public interface IHostImages
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns><c>false</c> when the item no longer exists.</returns>
     Task<bool> RestorePoster(string itemId, string file, string mimeType, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether the server still has an item.
+    /// </summary>
+    /// <param name="itemId">The server's item id.</param>
+    /// <returns><c>false</c> when the item no longer exists.</returns>
+    bool ItemExists(string itemId) => true;
 }
 
 /// <summary>
@@ -165,4 +173,11 @@ public static class HostServices
     /// on Emby.
     /// </summary>
     public static MediaBrowser.Model.IO.IFileSystem? FileSystem { get; set; }
+
+    /// <summary>
+    /// Gets or sets how to read the base path the server is served under, such as "/jellyfin",
+    /// which a page's own address does not repeat in a root-relative one. Read on each use: the
+    /// owner can change it without a restart.
+    /// </summary>
+    public static Func<string?>? BasePath { get; set; }
 }
