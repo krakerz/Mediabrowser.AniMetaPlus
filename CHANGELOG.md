@@ -4,6 +4,15 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-10-21
+
+### Added
+- Sources tab: "Genres and tags" rebuilds every anime's genres and tags from the answers already cached, never asking AniDB, so shows that lost their AniDB tags get them back without a refresh. A "Rebuild now" button, a daily task, and an option to ask MyAnimeList and AniList for shows they have no cached answer for. Locked genres and tags are left alone
+- Import/Export carries the ids you set or verified on the Mapping tab, and puts imported hand-set ids on the shows in the library
+
+### Changed
+- Mapped by hand moved from the Unmatched tab to the Mapping tab: such shows are marked "mapped by hand", can be filtered, and the hand mapping can be removed there
+
 ## [2.18.0] — 2026-10-21
 
 ### Added

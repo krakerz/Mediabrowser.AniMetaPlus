@@ -1984,6 +1984,57 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
         GenreHelper.CleanupGenres(series);
     }
 
+    /// <summary>
+    /// Reads the genres and tags out of a cached document and runs them through the genre
+    /// pipeline, which is what a refresh leaves on the item before the sources are merged. Never
+    /// asks AniDB.
+    /// </summary>
+    /// <param name="seriesXmlPath">The cached document, see <see cref="CachedSeriesDataPath"/>.</param>
+    /// <returns>A series holding only the genres and tags, or <c>null</c> when there is no usable document.</returns>
+    internal static async Task<Series?> ReadCachedGenres(string seriesXmlPath)
+    {
+        if (!HasCopy(seriesXmlPath))
+        {
+            return null;
+        }
+
+        var series = new Series();
+        var settings = new XmlReaderSettings
+        {
+            Async = true,
+            CheckCharacters = false,
+            IgnoreProcessingInstructions = true,
+            IgnoreComments = true,
+            ValidationType = ValidationType.None
+        };
+
+        try
+        {
+            using var stream = File.Open(seriesXmlPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var reader = XmlReader.Create(stream, settings);
+            await reader.MoveToContentAsync().ConfigureAwait(false);
+
+            while (await reader.ReadAsync().ConfigureAwait(false))
+            {
+                if (reader.NodeType == XmlNodeType.Element && reader.Name == "tags")
+                {
+                    using var subtree = reader.ReadSubtree();
+                    await ParseTags(series, subtree).ConfigureAwait(false);
+
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is XmlException or IOException)
+        {
+            return null;
+        }
+
+        GenreHelper.CleanupGenres(series);
+
+        return series;
+    }
+
     private static bool IsIgnoredTag(int tagId)
     {
         if (IgnoredTagIds.Contains(tagId))

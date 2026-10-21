@@ -148,6 +148,12 @@
     <p class="amp-small">The first source is asked first. Drag a source, or use its arrows, to change the order; the cross takes it out and the dashed buttons add one back. Rows marked "combined" take something from every source listed.</p>
     <div id="ampPriorities"></div>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveSources"><span>Save</span></button></div>
+    <h3>Genres and tags</h3>
+    <p class="amp-small">Rebuilds every anime's genres and tags from the answers already cached, and never asks AniDB. It follows the Genres &amp; tags order above and the genre settings on the General tab, and leaves locked fields alone. The two settings are saved with the Save button above.</p>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampGenreRebuildDaily" /><span>Run it once a day (the scheduled task "Rebuild genres and tags from cached answers")</span></label>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampGenreRebuildAsk" /><span>Ask MyAnimeList and AniList for shows they have no cached answer for</span></label>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampGenreRebuild"><span>Rebuild now</span></button></div>
+    <div class="amp-result" id="ampGenreRebuildResult"></div>
 </div>
 
 <!-- Clients & keys -->
@@ -201,25 +207,16 @@
 
 <!-- Unmatched -->
 <div class="amp-tab" data-tab="unmatched">
-    <p class="amp-small">Items nothing could identify. Pick a guess, search the titles dump (Enter), search the titles dump, AniList and MyAnimeList together (one item, or all listed) for anime AniDB does not list yet, or paste an AniDB, AniList or MyAnimeList id or link. One AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB. "Map" applies on the next queue run; "Map now" refreshes the item at once.</p>
-    <div class="amp-tabs amp-subtabs">
-        <button type="button" data-sub="list" class="active">Unmatched <span id="ampCountUnmatched"></span></button>
-        <button type="button" data-sub="mapped">Mapped by hand <span id="ampCountMapped"></span></button>
-    </div>
-    <div class="amp-sub active" data-sub="list">
-        <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampSearchAllUnmatched"><span>Search all listed (titles dump, AniList, MyAnimeList)</span></button></div>
-        <div class="amp-result amp-small" id="ampSearchAllResult"></div>
-        <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowIgnored" /><span>Show items set aside</span></label>
-        <div id="ampUnmatched"></div>
-    </div>
-    <div class="amp-sub" data-sub="mapped">
-        <div class="amp-scroll"><table class="amp-table" id="ampMappings"></table></div>
-    </div>
+    <p class="amp-small"><b>Unmatched <span id="ampCountUnmatched"></span></b>: items nothing could identify. Pick a guess, search the titles dump (Enter), search the titles dump, AniList and MyAnimeList together (one item, or all listed) for anime AniDB does not list yet, or paste an AniDB, AniList or MyAnimeList id or link. One AniDB has no entry for is filled from AniList, MyAnimeList, TVDB and TMDB. "Map" applies on the next queue run; "Map now" refreshes the item at once. A mapped item moves to the Mapping tab, where its hand mapping can be removed.</p>
+    <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampSearchAllUnmatched"><span>Search all listed (titles dump, AniList, MyAnimeList)</span></button></div>
+    <div class="amp-result amp-small" id="ampSearchAllResult"></div>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampShowIgnored" /><span>Show items set aside</span></label>
+    <div id="ampUnmatched"></div>
 </div>
 
 <!-- Mapping -->
 <div class="amp-tab" data-tab="mapping">
-    <p class="amp-small">The ids every identified show has on each site, and what the plugin did to them. <b>Verify</b> confirms a show's ids; <b>Revert</b> puts back the ids a correction replaced; <b>Set manually</b> keeps ids you enter and stops the plugin deciding that show's ids, and looks up an AniDB id you leave empty from the MyAnimeList or AniList id you give; <b>Lift manual</b> hands the show back to the plugin.</p>
+    <p class="amp-small">The ids every identified show has on each site, and what the plugin did to them. <b>Verify</b> confirms a show's ids; <b>Revert</b> puts back the ids a correction replaced; <b>Set manually</b> keeps ids you enter and stops the plugin deciding that show's ids, and looks up an AniDB id you leave empty from the MyAnimeList or AniList id you give; <b>Lift manual</b> hands the show back to the plugin. A show you mapped by hand on the Unmatched tab carries a "mapped by hand" mark, and <b>Remove hand mapping</b> takes it off.</p>
     <div class="amp-row" id="ampMapFilters">
         <select id="ampMapFilterStatus" title="Status">
             <option value="attention">Needs a look</option>
@@ -229,6 +226,7 @@
             <option value="Manual">Manual</option>
             <option value="Verified">Verified</option>
             <option value="none">Not checked</option>
+            <option value="hand">Mapped by hand</option>
         </select>
         <input type="text" id="ampMapFilterText" placeholder="Filter by name, path or id" />
         <span class="amp-small amp-map-count" id="ampMapCount"></span>
@@ -361,7 +359,7 @@
 
 <!-- Import/Export -->
 <div class="amp-tab" data-tab="backup">
-    <p class="amp-small">Your mappings, review decisions and pinned blocks, as a file that works on Emby and Jellyfin alike. Keys and client names are never in it.</p>
+    <p class="amp-small">Your mappings, the ids you set or verified on the Mapping tab, review decisions and pinned blocks, as a file that works on Emby and Jellyfin alike. Keys and client names are never in it.</p>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised" id="ampExport"><span>Export</span></button></div>
     <h3>Import</h3>
     <input type="file" id="ampImportFile" accept=".json,application/json" />

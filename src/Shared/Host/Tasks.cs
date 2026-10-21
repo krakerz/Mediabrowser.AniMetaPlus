@@ -393,6 +393,44 @@ public class AlternativeTitlesTask(ILibraryManager libraryManager, IProviderMana
 
 
 /// <summary>
+/// Rebuilds every anime's genres and tags from the answers already cached, straight in the
+/// library, for shows that lost them while a source was blocked. Never asks AniDB; MyAnimeList
+/// and AniList are asked only for a show with their id and no cached answer, when the setting allows.
+/// </summary>
+public class GenreRebuildTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, PluginLog<GenreRebuildTask> logger) : AniMetaTask
+{
+    /// <inheritdoc />
+    public override string Name => "Rebuild genres and tags from cached answers";
+
+    /// <inheritdoc />
+    public override string Key => "AniMetaPlusGenreRebuild";
+
+    /// <inheritdoc />
+    public override string Description => "Rebuilds each anime's genres and tags from the answers already cached. Never sends a request to AniDB. Needs the daily run turned on on the Sources tab.";
+
+    /// <inheritdoc />
+    public override IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [Every(TimeSpan.FromDays(1))];
+
+    /// <inheritdoc />
+    protected override async Task Run(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        if (!Plugin.Instance.Configuration.GenreRebuildDaily)
+        {
+            progress.Report(100);
+            return;
+        }
+
+        var library = new HostLibrary(libraryManager, providerManager, fileSystem);
+        HostServices.Refresher ??= library;
+        HostServices.Images ??= library;
+
+        await GenreRebuild.RunAsync(library, logger, progress, cancellationToken).ConfigureAwait(false);
+        progress.Report(100);
+    }
+}
+
+
+/// <summary>
 /// Groups anime into one collection per franchise, from the relations in the AniDB answers
 /// already cached. Sends no request, and only ever changes the collections it made itself.
 /// </summary>

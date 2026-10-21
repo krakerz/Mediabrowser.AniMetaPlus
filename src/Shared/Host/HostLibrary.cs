@@ -377,6 +377,73 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     }
 
     /// <summary>
+    /// Whether the owner locked an item's genres or tags, or the item as a whole, against being
+    /// filled in by metadata providers.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <returns><c>true</c> when its genres or tags are not to be changed.</returns>
+    public static bool GenresLocked(BaseItem item)
+    {
+        if (item.IsLocked)
+        {
+            return true;
+        }
+
+#if EMBY
+        return item.LockedFields?.Any(f => f is MetadataFields.Genres or MetadataFields.Tags) == true;
+#else
+        return item.LockedFields?.Any(f => f is MetadataField.Genres or MetadataField.Tags) == true;
+#endif
+    }
+
+    /// <summary>
+    /// Writes an item's genres and tags straight to the library, without a refresh. A list left
+    /// <c>null</c> is not touched.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="genres">The genres, or <c>null</c> to keep them.</param>
+    /// <param name="tags">The tags, or <c>null</c> to keep them.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    public async Task SaveGenresAndTags(BaseItem item, string[]? genres, string[]? tags, CancellationToken cancellationToken)
+    {
+        if (genres != null)
+        {
+            item.Genres = genres;
+        }
+
+        if (tags != null)
+        {
+            item.Tags = tags;
+        }
+
+#if EMBY
+        item.UpdateToRepository(ItemUpdateType.MetadataEdit);
+        await Task.CompletedTask.ConfigureAwait(false);
+#else
+        await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+#endif
+    }
+
+    /// <summary>
+    /// Lists the seasons of a series.
+    /// </summary>
+    /// <param name="series">The series.</param>
+    /// <returns>Its seasons.</returns>
+    public IReadOnlyList<BaseItem> SeasonsOf(BaseItem series)
+        => _libraryManager.GetItemList(new InternalItemsQuery
+        {
+#if EMBY
+            IncludeItemTypes = ["Season"],
+            ParentIds = [series.InternalId],
+#else
+            IncludeItemTypes = [BaseItemKind.Season],
+            ParentId = series.Id,
+#endif
+            DtoOptions = new DtoOptions(true)
+        });
+
+    /// <summary>
     /// Replaces an item's poster with the image given, through the server's own image saving.
     /// </summary>
     /// <param name="item">The item.</param>

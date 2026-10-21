@@ -348,6 +348,18 @@ public class RevertImages : IReturn<ImageJobStatus>
     public bool All { get; set; }
 }
 
+/// <summary>Reports how the genre and tag rebuild stands.</summary>
+[Route("/AniMetaPlus/GenreRebuild", "GET")]
+public class GetGenreRebuild : IReturn<GenreRebuildStatus>
+{
+}
+
+/// <summary>Starts rebuilding genres and tags from the cached answers in the background.</summary>
+[Route("/AniMetaPlus/GenreRebuild", "POST")]
+public class StartGenreRebuild : IReturn<GenreRebuildStatus>
+{
+}
+
 /// <summary>Accepts AniDB's posters and deletes the previous ones.</summary>
 [Route("/AniMetaPlus/Images/Acknowledge", "POST")]
 public class AcknowledgeImages : IReturn<ImageDoneResult>
@@ -530,6 +542,16 @@ public class AniMetaPlusService : IService
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
+    public object Get(GetGenreRebuild request) => AniMetaApi.GetGenreRebuild();
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(StartGenreRebuild request) => AniMetaApi.StartGenreRebuild(_logger);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
     public object Post(AcknowledgeImages request) => AniMetaApi.AcknowledgeImages(request.Ids, request.All);
 
     /// <summary>Handles the request.</summary>
@@ -602,6 +624,6 @@ public class AniMetaPlusService : IService
         using var reader = new StreamReader(request.RequestStream, Encoding.UTF8);
         var json = await reader.ReadToEndAsync().ConfigureAwait(false);
 
-        return AniMetaApi.Import(json);
+        return await AniMetaApi.Import(json).ConfigureAwait(false);
     }
 }

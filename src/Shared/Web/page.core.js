@@ -478,6 +478,48 @@ function aniMetaPlusPage(host) {
             config.Priorities = Array.prototype.map.call(view.querySelectorAll('#ampPriorities .amp-order[data-kind]'), function (row) {
                 return { Kind: row.getAttribute('data-kind'), Sources: orderIds(row).join(',') };
             });
+            config.GenreRebuildDaily = view.querySelector('#ampGenreRebuildDaily').checked;
+            config.GenreRebuildAskOthers = view.querySelector('#ampGenreRebuildAsk').checked;
+        });
+    }
+
+    // Genres and tags rebuilt from the cache
+
+    var genreRebuild = { watching: false };
+
+    function renderGenreRebuild(view, config) {
+        view.querySelector('#ampGenreRebuildDaily').checked = config.GenreRebuildDaily !== false;
+        view.querySelector('#ampGenreRebuildAsk').checked = config.GenreRebuildAskOthers !== false;
+    }
+
+    function showGenreRebuild(view, s) {
+        view.querySelector('#ampGenreRebuild').disabled = !!s.Running;
+
+        var line = view.querySelector('#ampGenreRebuildResult');
+        if (!s.Running && !when(s.StartedUtc)) {
+            line.textContent = '';
+            return;
+        }
+
+        line.textContent = (s.Running ? 'Running, ' + s.Checked + ' of ' + s.Total + ' looked at. ' : 'Last run ' + when(s.FinishedUtc || s.StartedUtc) + '. ')
+            + 'Updated ' + s.Updated + ' of ' + s.Checked + ', unchanged ' + s.Unchanged + ', skipped ' + s.Skipped + ' (locked), '
+            + s.Missing + ' without cached data, ' + s.Requests + ' requests.' + (s.LastError ? ' Last error: ' + s.LastError : '');
+    }
+
+    // The rebuild runs on the server in the background; this follows it until it ends.
+    function watchGenreRebuild(view) {
+        genreRebuild.watching = true;
+        get('GenreRebuild').then(function (s) {
+            showGenreRebuild(view, s);
+
+            if (s.Running && document.body.contains(view)) {
+                setTimeout(function () { watchGenreRebuild(view); }, 2000);
+                return;
+            }
+
+            genreRebuild.watching = false;
+        }, function () {
+            genreRebuild.watching = false;
         });
     }
 
@@ -520,7 +562,7 @@ function aniMetaPlusPage(host) {
     // takes a while, and a reload must not throw the results away.
     var searchedGuesses = {};
 
-    function renderUnmatched(view, items, mappings) {
+    function renderUnmatched(view, items) {
         // One table, so every item's fields and buttons line up with the next one's.
         view.querySelector('#ampUnmatched').innerHTML = items.length ? '<div class="amp-scroll"><table class="amp-table amp-unmatched"><tr><th>Item</th><th>Tried</th><th>Map to</th><th></th></tr>' + items.map(function (u) {
             var guesses = (u.Candidates || []).map(function (c) {
@@ -542,16 +584,6 @@ function aniMetaPlusPage(host) {
         }).join('') + '</table></div>' : '<p class="amp-muted">Everything is identified.</p>';
 
         view.querySelector('#ampCountUnmatched').textContent = '(' + items.length + ')';
-        renderMappings(view, mappings);
-    }
-
-    function renderMappings(view, mappings) {
-        view.querySelector('#ampCountMapped').textContent = '(' + mappings.length + ')';
-        view.querySelector('#ampMappings').innerHTML = mappings.length
-            ? '<tr><th>Item</th><th>Mapped to</th><th>When</th><th></th></tr>' + mappings.map(function (m) {
-                return '<tr><td>' + esc(m.ItemName || m.Id) + '</td><td>' + esc(m.AnimeId) + '</td><td>' + when(m.CreatedUtc) + '</td><td><button type="button" is="emby-button" class="raised" data-unmap="' + esc(m.Id) + '">Remove</button></td></tr>';
-            }).join('')
-            : '<tr><td class="amp-muted">None.</td></tr>';
     }
 
     function onUnmatchedClick(view, e) {
@@ -592,10 +624,9 @@ function aniMetaPlusPage(host) {
             var to = String((mapped && mapped.AnimeId) || mapped || id);
             notify('Mapped to ' + (/^anilist:/.test(to) ? 'AniList ' + to.slice(8) : /^mal:/.test(to) ? 'MyAnimeList ' + to.slice(4) : 'AniDB ' + to) + (act === 'mapnow' ? '; refreshing' : '; applies on the next queue run'));
 
-            // A mapped item leaves the list for the mappings below; the other cards and what their
+            // A mapped item leaves the list for the Mapping tab; the other cards and what their
             // searches found stay as they are.
             removeCard(view, card);
-            get('Mappings').then(function (mappings) { renderMappings(view, mappings); });
         }, fail);
     }
 
@@ -845,8 +876,12 @@ function aniMetaPlusPage(host) {
 
         return mapList.filter(function (r) {
             var own = mapStatus(r);
+
+            // A hand mapping with no show in the list has no check to be missing.
             if (status === 'attention' ? ['Corrected', 'Suspect'].indexOf(own) < 0
-                : status === 'none' ? own !== '' : status !== 'all' && own !== status) {
+                : status === 'none' ? own !== '' || !r.Path
+                : status === 'hand' ? !r.HandMapping
+                : status !== 'all' && own !== status) {
                 return false;
             }
 
@@ -893,14 +928,25 @@ function aniMetaPlusPage(host) {
     function mapRow(record) {
         var status = mapStatus(record);
         var kind = status === 'Corrected' ? 'amp-warn' : status === 'Suspect' ? 'amp-bad' : status === 'Verified' ? 'amp-ok' : '';
-        var actions = (status === 'Corrected' || status === 'Suspect' || status === '' ? mapButton('verify', 'Verify', status === 'Suspect') : '')
-            + (status === 'Corrected' ? mapButton('revert', 'Revert') : '')
-            + mapButton('edit', 'Set manually')
-            + (status === 'Manual' ? mapButton('lift', 'Lift manual') : '');
 
-        return '<tr data-path="' + esc(record.Path) + '"><td><b>' + esc(record.Name || record.Path) + '</b><div class="amp-small amp-path">' + esc(record.Path) + '</div></td>'
+        // A hand mapping no listed show matches has no folder: it is keyed by its mapping, and
+        // only its removal makes sense.
+        var actions = record.Path
+            ? (status === 'Corrected' || status === 'Suspect' || status === '' ? mapButton('verify', 'Verify', status === 'Suspect') : '')
+                + (status === 'Corrected' ? mapButton('revert', 'Revert') : '')
+                + mapButton('edit', 'Set manually')
+                + (status === 'Manual' ? mapButton('lift', 'Lift manual') : '')
+            : '';
+
+        if (record.HandMapping) {
+            actions += mapButton('unmap', 'Remove hand mapping');
+        }
+
+        return '<tr ' + (record.Path ? 'data-path="' + esc(record.Path) : 'data-key="' + esc(record.MappingKey)) + '"><td><b>' + esc(record.Name || record.Path || record.MappingKey) + '</b>'
+            + '<div class="amp-small amp-path">' + (record.Path ? esc(record.Path) : '<span class="amp-muted">Not in the library list</span>') + '</div></td>'
             + mapIds.map(function (def) { return mapCell(record, def); }).join('')
             + '<td>' + (status ? badge(status, kind) : '<span class="amp-muted">-</span>')
+            + (record.HandMapping ? ' ' + badge('mapped by hand') : '')
             + (record.Reason && (status === 'Corrected' || status === 'Suspect') ? '<div class="amp-small">' + esc(record.Reason) + '</div>' : '') + '</td>'
             + '<td><div class="amp-map-acts">' + actions + '</div></td></tr>';
     }
@@ -972,11 +1018,22 @@ function aniMetaPlusPage(host) {
             return;
         }
 
-        var path = button.closest('tr[data-path]').getAttribute('data-path');
+        var row = button.closest('tr[data-path], tr[data-key]');
+        var path = row.getAttribute('data-path');
         var act = button.getAttribute('data-map-act');
-        var record = mapList.filter(function (r) { return r.Path === path; })[0];
+        var record = path === null ? mapList.filter(function (r) { return !r.Path && r.MappingKey === row.getAttribute('data-key'); })[0]
+            : mapList.filter(function (r) { return r.Path === path; })[0];
 
-        if (act === 'verify') {
+        if (act === 'unmap' && record) {
+            if (window.confirm('Remove the hand mapping of ' + (record.Name || record.MappingKey) + '? The show keeps the ids it has until the plugin identifies it again.')) {
+                ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('AniMetaPlus/Mappings', { ItemKey: record.MappingKey }) }).then(function () {
+                    notify('Hand mapping removed');
+                    loadMapping(view);
+                }, fail);
+            }
+        } else if (path === null) {
+            return;
+        } else if (act === 'verify') {
             mapAct(view, 'Verify', { Path: path }, 'Verified');
         } else if (act === 'revert') {
             if (window.confirm('Put back the ids this show had before the correction and keep them by hand? The show is refreshed.')) {
@@ -1355,7 +1412,6 @@ function aniMetaPlusPage(host) {
             get('Provisional'),
             get('Requests', { Count: 50 }),
             get('Unmatched', { IncludeIgnored: view.querySelector('#ampShowIgnored').checked }),
-            get('Mappings'),
             get('Reviews', { PendingOnly: true }),
             get('Blocks', { IncludeExpired: view.querySelector('#ampShowExpired').checked }),
             get('Cache')
@@ -1366,12 +1422,17 @@ function aniMetaPlusPage(host) {
             renderSources(view, overview);
             renderClients(view, config);
             renderTitles(view, config, overview);
-            renderUnmatched(view, r[5], r[6]);
-            renderReviews(view, r[7]);
-            renderBlocks(view, r[8]);
+            renderUnmatched(view, r[5]);
+            renderReviews(view, r[6]);
+            renderBlocks(view, r[7]);
             renderGeneral(view, config);
-            renderCache(view, r[9]);
+            renderGenreRebuild(view, config);
+            renderCache(view, r[8]);
             host.hideLoading();
+
+            if (!genreRebuild.watching) {
+                watchGenreRebuild(view);
+            }
         }, fail);
     }
 
@@ -1441,11 +1502,6 @@ function aniMetaPlusPage(host) {
                 var id = decide.closest('[data-review]').getAttribute('data-review');
                 post('Reviews/Decide', { Id: id, Decision: decide.getAttribute('data-decide') }).then(function () { loadAll(view); }, fail);
                 return;
-            }
-
-            var unmap = e.target.closest('[data-unmap]');
-            if (unmap) {
-                ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('AniMetaPlus/Mappings', { ItemKey: unmap.getAttribute('data-unmap') }) }).then(function () { loadAll(view); }, fail);
             }
         });
 
@@ -1524,6 +1580,14 @@ function aniMetaPlusPage(host) {
         });
 
         view.querySelector('#ampSaveSources').addEventListener('click', function () { saveSources(view); });
+        view.querySelector('#ampGenreRebuild').addEventListener('click', function () {
+            post('GenreRebuild').then(function (s) {
+                showGenreRebuild(view, s);
+                if (!genreRebuild.watching) {
+                    watchGenreRebuild(view);
+                }
+            }, fail);
+        });
         view.querySelector('#ampSources').addEventListener('input', function () { renderEstimates(view); });
         wireOrder(view);
 
