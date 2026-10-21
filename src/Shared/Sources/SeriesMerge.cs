@@ -146,7 +146,7 @@ public static class SeriesMerge
 
                 if (combined.Count > 0)
                 {
-                    ApplyCombined(kind, result, combined, aniDb.Record);
+                    ApplyCombined(kind, result, combined, aniDb.Record, configuration);
                     hasData = true;
                 }
 
@@ -528,7 +528,7 @@ public static class SeriesMerge
         db.Provenance.Upsert(provenance);
     }
 
-    private static void Record(
+    internal static void Record(
         AniMetaDb db,
         string id,
         FetchContext context,
@@ -638,10 +638,9 @@ public static class SeriesMerge
         }
     }
 
-    private static void ApplyCombined<TItem>(DataKind kind, MetadataResult<TItem> result, List<AnimeRecord> contributors, AnimeRecord? aniDb)
+    internal static void ApplyCombined<TItem>(DataKind kind, MetadataResult<TItem> result, List<AnimeRecord> contributors, AnimeRecord? aniDb, PluginConfiguration configuration)
         where TItem : BaseItem
     {
-        var configuration = Plugin.Instance.Configuration;
         var series = result.Item;
 
         switch (kind)

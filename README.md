@@ -16,6 +16,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Sources: AniDB (needs your own client name; off until set), AniList (no key), MyAnimeList (official API with a client id, or Jikan), plus the server's installed TheTVDB and TheMovieDb providers, asked by AniMeta+ itself even when unticked in the library
 - Source order per kind of data: titles, overview, dates & studios, genres & tags, rating, cast & staff, episodes, poster, fanart, banner, logo
 - Genres/tags, rating (vote-weighted) and cast are combined across sources; the rest comes from the first source that has it
+- Genres and tags can be rebuilt for the whole library from the answers already cached (button on the Sources tab, and a daily task), without asking AniDB; locked genres and tags are left alone
 - Identification without network: local titles dump (anime-titles.dat.gz or .xml.gz), AniBridge and Anime-Lists mappings, manual mappings; folder notes like "(Fall)" or "[BD]" are ignored
 - Every failed request is remembered as a block, either for the whole source (ban, rate limit, server down, refused key) or for one item (not found, unreadable), with growing backoff; blocks can be lifted or pinned by hand
 - Per source, when it is blocked: Pause (item keeps its data and waits), Switch (next source fills in, replaced automatically later), or Switch + review (replacement waits for Accept / Keep / Lock)
@@ -28,7 +29,7 @@ Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are und
 - Request gaps per source can be raised but never set below their defaults
 - Library scan task that identifies the whole library from local data each run; only shows that need a new AniDB answer are paced, by AniDB's bursts, rests and daily cap on the Sources tab
 - Settings page with Status, Sources, Clients & keys, Titles dump, Unmatched, Mapping, Review, Blocks, Image overrides, General and Import/Export tabs; recent request log
-- Export/Import of mappings, review decisions and pinned blocks (never keys), usable across Emby and Jellyfin
+- Export/Import of mappings, the ids set or verified on the Mapping tab, review decisions and pinned blocks (never keys), usable across Emby and Jellyfin
 - Adult content is always included; AniDB's restricted flag still sets the parental rating
 - Takes over settings and any active ban from the earlier AniDB plugin on first start; existing AniDB ids on items are kept
 
@@ -105,17 +106,17 @@ Layout:
 ### Settings
 
 - **Status**: running AniMeta+ version and whether a restart is needed to load an update, ban and block state, request queue, and how fresh each mapping source is
-- **Sources**: enable sources, drag sources into the order each kind of data is asked in, and choose the mode for a blocked source
+- **Sources**: enable sources, drag sources into the order each kind of data is asked in, and choose the mode for a blocked source; **Genres and tags** rebuilds every anime's genres and tags from the cached answers (never asking AniDB), once a day if ticked or with Rebuild now, and can ask MyAnimeList and AniList for shows they have no cached answer for
 - **Clients & keys**: AniDB client name, MyAnimeList client id, Jikan, and the Test buttons
 - **Titles dump**: location and state of the AniDB titles dump
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
 - **General → Anime News Network**: extra staff, studios, rating and English episode titles from ANN where AniDB links an entry (on), the English dub cast (off), and a FlareSolverr address (and timeout) for when ANN puts a Cloudflare security check in front of the server's IP; FlareSolverr must use the same public IP as the server
-- **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged, and Verify / Revert / Set manually / Lift manual
+- **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged, and Verify / Revert / Set manually / Lift manual; shows mapped by hand on the Unmatched tab are marked and their hand mapping can be removed here
 - **Blocks**: remembered failures, sortable and filterable by source, kind, reason or text, with lift, pin and lift-all-shown
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
 - **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, searchable alternative titles, plus the other plugin options
-- **Import/Export**: mappings, review decisions and pinned blocks (never keys)
+- **Import/Export**: mappings, the ids set or verified on the Mapping tab, review decisions and pinned blocks (never keys)
 
 ### Source modes
 
@@ -132,6 +133,7 @@ When a source is blocked, the mode decides what happens to the items it would fi
 - **Identify anime libraries**: hourly; identifies the whole library from local data and sends AniDB only what is left of its current burst and daily cap. It also checks the shows already identified against the mappings and the titles dump, corrects wrong AniList, MyAnimeList and (where two pieces of evidence agree) AniDB ids, and refreshes those shows with their metadata replaced.
 - **Group anime franchises into collections**: daily; when the option is on, puts sequels, prequels, side stories and summaries in the library into one collection per franchise, read from cached AniDB answers, named "<first show> Collection" with the earliest entry's poster and backdrop. Collections made by hand are left alone. A collection the task made is deleted once its franchise is gone and fewer than two items are left in it; the shows themselves are never touched.
 - **Apply alternative titles to original titles**: daily; writes each anime's alternative titles from the titles dump and cached AniList/MyAnimeList answers into its original title, or takes them out when the option is off. No requests, no refresh.
+- **Rebuild genres and tags from cached answers**: daily, when the option on the Sources tab is on; rebuilds each anime's genres and tags from the cached AniDB, AniList and MyAnimeList answers in the Genres & tags order, never sending a request to AniDB. Only a show with a MyAnimeList or AniList id and no cached answer from that source is asked for, when that option is on. Locked genres and tags are left alone.
 - **Fill missing posters from cached AniDB answers**: manual only; gives anime without a poster AniDB's picture from the cached answer, without asking the AniDB API.
 - **Replace posters with AniDB's from cached answers**: manual only; replaces every anime poster with AniDB's, named by the cached answer, without asking the AniDB API. The previous poster is kept on the Image overrides tab until you acknowledge or revert it. Other images are kept.
 

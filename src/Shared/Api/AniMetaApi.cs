@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AniMetaPlus.Configuration;
 using AniMetaPlus.Core;
 using AniMetaPlus.Data;
+using AniMetaPlus.Host;
 using AniMetaPlus.Providers;
 using AniMetaPlus.Providers.AniDB;
 using AniMetaPlus.Providers.AniDB.Mapping;
@@ -163,6 +164,12 @@ public class IdRow
 
     /// <summary>Gets or sets when it was last decided, if it was.</summary>
     public DateTime? UpdatedUtc { get; set; }
+
+    /// <summary>Gets or sets what the owner mapped the show to by hand, as stored: AniDB digits, "anilist:" or "mal:" and an id; empty when not mapped.</summary>
+    public string HandMapping { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Gets or sets the key of the hand mapping, to remove it by; empty when not mapped.</summary>
+    public string MappingKey { get; set => field = value ?? string.Empty; } = string.Empty;
 }
 
 /// <summary>
@@ -251,6 +258,52 @@ public class ImageDoneResult
 {
     /// <summary>Gets or sets how many were handled.</summary>
     public int Done { get; set; }
+}
+
+/// <summary>
+/// How the genre and tag rebuild from cached answers stands.
+/// </summary>
+public class GenreRebuildStatus
+{
+    /// <summary>Gets or sets a value indicating whether a run is going.</summary>
+    public bool Running { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether this request started the run, rather than finding one going.</summary>
+    public bool Started { get; set; }
+
+    /// <summary>Gets or sets how many items the run takes.</summary>
+    public int Total { get; set; }
+
+    /// <summary>Gets or sets how many items were looked at.</summary>
+    public int Checked { get; set; }
+
+    /// <summary>Gets or sets how many got new genres or tags.</summary>
+    public int Updated { get; set; }
+
+    /// <summary>Gets or sets how many already had what the cache gives.</summary>
+    public int Unchanged { get; set; }
+
+    /// <summary>Gets or sets how many were left alone because the owner locked them or imports no genres or tags.</summary>
+    public int Skipped { get; set; }
+
+    /// <summary>Gets or sets how many have no cached data, or less than they were built from.</summary>
+    public int Missing { get; set; }
+
+    /// <summary>Gets or sets how many requests went to MyAnimeList and AniList.</summary>
+    public int Requests { get; set; }
+
+    /// <summary>Gets or sets when the run started.</summary>
+    public DateTime? StartedUtc { get; set; }
+
+    /// <summary>Gets or sets when the run ended.</summary>
+    public DateTime? FinishedUtc { get; set; }
+
+    /// <summary>Gets or sets the last thing that went wrong, or empty.</summary>
+    public string LastError { get; set => field = value ?? string.Empty; } = string.Empty;
+
+    /// <summary>Copies the status.</summary>
+    /// <returns>The copy.</returns>
+    public GenreRebuildStatus Copy() => (GenreRebuildStatus)MemberwiseClone();
 }
 
 /// <summary>
@@ -525,7 +578,7 @@ public static class AniMetaApi
 
     /// <summary>
     /// Lists the items nothing identified, leaving out the ones the owner has mapped by hand:
-    /// those are listed with the mappings until the refresh that applies them clears them.
+    /// those are listed on the Mapping tab until the refresh that applies them clears them.
     /// </summary>
     /// <param name="includeIgnored">Whether to include the ones the owner set aside.</param>
     /// <returns>The items, most recently tried first.</returns>
@@ -623,13 +676,70 @@ public static class AniMetaApi
     /// </summary>
     /// <returns>The shows, by name.</returns>
     public static IReadOnlyList<IdRow> GetIdRecords()
-    {
-        var records = Db.IdRecords.FindAll().ToDictionary(r => r.Id, StringComparer.Ordinal);
+        => JoinIdRows(ListShows(), Db.IdRecords.FindAll().ToDictionary(r => r.Id, StringComparer.Ordinal), Db.Mappings.FindAll());
 
-        return ListShows()
-            .Select(show => ToRow(show, records.GetValueOrDefault(show.Path)))
-            .OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
+    /// <summary>
+    /// Makes the rows of the shows, each with what was decided about its ids and the hand mapping
+    /// made for it. A hand mapping that no listed show matches - a movie, or a show the library
+    /// does not list yet - becomes a row of its own without a folder.
+    /// </summary>
+    /// <param name="shows">The shows of the libraries.</param>
+    /// <param name="records">What was decided about their ids, by folder.</param>
+    /// <param name="mappings">The hand mappings.</param>
+    /// <returns>The rows, by name.</returns>
+    internal static IReadOnlyList<IdRow> JoinIdRows(IEnumerable<ScanItem> shows, IReadOnlyDictionary<string, IdRecord> records, IEnumerable<MappingRecord> mappings)
+    {
+        var byKey = mappings.GroupBy(m => m.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var matched = new HashSet<string>(StringComparer.Ordinal);
+        var rows = new List<IdRow>();
+
+        foreach (var show in shows)
+        {
+            var row = ToRow(show, records.GetValueOrDefault(show.Path));
+
+            if (byKey.TryGetValue(ItemKeys.ForUnidentified("Series", show.Path, show.Name), out var mapping))
+            {
+                row.HandMapping = mapping.AnimeId;
+                row.MappingKey = mapping.Id;
+                matched.Add(mapping.Id);
+            }
+
+            rows.Add(row);
+        }
+
+        foreach (var mapping in byKey.Values.Where(m => !matched.Contains(m.Id)))
+        {
+            rows.Add(new IdRow
+            {
+                Name = string.IsNullOrEmpty(mapping.ItemName) ? mapping.Id : mapping.ItemName,
+                Ids = HandMappedIds(mapping.AnimeId),
+                HandMapping = mapping.AnimeId,
+                MappingKey = mapping.Id
+            });
+        }
+
+        return rows.OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    // The ids a hand mapping names, by provider: AniDB digits, or an AniList or MyAnimeList link.
+    private static Dictionary<string, string> HandMappedIds(string animeId)
+    {
+        var ids = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (animeId.StartsWith("anilist:", StringComparison.OrdinalIgnoreCase))
+        {
+            ids[SourceIds.AniList] = animeId[8..];
+        }
+        else if (animeId.StartsWith("mal:", StringComparison.OrdinalIgnoreCase))
+        {
+            ids[SourceIds.Mal] = animeId[4..];
+        }
+        else if (animeId.Length > 0)
+        {
+            ids[ProviderNames.AniDb] = animeId;
+        }
+
+        return ids;
     }
 
     /// <summary>
@@ -794,6 +904,7 @@ public static class AniMetaApi
         if (existing is { Status: IdRecord.Manual })
         {
             Db.IdRecords.Delete(path);
+            Db.DecisionChanged();
             existing = null;
         }
 
@@ -874,6 +985,8 @@ public static class AniMetaApi
         };
 
         Db.IdRecords.Upsert(record);
+        Db.DecisionChanged();
+
         return record;
     }
 
@@ -910,6 +1023,21 @@ public static class AniMetaApi
         row.Ids = shown;
         return row;
     }
+
+    /// <summary>
+    /// Gets how the genre and tag rebuild stands.
+    /// </summary>
+    /// <returns>The status of the current or last run.</returns>
+    public static GenreRebuildStatus GetGenreRebuild() => GenreRebuild.Status;
+
+    /// <summary>
+    /// Starts rebuilding every anime's genres and tags from the answers already cached, unless a
+    /// run is going. Asks AniDB for nothing.
+    /// </summary>
+    /// <param name="logger">The logger.</param>
+    /// <returns>The run's status.</returns>
+    public static GenreRebuildStatus StartGenreRebuild(ILogger logger)
+        => HostServices.Refresher is HostLibrary library ? GenreRebuild.Start(library, logger) : GenreRebuild.Status;
 
     /// <summary>
     /// Lists the replaced posters waiting for a decision, newest first.
@@ -1173,15 +1301,63 @@ public static class AniMetaApi
     public static string Export() => JsonSerializer.Serialize(Db.Export(), _json);
 
     /// <summary>
-    /// Merges exported decisions in.
+    /// Merges exported decisions in, and puts the ids the owner set by hand onto the shows in the
+    /// library that carry others.
     /// </summary>
     /// <param name="json">The JSON an export wrote.</param>
     /// <returns>How many records were taken.</returns>
-    public static int Import(string json)
+    public static async Task<int> Import(string json)
     {
         var decisions = JsonSerializer.Deserialize<DecisionsExport>(json, AniMetaDb.ReadOptions) ?? throw new ArgumentException("Not an AniMeta+ export.", nameof(json));
+        var taken = Db.Import(decisions);
 
-        return Db.Import(decisions);
+        await ApplyImportedIds(decisions.IdRecords ?? []).ConfigureAwait(false);
+
+        return taken;
+    }
+
+    /// <summary>
+    /// Writes the ids of imported hand-set records onto their shows where the shows carry
+    /// others, and refreshes those shows with their metadata replaced. The records themselves
+    /// are already stored.
+    /// </summary>
+    /// <param name="records">The imported records.</param>
+    /// <returns>How many shows were changed.</returns>
+    internal static async Task<int> ApplyImportedIds(IEnumerable<IdRecord> records)
+    {
+        var refresher = HostServices.Refresher;
+        if (refresher == null)
+        {
+            return 0;
+        }
+
+        var shows = ListShows().ToDictionary(s => s.Path, StringComparer.Ordinal);
+        var applied = 0;
+
+        foreach (var record in records.Where(r => r.Status == IdRecord.Manual))
+        {
+            if (!shows.TryGetValue(record.Id, out var show))
+            {
+                continue;
+            }
+
+            var wanted = IdCheck.RecordedProviders.ToDictionary(p => p, p => record.NewIds.GetValueOrDefault(p) ?? string.Empty, StringComparer.Ordinal);
+            var current = IdCheck.RecordedIds(show.ProviderIds);
+
+            if (wanted.All(w => string.Equals(w.Value, current.GetValueOrDefault(w.Key) ?? string.Empty, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            if (await refresher.SaveIds(show.Path, wanted, CancellationToken.None).ConfigureAwait(false))
+            {
+                // Images too, as when the owner sets the ids: they were found under the old ids.
+                refresher.Refresh(show.Path, true, true);
+                applied++;
+            }
+        }
+
+        return applied;
     }
 
     /// <summary>

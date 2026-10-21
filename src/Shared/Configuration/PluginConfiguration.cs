@@ -131,6 +131,8 @@ public partial class PluginConfiguration : BasePluginConfiguration
         AnnEnglishCast = false;
         FlareSolverrUrl = string.Empty;
         FlareSolverrTimeoutSeconds = 90;
+        GenreRebuildDaily = true;
+        GenreRebuildAskOthers = true;
     }
 
     /// <summary>
@@ -161,6 +163,18 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// off the task does nothing and never removes a collection.
     /// </summary>
     public bool FranchiseCollections { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the genre rebuild task runs on its schedule. The
+    /// button on the settings page runs it whatever this says.
+    /// </summary>
+    public bool GenreRebuildDaily { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the genre rebuild asks MyAnimeList and AniList for
+    /// shows they have no cached answer for, by the id the show has. AniDB is never asked.
+    /// </summary>
+    public bool GenreRebuildAskOthers { get; set; }
 
     /// <summary>
     /// Gets the language AniDB episode titles are taken in, after <see cref="EpisodeTitlePreference"/>

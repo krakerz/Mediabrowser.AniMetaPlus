@@ -291,6 +291,16 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpGet("Images/RevertStatus")]
     public ImageJobStatus GetRevertStatus() => AniMetaApi.GetRevertStatus();
 
+    /// <summary>Reports how the genre and tag rebuild stands.</summary>
+    /// <returns>The status.</returns>
+    [HttpGet("GenreRebuild")]
+    public GenreRebuildStatus GetGenreRebuild() => AniMetaApi.GetGenreRebuild();
+
+    /// <summary>Starts rebuilding genres and tags from the cached answers in the background.</summary>
+    /// <returns>The run's status.</returns>
+    [HttpPost("GenreRebuild")]
+    public GenreRebuildStatus StartGenreRebuild() => AniMetaApi.StartGenreRebuild(logger);
+
     /// <summary>Accepts AniDB's posters and deletes the previous ones.</summary>
     /// <param name="request">The items.</param>
     /// <returns>How many were handled.</returns>
@@ -388,7 +398,7 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
 
         try
         {
-            return AniMetaApi.Import(json);
+            return await AniMetaApi.Import(json).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is ArgumentException or System.Text.Json.JsonException)
         {

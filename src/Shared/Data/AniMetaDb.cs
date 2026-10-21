@@ -41,6 +41,9 @@ public class DecisionsExport
 
     /// <summary>Gets or sets the fields the owner pinned, locked or kept; absent in older files.</summary>
     public List<ProvenanceRecord> Provenance { get; set; } = [];
+
+    /// <summary>Gets or sets the ids the owner set or confirmed on the Mapping tab; absent in older files.</summary>
+    public List<IdRecord> IdRecords { get; set; } = [];
 }
 
 /// <summary>
@@ -285,7 +288,10 @@ public sealed class AniMetaDb : IDisposable
         Ignored = Unmatched.FindAll().Where(u => u.Ignored).ToList(),
 
         // A pin on a stand-in while a review is open is not a decision, and goes with the review.
-        Provenance = Provenance.FindAll().Where(p => p.Locked || p.DeclinedValue.Length > 0 || (p.PinnedSource.Length > 0 && !p.Provisional)).ToList()
+        Provenance = Provenance.FindAll().Where(p => p.Locked || p.DeclinedValue.Length > 0 || (p.PinnedSource.Length > 0 && !p.Provisional)).ToList(),
+
+        // What the id check did on its own is not a decision.
+        IdRecords = IdRecords.FindAll().Where(r => r.Status is IdRecord.Manual or IdRecord.Verified).ToList()
     };
 
     /// <summary>
@@ -303,7 +309,8 @@ public sealed class AniMetaDb : IDisposable
             + UpsertAll(Blocks, decisions.Blocks ?? [], b => b.Id)
             + UpsertAll(Reviews, decisions.Reviews ?? [], r => r.Id)
             + UpsertAll(Unmatched, decisions.Ignored ?? [], u => u.Id)
-            + ImportProvenance(decisions.Provenance ?? []);
+            + ImportProvenance(decisions.Provenance ?? [])
+            + UpsertAll(IdRecords, decisions.IdRecords ?? [], r => r.Id);
 
         if (writeBackup)
         {
