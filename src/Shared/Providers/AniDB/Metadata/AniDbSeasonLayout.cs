@@ -131,10 +131,7 @@ internal sealed class AniDbSeasonLayout
             return null;
         }
 
-        var seasons = spans
-            .OrderBy(entry => entry.Key)
-            .Select(entry => new AniDbLibrarySeason(entry.Key, entry.Value.First, entry.Value.Last - entry.Value.First + 1))
-            .ToList();
+        var seasons = ToSeasons(spans);
 
         var signature = string.Join(
             ',',
@@ -142,6 +139,31 @@ internal sealed class AniDbSeasonLayout
             + FormattableString.Invariant($";S{specials}");
 
         return new AniDbSeasonLayout(seasons, specials, signature);
+    }
+
+    /// <summary>
+    /// Turns the episode numbers each season spans into seasons. A season whose lowest number is
+    /// above 1 is either counted straight through the show or missing its first episodes; only
+    /// numbers that run on past the season before it are read as the former.
+    /// </summary>
+    /// <param name="spans">The lowest and highest episode number of each season.</param>
+    /// <returns>The seasons, in season order.</returns>
+    internal static List<AniDbLibrarySeason> ToSeasons(IReadOnlyDictionary<int, (int First, int Last)> spans)
+    {
+        var seasons = new List<AniDbLibrarySeason>();
+        int? previousLast = null;
+
+        foreach (var (number, (first, last)) in spans.OrderBy(entry => entry.Key))
+        {
+            // A season with no season before it in the library gives nothing to tell by, so a
+            // later one keeps its numbers as they are. Season 1 starts at 1 either way.
+            var start = first > 1 && (number == 1 || first <= previousLast) ? 1 : first;
+
+            seasons.Add(new AniDbLibrarySeason(number, start, last - start + 1));
+            previousLast = last;
+        }
+
+        return seasons;
     }
 
     /// <summary>

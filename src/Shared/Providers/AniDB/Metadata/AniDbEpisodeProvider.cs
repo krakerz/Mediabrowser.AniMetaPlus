@@ -627,12 +627,13 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
             _logger,
             cancellationToken).ConfigureAwait(false);
 
-        // The season provider stores the entry a season starts in, so an id that is not that
-        // one was set by hand in the metadata editor. That names the entry to read, and its
-        // episodes are numbered from one there.
+        // An id set by hand in the metadata editor names the entry to read, and its episodes are
+        // numbered from one there. One the season provider stored is only used when the season
+        // can't be mapped now; otherwise the mapping, which may have moved since, wins.
         var seasonId = info.SeasonProviderIds.GetValueOrDefault(ProviderNames.AniDb);
+        var setByHand = AniDbSeasonResolver.IsSetByHand(seasonId, info.SeasonProviderIds.GetValueOrDefault(ProviderNames.AniDbResolvedSeason), seriesId, info.ParentIndexNumber);
         if (!string.IsNullOrEmpty(seasonId)
-            && (segments == null || !string.Equals(seasonId, segments[0].AnimeId, StringComparison.Ordinal)))
+            && (segments == null || (setByHand && !string.Equals(seasonId, segments[0].AnimeId, StringComparison.Ordinal))))
         {
             return (seasonId, episodeNumber, AniDbEpisodeKind.Regular);
         }

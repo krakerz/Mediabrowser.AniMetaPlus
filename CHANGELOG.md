@@ -4,6 +4,17 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.20.0] — 2026-10-21
+
+### Fixed
+- A season missing its last episodes no longer pushes its leftover AniDB episodes onto the start of the next season
+- A season missing its first episodes is no longer read as numbered straight through the show, which shifted every episode
+- Seasons and episodes follow the current mapping again when it changes, instead of keeping the AniDB entry stored on an earlier refresh; an AniDB id you set on a season by hand still wins
+- Season 1 follows a mapping file that places it in a different AniDB entry, like its episodes already did
+- A slow TheTVDB or TheMovieDb lookup gets 90 seconds instead of 20, and timing out blocks only that show instead of the whole source
+- Items waiting for a source that is resting or at its hourly or daily cap are no longer refreshed every queue run just to wait again
+- Two AniDB requests at once can no longer go one past the hourly or daily cap
+
 ## [2.19.0] — 2026-10-21
 
 ### Added

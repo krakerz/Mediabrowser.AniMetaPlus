@@ -92,7 +92,8 @@ public static class QueueProcessor
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (BlockStore.SourceBlock(waiting.Source) != null)
+            // A cap or rest isn't a block, but the refresh would only meet it and queue the item again.
+            if (BlockStore.SourceBlock(waiting.Source) != null || SourceGate.IsCapped(waiting.Source))
             {
                 continue;
             }
@@ -137,6 +138,7 @@ public static class QueueProcessor
 
             if (string.IsNullOrEmpty(provenance.PreferredSource)
                 || BlockStore.SourceBlock(provenance.PreferredSource) != null
+                || SourceGate.IsCapped(provenance.PreferredSource)
                 || BlockStore.ItemBlock(provenance.PreferredSource, provenance.ItemKey) != null
                 || (provenance.PreferredSource == SourceIds.AniDb && (AniDbSeriesProvider.GetRemainingBanTime() > TimeSpan.Zero || !AniDbSeriesProvider.IsClientUsable()))
                 || (_upgradeTried.TryGetValue(provenance.ItemPath, out var tried) && DateTime.UtcNow - tried < _upgradeRetryGap))
