@@ -109,7 +109,7 @@ public static partial class AniListClient
     {
         using var document = await Post(
             httpClient,
-            "query ($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME) { id title { romaji english } startDate { year } format } } }",
+            "query ($search: String) { Page(perPage: 10) { media(search: $search, type: ANIME) { id title { romaji english } startDate { year } format coverImage { large } } } }",
             new Dictionary<string, object> { ["search"] = title },
             cancellationToken).ConfigureAwait(false);
 
@@ -131,7 +131,9 @@ public static partial class AniListClient
                 var name = (titles.ValueKind == JsonValueKind.Object ? Str(titles, "romaji") ?? Str(titles, "english") : null) ?? id.ToString(CultureInfo.InvariantCulture);
                 var year = entry.TryGetProperty("startDate", out var start) && start.ValueKind == JsonValueKind.Object ? Int(start, "year") : null;
 
-                found.Add(new RemoteCandidate(SourceIds.AniList, id.ToString(CultureInfo.InvariantCulture), name, year, Str(entry, "format"), null));
+                var cover = entry.TryGetProperty("coverImage", out var image) && image.ValueKind == JsonValueKind.Object ? Str(image, "large") : null;
+
+                found.Add(new RemoteCandidate(SourceIds.AniList, id.ToString(CultureInfo.InvariantCulture), name, year, Str(entry, "format"), null, cover));
             }
         }
 

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Data;
 using AniMetaPlus.Logging;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using MediaBrowser.Controller.Net;
 using MediaBrowser.Model.Logging;
 using MediaBrowser.Model.Services;
@@ -96,6 +97,17 @@ public class DecideReview : IReturn<ReviewRecord>
 {
     /// <summary>Gets or sets the review id.</summary>
     public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the decision: Accepted, Kept or Locked.</summary>
+    public ReviewStatus Decision { get; set; }
+}
+
+/// <summary>Decides several reviews without refreshing their items.</summary>
+[Route("/AniMetaPlus/Reviews/DecideMany", "POST")]
+public class DecideReviews : IReturn<int>
+{
+    /// <summary>Gets or sets the review ids.</summary>
+    public List<string> Ids { get; set; } = [];
 
     /// <summary>Gets or sets the decision: Accepted, Kept or Locked.</summary>
     public ReviewStatus Decision { get; set; }
@@ -377,6 +389,24 @@ public class ForgetRevertedImages : IReturn<ImageDoneResult>
 {
 }
 
+/// <summary>Forgets the posters kept for items the library no longer has.</summary>
+[Route("/AniMetaPlus/Images/ForgetMissing", "POST")]
+public class ForgetMissingImages : IReturn<int>
+{
+}
+
+/// <summary>Gets an identify result's poster with its label band.</summary>
+[Route("/AniMetaPlus/Identify/Poster", "GET")]
+[Unauthenticated]
+public class GetIdentifyPoster : IReturn<byte[]>
+{
+    /// <summary>Gets or sets the label, as the address carried it.</summary>
+    public string? L { get; set; }
+
+    /// <summary>Gets or sets the signature the address carried.</summary>
+    public string? Sig { get; set; }
+}
+
 #pragma warning restore SA1402
 
 /// <summary>
@@ -446,6 +476,11 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public object? Post(DecideReview request) => AniMetaApi.DecideReview(request.Id, request.Decision);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public object Post(DecideReviews request) => new { Decided = AniMetaApi.DecideReviews(request.Ids, request.Decision) };
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
@@ -562,6 +597,11 @@ public class AniMetaPlusService : IService
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
+    public object Post(ForgetMissingImages request) => new { Forgotten = AniMetaApi.ForgetMissingImages() };
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
     public object Get(GetWaiting request) => AniMetaApi.GetWaiting();
 
     /// <summary>Handles the request.</summary>
@@ -625,5 +665,45 @@ public class AniMetaPlusService : IService
         var json = await reader.ReadToEndAsync().ConfigureAwait(false);
 
         return await AniMetaApi.Import(json).ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// The identify poster, apart from the settings endpoints because it is open to anyone: the result
+/// list puts its address into the page as a picture, and the browser sends no login for that.
+/// The signature keeps it to labels this server's own identify made, and the poster is only ever
+/// fetched from a source's image host.
+/// </summary>
+public class AniMetaPlusPosterService : IService, IRequiresRequest
+{
+    private readonly IHttpResultFactory _results;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AniMetaPlusPosterService"/> class.
+    /// </summary>
+    /// <param name="results">The server's result factory.</param>
+    public AniMetaPlusPosterService(IHttpResultFactory results)
+    {
+        _results = results;
+    }
+
+    /// <summary>Gets or sets the request, which the server sets before it calls the handler.</summary>
+    public IRequest Request { get; set; } = null!;
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The picture as svg.</returns>
+    public async Task<object> Get(GetIdentifyPoster request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var svg = await IdentifyLabel.GetSignedImage(request.L, request.Sig, Plugin.Instance.AppPaths, CancellationToken.None).ConfigureAwait(false);
+
+        if (svg is null)
+        {
+            throw new MediaBrowser.Common.Extensions.ResourceNotFoundException("No such poster");
+        }
+
+        return _results.GetResult(Request, svg, IdentifyLabel.SvgContentType, new Dictionary<string, string> { ["Cache-Control"] = "public, max-age=86400" });
     }
 }

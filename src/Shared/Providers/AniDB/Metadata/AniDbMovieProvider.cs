@@ -258,28 +258,13 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
 
 #endif
     /// <inheritdoc />
-    public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
-    {
-        var seriesInfo = new SeriesInfo();
-        var animeId = searchInfo.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
-
-        if (animeId != null)
-        {
-            seriesInfo.ProviderIds.Add(ProviderNames.AniDb, animeId);
-        }
-
-        foreach (var key in new[] { SourceIds.Mal, SourceIds.AniList })
-        {
-            if (searchInfo.ProviderIds.GetValueOrDefault(key) is { } id)
-            {
-                seriesInfo.ProviderIds.Add(key, id);
-            }
-        }
-
-        seriesInfo.Name = searchInfo.Name;
-
-        return await _seriesProvider.GetSearchResults(seriesInfo, cancellationToken).ConfigureAwait(false);
-    }
+    /// <remarks>
+    /// The series provider builds the list, from the movie mappings and the movie searches of
+    /// TheTVDB and TheMovieDb; anime AniDB does not list are left out, as a movie has no way to be
+    /// filled from AniList or MyAnimeList alone.
+    /// </remarks>
+    public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
+        => _seriesProvider.Search(searchInfo, true, cancellationToken);
 
     /// <inheritdoc />
     public Task<HostImageResponse> GetImageResponse(string url, CancellationToken cancellationToken)

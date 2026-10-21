@@ -4,6 +4,33 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.21.0] — 2026-10-21
+
+### Added
+- Page arrows at the top of the Unmatched, Review, Blocks, Status and Image overrides lists
+- Filter box on the Unmatched tab
+- Counts on the Unmatched, Review and Blocks tab buttons
+- The settings page reopens on the last tab used
+- Accept, Keep and Lock all matching on the Review tab
+- Field and text filters on the Review tab
+- Sortable columns on the Unmatched and Review tabs
+- Image overrides marks posters of shows no longer in the library, with a Forget missing button
+- Identify also searches AniList, MyAnimeList, TheTVDB and TheMovieDb by name
+- Identify offers AniList and MyAnimeList entries AniDB does not list yet
+- Identify results can show posters and years from AniList, MyAnimeList, TheTVDB and TheMovieDb
+- Identify posters carry a label: base show or season, how the result matched, and its sites
+
+### Changed
+- List tabs share one toolbar layout
+- Image overrides page arrows moved from the bottom to the top
+- The General tab groups its settings into sections, and settings that depend on another are greyed out while it is off
+- Search on the Unmatched tab covers the current page
+- Lift all shown on the Blocks tab is now Lift all matching
+
+### Fixed
+- Forget reverted appears right after a revert
+- Revert skips shows no longer in the library instead of counting them as reverted
+
 ## [2.20.0] — 2026-10-21
 
 ### Fixed

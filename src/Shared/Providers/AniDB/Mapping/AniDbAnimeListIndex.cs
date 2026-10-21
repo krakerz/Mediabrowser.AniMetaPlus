@@ -146,6 +146,32 @@ internal sealed class AniDbAnimeListIndex
         => _byAnimeId.TryGetValue(animeId, out var entry) ? entry.SeriesKey : null;
 
     /// <summary>
+    /// What the list says an entry is of its show: its default TVDB season and episode offset,
+    /// "a" for an entry numbered through the whole show, or a movie.
+    /// </summary>
+    /// <param name="animeId">The AniDB id of the entry.</param>
+    /// <returns>The role, or <c>null</c> where the list says nothing about the entry.</returns>
+    public MappedRole? RoleOf(string animeId)
+    {
+        var movie = MovieKeysOf(animeId, null).Count > 0;
+
+        if (_byAnimeId.TryGetValue(animeId, out var entry))
+        {
+            if (string.Equals(entry.DefaultSeason, "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return new MappedRole(null, entry.EpisodeOffset, true, movie);
+            }
+
+            if (int.TryParse(entry.DefaultSeason, CultureInfo.InvariantCulture, out var season) && season >= 0)
+            {
+                return new MappedRole(season, entry.EpisodeOffset, false, movie);
+            }
+        }
+
+        return movie ? new MappedRole(null, 0, false, true) : null;
+    }
+
+    /// <summary>
     /// Every key the list files a movie under, given the AniDB episode it is. Answers for an
     /// entry whose episode is not known only where the entry holds a single movie: an entry
     /// holding a trilogy is one AniDB id and three movie ids, and nothing but the episode says

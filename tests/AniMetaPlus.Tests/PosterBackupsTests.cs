@@ -156,6 +156,56 @@ public sealed class PosterBackupsTests : IDisposable
         Assert.Empty(Directory.GetFiles(Path.Combine(_folder, "image-backups")));
     }
 
+    [Fact]
+    public async Task FindsAndForgetsPendingItemsTheServerNoLongerHas()
+    {
+        foreach (var id in new[] { "1", "2", "3" })
+        {
+            _backups.Applied(id, "N" + id, string.Empty, "Series", "u", "s", _backups.Hold(null, id, Poster(id + ".jpg", "p" + id)));
+        }
+
+        // A reverted item is no decision waiting, so it is not counted as missing either.
+        await _backups.Revert(["3"], false, new FakeImages(), NullLogger.Instance, CancellationToken.None);
+        Func<string, bool> exists = id => id == "1";
+
+        Assert.Equal(["2"], _backups.MissingIds(exists).ToArray());
+
+        Assert.Equal(1, _backups.ForgetMissing(exists));
+        Assert.Null(_backups.Find("2"));
+        Assert.Null(_backups.ReadDataUrl("2"));
+        Assert.False(File.Exists(Path.Combine(_folder, "image-backups", "2.jpg")));
+        Assert.NotNull(_backups.Find("1"));
+        Assert.True(File.Exists(Path.Combine(_folder, "image-backups", "1.jpg")));
+        Assert.Equal(ImageBackupState.Reverted, _backups.Find("3")!.State);
+        Assert.Equal(0, _backups.ForgetMissing(exists));
+    }
+
+    [Fact]
+    public void RevertSelectionLeavesOutItemsTheServerNoLongerHas()
+    {
+        foreach (var id in new[] { "1", "2" })
+        {
+            _backups.Applied(id, "N" + id, string.Empty, "Series", "u", "s", _backups.Hold(null, id, Poster(id + ".jpg", "p" + id)));
+        }
+
+        var (ids, skipped) = _backups.SelectedPresentIds(null, true, id => id == "1");
+        Assert.Equal(["1"], ids.ToArray());
+        Assert.Equal(1, skipped);
+
+        (ids, skipped) = _backups.SelectedPresentIds(["2"], false, id => id == "1");
+        Assert.Empty(ids);
+        Assert.Equal(1, skipped);
+
+        // With no way to ask the server, nothing is left out.
+        (ids, skipped) = _backups.SelectedPresentIds(null, true, null);
+        Assert.Equal(2, ids.Count);
+        Assert.Equal(0, skipped);
+
+        // The skipped item stays waiting, with its backup, for a Forget.
+        Assert.Equal(1, _backups.Acknowledge(["2"], false));
+        Assert.Null(_backups.ReadDataUrl("2"));
+    }
+
     private string Poster(string name, string content)
     {
         Directory.CreateDirectory(_folder);

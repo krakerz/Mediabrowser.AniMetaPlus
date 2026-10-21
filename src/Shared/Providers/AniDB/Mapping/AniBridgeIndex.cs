@@ -204,6 +204,34 @@ internal sealed class AniBridgeIndex
         => _byAnimeId.TryGetValue(animeId, out var entry) ? entry.SeriesKey : null;
 
     /// <summary>
+    /// What the mappings say an entry is of its show: the earliest ordinary season it fills and
+    /// the episode of it the entry starts at, the specials where it fills nothing else, or a movie.
+    /// </summary>
+    /// <param name="animeId">The AniDB id of the entry.</param>
+    /// <returns>The role, or <c>null</c> where the mappings say nothing about the entry.</returns>
+    public MappedRole? RoleOf(string animeId)
+    {
+        var movie = MovieKeysOf(animeId, null).Count > 0;
+        int? season = null;
+        var offset = 0;
+
+        if (_byAnimeId.TryGetValue(animeId, out var entry))
+        {
+            if (EarliestClaim(entry) is { } claim)
+            {
+                season = claim.Season;
+                offset = Math.Max(claim.Start - 1, 0);
+            }
+            else if (entry.Spans.Count > 0)
+            {
+                season = 0;
+            }
+        }
+
+        return season == null && !movie ? null : new MappedRole(season, offset, false, movie);
+    }
+
+    /// <summary>
     /// The TMDB show an entry is placed against, where the mappings place it against one. Not
     /// every show they place has a TMDB id; the TVDB id is what they are keyed by.
     /// </summary>

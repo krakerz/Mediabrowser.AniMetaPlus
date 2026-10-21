@@ -153,6 +153,32 @@ public sealed class PosterBackups
     public int CountReverted() => _db.ImageBackups.FindAll().Count(r => r.State == ImageBackupState.Reverted);
 
     /// <summary>
+    /// Finds the items waiting for a decision that the server no longer has.
+    /// </summary>
+    /// <param name="exists">Whether the server has an item, by its id.</param>
+    /// <returns>The ids.</returns>
+    public HashSet<string> MissingIds(Func<string, bool> exists)
+        => ListPending().Where(r => !exists(r.Id)).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Forgets the items waiting for a decision that the server no longer has, with their backup
+    /// files: there is no item left to put a poster back on.
+    /// </summary>
+    /// <param name="exists">Whether the server has an item, by its id.</param>
+    /// <returns>How many were forgotten.</returns>
+    public int ForgetMissing(Func<string, bool> exists)
+    {
+        var missing = MissingIds(exists);
+        foreach (var id in missing)
+        {
+            DeleteFiles(id);
+            _db.ImageBackups.Delete(id);
+        }
+
+        return missing.Count;
+    }
+
+    /// <summary>
     /// Reads a backup as a data address, which the settings page can show without a login header.
     /// </summary>
     /// <param name="id">The server's item id.</param>
@@ -280,6 +306,26 @@ public sealed class PosterBackups
     /// <returns>The ids.</returns>
     public IReadOnlyList<string> SelectedIds(IEnumerable<string>? ids, bool all) => Selected(ids, all).Select(r => r.Id).ToList();
 
+    /// <summary>
+    /// The ids of the items a revert takes: those the server still has.
+    /// </summary>
+    /// <param name="ids">The item ids; ignored when <paramref name="all"/> is set.</param>
+    /// <param name="all">Whether to take every item waiting for a decision.</param>
+    /// <param name="exists">Whether the server has an item, by its id; <c>null</c> when that cannot be asked.</param>
+    /// <returns>The ids to revert, and how many selected items were left out because the server no longer has them.</returns>
+    public (IReadOnlyList<string> Ids, int Skipped) SelectedPresentIds(IEnumerable<string>? ids, bool all, Func<string, bool>? exists)
+    {
+        var selected = SelectedIds(ids, all);
+        if (exists == null)
+        {
+            return (selected, 0);
+        }
+
+        var present = selected.Where(exists).ToList();
+
+        return (present, selected.Count - present.Count);
+    }
+
     private List<ImageBackupRecord> Selected(IEnumerable<string>? ids, bool all)
     {
         if (all)
@@ -352,8 +398,10 @@ public static class PosterRevertJob
             }
 
             var backups = PosterBackups.Current;
-            var selected = backups.SelectedIds(ids, all);
-            _status = new ImageJobStatus { Running = selected.Count > 0, Total = selected.Count, StartedUtc = DateTime.UtcNow };
+
+            // An item the server no longer has has no poster to put back: it stays listed as missing.
+            var (selected, skipped) = backups.SelectedPresentIds(ids, all, images == null ? null : images.ItemExists);
+            _status = new ImageJobStatus { Running = selected.Count > 0, Total = selected.Count, Skipped = skipped, StartedUtc = DateTime.UtcNow };
 
             if (selected.Count == 0)
             {

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AniMetaPlus.Core;
 using AniMetaPlus.Data;
+using AniMetaPlus.Providers.AniDB.Metadata;
 using AniMetaPlus.Titles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -88,6 +89,18 @@ public class ImageSelectionRequest
 }
 
 /// <summary>
+/// The reviews to decide at once.
+/// </summary>
+public class ReviewDecisionRequest
+{
+    /// <summary>Gets or sets the review ids.</summary>
+    public List<string> Ids { get; set; } = [];
+
+    /// <summary>Gets or sets the decision: Accepted, Kept or Locked.</summary>
+    public ReviewStatus Decision { get; set; }
+}
+
+/// <summary>
 /// The settings page's endpoints on Jellyfin. Each passes straight through to
 /// <see cref="AniMetaApi"/>, which Emby's endpoints use too.
 /// </summary>
@@ -98,6 +111,33 @@ public class ImageSelectionRequest
 [Produces(MediaTypeNames.Application.Json)]
 public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : ControllerBase
 {
+    /// <summary>Draws an identify result's poster with its label band.</summary>
+    /// <param name="l">The label, as the result's address carried it.</param>
+    /// <param name="sig">The signature the address carried.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The picture as svg, or not found when the signature is not one this server made.</returns>
+    /// <remarks>
+    /// Open to anyone, because the browser asks for it as a card's background and sends no login.
+    /// The signature keeps it to labels this server's own identify made, and the poster is only
+    /// ever fetched from a source's image host.
+    /// </remarks>
+    [HttpGet("Identify/Poster")]
+    [AllowAnonymous]
+    [Produces("image/svg+xml")]
+    public async Task<IActionResult> GetIdentifyPoster([FromQuery] string? l, [FromQuery] string? sig, CancellationToken cancellationToken)
+    {
+        var svg = await IdentifyLabel.GetSignedImage(l, sig, Plugin.Instance.AppPaths, cancellationToken).ConfigureAwait(false);
+
+        if (svg is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "public, max-age=86400";
+
+        return File(svg, IdentifyLabel.SvgContentType);
+    }
+
     /// <summary>Gets everything the settings page shows at a glance.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The status.</returns>
@@ -148,6 +188,12 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpPost("Reviews/Decide")]
     public ActionResult<ReviewRecord> DecideReview([FromQuery] string id, [FromQuery] ReviewStatus decision)
         => AniMetaApi.DecideReview(id, decision) is { } review ? review : NotFound();
+
+    /// <summary>Decides several reviews without refreshing their items.</summary>
+    /// <param name="request">The review ids and the decision.</param>
+    /// <returns>How many were decided.</returns>
+    [HttpPost("Reviews/DecideMany")]
+    public ActionResult DecideReviews([FromBody] ReviewDecisionRequest request) => Ok(new { Decided = AniMetaApi.DecideReviews(request.Ids, request.Decision) });
 
     /// <summary>Lists the items nothing identified.</summary>
     /// <param name="includeIgnored">Whether to include those set aside.</param>
@@ -311,6 +357,11 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     /// <returns>How many were forgotten.</returns>
     [HttpPost("Images/ForgetReverted")]
     public ImageDoneResult ForgetRevertedImages() => AniMetaApi.ForgetRevertedImages();
+
+    /// <summary>Forgets the posters kept for items the library no longer has.</summary>
+    /// <returns>How many were forgotten.</returns>
+    [HttpPost("Images/ForgetMissing")]
+    public ActionResult ForgetMissingImages() => Ok(new { Forgotten = AniMetaApi.ForgetMissingImages() });
 
     /// <summary>Lists the items waiting for a paused source.</summary>
     /// <returns>The items.</returns>
