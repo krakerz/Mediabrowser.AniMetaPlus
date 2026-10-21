@@ -18,6 +18,15 @@ public interface IHostRefresher
     bool Refresh(string itemPath, bool replaceAll);
 
     /// <summary>
+    /// Queues a metadata refresh of the item at a path that may also replace its images.
+    /// </summary>
+    /// <param name="itemPath">The folder of a series, or the file of a movie or episode.</param>
+    /// <param name="replaceAll">Whether existing metadata is replaced rather than filled in.</param>
+    /// <param name="replaceImages">Whether existing images are replaced too.</param>
+    /// <returns><c>true</c> when the item was found and queued.</returns>
+    bool Refresh(string itemPath, bool replaceAll, bool replaceImages) => Refresh(itemPath, replaceAll);
+
+    /// <summary>
     /// Puts ids onto the library's own copy of the item at a path, replacing different ones.
     /// The servers keep an id an item already has when they merge a provider's answer, so a
     /// wrong id an earlier lookup left would otherwise never go. Written to the copy a refresh

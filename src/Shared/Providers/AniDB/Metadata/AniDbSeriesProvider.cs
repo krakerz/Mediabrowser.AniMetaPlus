@@ -1965,6 +1965,17 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                             }
 
                             break;
+
+                        case "resources":
+                            using (var subtree = reader.ReadSubtree())
+                            {
+                                if (ParseAnnId(subtree) is { } annId)
+                                {
+                                    series.SetProviderId(SourceIds.Ann, annId);
+                                }
+                            }
+
+                            break;
                     }
                 }
             }
@@ -2338,6 +2349,76 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             && !char.IsLetterOrDigit(longer[name.Trim().Length]);
 
     /// <summary>
+    /// The Anime News Network entry AniDB links an anime to: the first identifier of its
+    /// resource of type 1, which is how AniDB lists ANN among the other sites.
+    /// </summary>
+    /// <param name="reader">A reader over the anime's resources element.</param>
+    /// <returns>The ANN id, or <c>null</c> when AniDB links none.</returns>
+    internal static string? ParseAnnId(XmlReader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        var inAnn = false;
+        while (reader.Read())
+        {
+            if (reader.NodeType != XmlNodeType.Element)
+            {
+                continue;
+            }
+
+            if (reader.Name == "resource")
+            {
+                inAnn = reader.GetAttribute("type") == "1";
+            }
+            else if (inAnn && reader.Name == "identifier")
+            {
+                var id = reader.ReadElementContentAsString().Trim();
+                if (id.Length > 0 && id.All(char.IsAsciiDigit))
+                {
+                    return id;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The Anime News Network entry an anime's cached document links, read from disk with no
+    /// request. The same entry <see cref="ParseAnnId"/> puts on the show.
+    /// </summary>
+    /// <param name="seriesXmlPath">The path of the cached <c>series.xml</c>.</param>
+    /// <returns>The ANN id, or <c>null</c> when nothing is cached or AniDB links none.</returns>
+    internal static string? ReadAnnId(string seriesXmlPath)
+    {
+        if (!File.Exists(seriesXmlPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var reader = XmlReader.Create(seriesXmlPath, new XmlReaderSettings { CheckCharacters = false, DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.Element && reader.Name == "resources")
+                {
+                    using var subtree = reader.ReadSubtree();
+
+                    return ParseAnnId(subtree);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is XmlException or IOException)
+        {
+            // An unreadable document is one with no link.
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Whether the name on the item is the folder name cut short rather than a name of its own.
     /// </summary>
     /// <remarks>
@@ -2419,7 +2500,7 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
                 SourceGate.LogOwnRequest(SourceIds.AniDb, target, ItemKeys.ForAnime(aid), "HttpError", (int)response.StatusCode, started);
 
                 throw new SourceHttpException(
-                    "AniDB answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + " " + response.ReasonPhrase,
+                    "AniDB answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + " " + response.ReasonPhrase + CloudflareGuard.Note(SourceIds.AniDb, response),
                     response.StatusCode,
                     response.Headers.RetryAfter?.Delta);
             }

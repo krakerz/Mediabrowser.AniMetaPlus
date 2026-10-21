@@ -19,6 +19,12 @@ public static class SourceIds
     /// <summary>MyAnimeList, through its official API or through Jikan.</summary>
     public const string Mal = "MyAnimeList";
 
+    /// <summary>
+    /// The provider id key of an Anime News Network encyclopedia entry. Not a source the owner
+    /// orders: AniDB names the entry, and the id is put on the show for its link.
+    /// </summary>
+    public const string Ann = "AnimeNewsNetwork";
+
     /// <summary>The server's installed TheTVDB provider.</summary>
     public const string Tvdb = "TheTVDB";
 

@@ -4,6 +4,23 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.18.0] — 2026-10-21
+
+### Added
+- Shows and movies get their Anime News Network id where AniDB links one, with an Anime News Network link on the item's page next to the AniDB, MyAnimeList and AniList ones
+- Extra data from Anime News Network for shows and movies AniDB links to it: directors, writers, composers and producers the item does not have yet, the animation studio, ANN's rating as one more part of the combined rating (from 10 votes), and English episode titles where the episode would otherwise have none or only "Episode N". Each ANN entry is fetched at most once a week, one request a second, and no images are taken. On by default; General tab
+- The English dub cast from Anime News Network, added after the existing cast. Off by default; General tab
+- "Identify anime libraries" gives every show and movie that lacks one the Anime News Network id its cached AniDB answer names, without a request, so the whole library gets its ANN links without being refreshed
+- FlareSolverr for Anime News Network: where ANN answers with Cloudflare's security check, AniMeta+ asks the FlareSolverr you set in General to solve it, keeps the cookie and user agent it gets in its database, and sends them with later ANN requests until ANN asks again. FlareSolverr is only used for that check, at most once every 10 minutes, and has to reach the internet from the same public IP as the server. Its address and the longest it may take (default 90 seconds) are in General
+- A source that starts answering with a Cloudflare security check (or a Cloudflare refusal page) is named as such: a warning in the log once per source, and "(a Cloudflare security check)" in the failure, so the block on the Blocks tab says it too. Covers AniDB, the titles dump, AniList, MyAnimeList and Jikan
+
+### Changed
+- Mapping tab: the count and page buttons sit in the filter row as "250 of 250  ‹ 2 / 3 ›" instead of a row of large buttons of their own
+
+### Fixed
+- Setting a show's ids by hand left the TVDB, TMDB and IMDb ids it had, which could be another show's (Charlotte kept a different show's TVDB and TMDB ids). The TVDB and TMDB ids now come from the mappings of the AniDB entry you give, or are cleared where the mappings have none, and the IMDb id is cleared for the server's own providers to fill again. Revert puts the old TVDB and TMDB ids back too
+- After setting a show's ids by hand or reverting them, its images are replaced as well as its metadata, since its poster and backdrop were found under the old ids
+
 ## [2.17.0] — 2026-10-20
 
 ### Added

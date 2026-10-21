@@ -1,0 +1,26 @@
+using AniMetaPlus.Sources;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
+
+namespace AniMetaPlus.Providers;
+
+/// <summary>
+/// The Anime News Network encyclopedia entry AniDB links a series or movie to. Its link is the
+/// credit ANN's terms ask for wherever data from it is shown.
+/// </summary>
+public class AnnExternalId : IExternalId
+{
+    /// <inheritdoc />
+    public string Name => "Anime News Network";
+
+    /// <inheritdoc />
+    public string Key => SourceIds.Ann;
+
+    /// <inheritdoc />
+    public string UrlFormatString => "https://www.animenewsnetwork.com/encyclopedia/anime.php?id={0}";
+
+    /// <inheritdoc />
+    public bool Supports(IHasProviderIds item) => item is Series || item is Movie;
+}
