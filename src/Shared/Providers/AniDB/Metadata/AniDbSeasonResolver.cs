@@ -130,11 +130,26 @@ internal static partial class AniDbSeasonResolver
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        // The first season is the series entry itself, and so are specials: AniDB keeps
-        // them inside the entry they belong to.
-        if (Plugin.Instance.Configuration.IgnoreSeason || seasonNumber is null or <= 1)
+        // Specials are the series entry: AniDB keeps them inside the entry they belong to.
+        if (Plugin.Instance.Configuration.IgnoreSeason || seasonNumber is null or <= 0)
         {
             return new AniDbSeasonSegment(seriesId, 1, 0);
+        }
+
+        // The first season is the series entry unless a placement says otherwise. The episodes
+        // follow the placement, so the season must too, or its id reads as one set by hand.
+        if (seasonNumber == 1)
+        {
+            try
+            {
+                var first = await ResolveSeasonSegments(appPaths, libraryManager, seriesId, 1, logger, cancellationToken).ConfigureAwait(false);
+
+                return first?[0] ?? new AniDbSeasonSegment(seriesId, 1, 0);
+            }
+            catch (Exception ex) when (ex is AniDbBannedException or InvalidOperationException)
+            {
+                return new AniDbSeasonSegment(seriesId, 1, 0);
+            }
         }
 
         var segments = await ResolveSeasonSegments(appPaths, libraryManager, seriesId, seasonNumber.Value, logger, cancellationToken).ConfigureAwait(false);
@@ -142,6 +157,33 @@ internal static partial class AniDbSeasonResolver
         // The season is filled from the entry it starts in. A season split across two entries
         // takes its name and its dates from the first of them, which is where it began.
         return segments?[0];
+    }
+
+    /// <summary>
+    /// Whether a season's stored AniDB id was set by hand, rather than stored by the season
+    /// provider from what the season resolved to then.
+    /// </summary>
+    /// <param name="storedId">The season's AniDB id.</param>
+    /// <param name="resolvedId">The id the season provider recorded under <see cref="ProviderNames.AniDbResolvedSeason"/>, if any.</param>
+    /// <param name="seriesId">The AniDB id of the series.</param>
+    /// <param name="seasonNumber">The season number.</param>
+    /// <returns><c>true</c> when the stored id is the owner's and must be read as it is.</returns>
+    public static bool IsSetByHand(string? storedId, string? resolvedId, string seriesId, int? seasonNumber)
+    {
+        if (string.IsNullOrEmpty(storedId))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(resolvedId))
+        {
+            return !string.Equals(storedId, resolvedId, StringComparison.Ordinal);
+        }
+
+        // Stored before the provider recorded what it resolved. Specials and the first season
+        // were always given the series entry, so that is the provider's; any other id can't be
+        // told apart and stays read as the owner's, as it always was.
+        return !(seasonNumber <= 1 && string.Equals(storedId, seriesId, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -672,8 +714,12 @@ internal static partial class AniDbSeasonResolver
         var complete = true;
         var nextNumber = 1;
 
-        foreach (var season in layout?.Seasons ?? GetAssumedSeasons())
+        var seasons = (layout?.Seasons ?? GetAssumedSeasons()).ToList();
+
+        for (var index = 0; index < seasons.Count; index++)
         {
+            var season = seasons[index];
+
             if (season.Number <= 0)
             {
                 continue;
@@ -690,6 +736,7 @@ internal static partial class AniDbSeasonResolver
 
             var segments = new List<AniDbSeasonSegment>();
             var covered = 0;
+            var entryEpisodeCount = 0;
 
             while (true)
             {
@@ -703,6 +750,7 @@ internal static partial class AniDbSeasonResolver
                 }
 
                 var (count, outlastsSeason) = Allocate(entry.EpisodeCount, consumedInEntry, season.EpisodeCount, covered);
+                entryEpisodeCount = entry.EpisodeCount;
 
                 segments.Add(new AniDbSeasonSegment(entry.Id, season.FirstEpisodeNumber + covered, count, consumedInEntry + 1));
                 covered += count;
@@ -726,6 +774,26 @@ internal static partial class AniDbSeasonResolver
             if (segments.Count == 0)
             {
                 break;
+            }
+
+            // The entry runs on past the season. That is a long entry split over seasons only if
+            // what is left could carry the next season; otherwise the library is missing the
+            // season's last episodes, and the next season starts with the next entry.
+            if (consumedInEntry > 0
+                && index + 1 < seasons.Count
+                && seasons[index + 1].Number == season.Number + 1
+                && !CarriesOver(entryEpisodeCount - consumedInEntry, seasons[index + 1].EpisodeCount))
+            {
+                logger.LogInformation(
+                    "Season {SeasonNumber} of AniDB series {SeriesId} stops {Left} episodes before the end of anime {AnimeId}. Too few are left to fill season {NextSeason}, so they are taken as missing from the library and season {NextSeason} starts with the next entry",
+                    season.Number,
+                    seriesId,
+                    entryEpisodeCount - consumedInEntry,
+                    segments[^1].AnimeId,
+                    season.Number + 1);
+
+                chainIndex++;
+                consumedInEntry = 0;
             }
 
             mapping[season.Number] = segments;
@@ -760,11 +828,30 @@ internal static partial class AniDbSeasonResolver
         // A mapping cut short by a ban would otherwise be reused for as long as the server runs.
         if (complete)
         {
-            _mappings[seriesId + "|" + (layout?.Signature ?? "-")] = mapping;
+            var key = seriesId + "|" + (layout?.Signature ?? "-");
+
+            // One mapping per series: one built for an earlier layout is never asked for again.
+            foreach (var old in _mappings.Keys.Where(old => old.StartsWith(seriesId + "|", StringComparison.Ordinal) && old != key))
+            {
+                _mappings.TryRemove(old, out _);
+                _mappingGates.TryRemove(old, out _);
+            }
+
+            _mappings[key] = mapping;
         }
 
         return mapping;
     }
+
+    /// <summary>
+    /// Whether the episodes an entry has left after one season are the start of the next. They
+    /// are when they fill that season nearly whole, as a long entry split over seasons does.
+    /// </summary>
+    /// <param name="left">How many episodes of the entry the season left over.</param>
+    /// <param name="nextSeasonEpisodeCount">How many episode numbers the next season spans.</param>
+    /// <returns><c>true</c> when the next season starts with them.</returns>
+    internal static bool CarriesOver(int left, int nextSeasonEpisodeCount)
+        => nextSeasonEpisodeCount - left < MinimumSplitEpisodes;
 
     /// <summary>
     /// How much of an entry one season takes, and whether the entry runs on past it.

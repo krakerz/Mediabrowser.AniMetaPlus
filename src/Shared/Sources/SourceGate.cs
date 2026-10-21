@@ -25,6 +25,12 @@ public static class SourceGate
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
 
     /// <summary>
+    /// How long one call to a server's own TVDB or TMDB provider may take. One call is several
+    /// requests of that provider's (series, episodes, people), so it gets longer than one request.
+    /// </summary>
+    public static readonly TimeSpan DelegatedRequestTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>
     /// Sends a request through the source's gate.
     /// </summary>
     /// <typeparam name="T">What the request returns.</typeparam>
@@ -81,8 +87,9 @@ public static class SourceGate
 
         // A source that does not answer holds up the item's whole refresh, so it gets a bounded
         // wait rather than the client's default of 100 seconds.
+        var delegated = SourceIds.IsDelegated(source);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
+        timeout.CancelAfter(delegated ? DelegatedRequestTimeout : RequestTimeout);
 
         try
         {
@@ -111,7 +118,7 @@ public static class SourceGate
                 throw new SourceBlockedException(source + " does not support this.", ex) { SourceId = source };
             }
 
-            var failure = BlockStore.Classify(ex);
+            var failure = TimeoutScope(BlockStore.Classify(ex), ex, delegated);
             var block = BlockStore.Record(source, failure, itemKey, itemName, kind);
             Log(source, target, itemKey, failure.Reason.ToString(), failure.HttpStatus, started);
 
@@ -122,6 +129,19 @@ public static class SourceGate
             };
         }
     }
+
+    /// <summary>
+    /// Narrows a delegated provider's timeout to the item. Its slowness is usually that item's
+    /// size (a long show's episode list), and a source-wide block would stop every other show.
+    /// </summary>
+    /// <param name="failure">The failure as classified.</param>
+    /// <param name="exception">What was thrown.</param>
+    /// <param name="delegated">Whether the source is a server's own provider.</param>
+    /// <returns>The failure to record.</returns>
+    internal static SourceFailure TimeoutScope(SourceFailure failure, Exception exception, bool delegated)
+        => delegated && failure.Scope == BlockScope.Source && exception is OperationCanceledException or TimeoutException
+            ? failure with { Scope = BlockScope.Item }
+            : failure;
 
     /// <summary>
     /// Records a request that was answered with nothing for the item, so it is not asked again
@@ -186,9 +206,7 @@ public static class SourceGate
         var setting = Plugin.Instance.Configuration.GetSource(source);
         var lane = _lanes.GetOrAdd(source, _ => new Lane());
 
-        var limits = SourceDefaults.Limits(setting);
-        lane.ThrowIfCapped(source, limits);
-        lane.Count(limits);
+        lane.CountUnlessCapped(source, SourceDefaults.Limits(setting));
 
         if (string.Equals(source, SourceIds.AniDb, StringComparison.OrdinalIgnoreCase))
         {
@@ -382,12 +400,32 @@ public static class SourceGate
         {
             if (Refusal(limits) is { } refusal)
             {
-                throw new SourceBlockedException(source + " is held back: " + refusal.Reason + ".")
-                {
-                    SourceId = source,
-                    RetryAfter = refusal.Wait
-                };
+                throw Held(source, refusal);
             }
         }
+
+        // Checked and counted under one lock: two requests checking together could both pass and
+        // go one over the cap.
+        public void CountUnlessCapped(string source, RequestLimits limits)
+        {
+            lock (_pacer)
+            {
+                var now = DateTime.UtcNow;
+
+                if (_pacer.Refusal(now, limits) is { } refusal)
+                {
+                    throw Held(source, refusal);
+                }
+
+                _pacer.Record(now, limits);
+            }
+        }
+
+        private static SourceBlockedException Held(string source, (string Reason, TimeSpan Wait) refusal)
+            => new(source + " is held back: " + refusal.Reason + ".")
+            {
+                SourceId = source,
+                RetryAfter = refusal.Wait
+            };
     }
 }

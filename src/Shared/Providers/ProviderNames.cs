@@ -9,6 +9,13 @@ public static class ProviderNames
     public const string AniDb = "AniDB";
 
     /// <summary>
+    /// The AniDB id the season provider worked out for a season, kept beside its AniDB id. The
+    /// servers keep an id an item already has on a normal refresh, so this is what tells an id
+    /// the provider stored, and may now resolve differently, from one set by hand.
+    /// </summary>
+    public const string AniDbResolvedSeason = "AniMetaPlusSeason";
+
+    /// <summary>
     /// The name the plugin's providers go by in the server's library settings.
     /// </summary>
     public const string Display = "AniMeta+";

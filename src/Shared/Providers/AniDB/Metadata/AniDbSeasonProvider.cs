@@ -91,14 +91,23 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
         // numbering breaks into several seasons, and those seasons share none of its dates.
         var wholeEntry = true;
 
-        if (string.IsNullOrEmpty(seasonId) && !string.IsNullOrEmpty(seriesId))
+        // An id stored by an earlier fill is resolved again: the library or the mapping files
+        // may place the season differently now. Only one set by hand is taken as it is.
+        var resolves = !string.IsNullOrEmpty(seriesId)
+            && !AniDbSeasonResolver.IsSetByHand(seasonId, info.ProviderIds.GetValueOrDefault(ProviderNames.AniDbResolvedSeason), seriesId, info.IndexNumber);
+
+        if (resolves)
         {
             try
             {
-                var segment = await AniDbSeasonResolver.ResolveSeason(appPaths, _libraryManager, seriesId, info.IndexNumber, _logger, cancellationToken).ConfigureAwait(false);
+                var segment = await AniDbSeasonResolver.ResolveSeason(appPaths, _libraryManager, seriesId!, info.IndexNumber, _logger, cancellationToken).ConfigureAwait(false);
 
-                seasonId = segment?.AnimeId;
-                wholeEntry = segment?.FirstEpisodeInEntry <= 1;
+                // Nothing resolved keeps what an earlier fill stored.
+                if (segment != null)
+                {
+                    seasonId = segment.AnimeId;
+                    wholeEntry = segment.FirstEpisodeInEntry <= 1;
+                }
             }
             catch (AniDbBannedException ex)
             {
@@ -108,8 +117,9 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
                     seriesId,
                     ex.RetryAfter);
 
-                // A paused AniDB keeps the season as it is until AniDB answers again.
-                if (PausesFor(ex))
+                // A paused AniDB keeps the season as it is until AniDB answers again. One with an
+                // id stored by an earlier fill is filled from that, as it was before re-resolving.
+                if (string.IsNullOrEmpty(seasonId) && PausesFor(ex))
                 {
                     throw;
                 }
@@ -137,6 +147,11 @@ public class AniDbSeasonProvider(IApplicationPaths appPaths, ILibraryManager lib
         // Recorded so the episode and image providers see the season's own entry instead of
         // resolving it again.
         result.Item.ProviderIds[ProviderNames.AniDb] = seasonId;
+
+        if (resolves)
+        {
+            result.Item.ProviderIds[ProviderNames.AniDbResolvedSeason] = seasonId;
+        }
 
         // The id is all the episodes need. Nothing is fetched for the season's own entry, which
         // would cost an AniDB request per season.
