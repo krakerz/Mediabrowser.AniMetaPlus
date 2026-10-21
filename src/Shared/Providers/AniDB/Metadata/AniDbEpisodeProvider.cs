@@ -257,8 +257,42 @@ public partial class AniDbEpisodeProvider(IServerConfigurationManager configurat
         result.HasMetadata = true;
 
         await ParseEpisodeXml(xml, result.Item, info.MetadataLanguage).ConfigureAwait(false);
+        await ApplyAnnTitle(xml, result.Item, info.MetadataLanguage, cancellationToken).ConfigureAwait(false);
 
         return result;
+    }
+
+    /// <summary>
+    /// Takes the English title Anime News Network has for an episode AniDB has no title for. Only
+    /// when English titles are wanted and the title is empty or only "Episode 5", and only for an
+    /// ordinary episode: the ANN entry is the one the episode's own AniDB entry links, read from
+    /// that entry's cached document, so nothing is asked of AniDB.
+    /// </summary>
+    /// <param name="xml">The episode's cached document.</param>
+    /// <param name="episode">The episode, already filled from the document.</param>
+    /// <param name="metadataLanguage">The language the library is in.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
+    private async Task ApplyAnnTitle(FileInfo xml, Episode episode, string? metadataLanguage, CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance.Configuration;
+
+        if (!configuration.UseAnnExtras
+            || !AnnExtras.WantsEnglishTitles(configuration.EpisodeTitles, metadataLanguage)
+            || !AnnExtras.IsPlaceholderTitle(episode.Name)
+            || AnnExtras.RegularEpisodeNumber(xml.Name) is not { } number
+            || xml.DirectoryName is not { } folder
+            || AniDbSeriesProvider.ReadAnnId(Path.Combine(folder, "series.xml")) is not { } annId)
+        {
+            return;
+        }
+
+        var ann = await AnnClient.Get(annId, _logger, cancellationToken).ConfigureAwait(false);
+
+        if (ann != null && AnnExtras.EpisodeTitle(ann, number) is { } title)
+        {
+            episode.Name = title;
+        }
     }
 
     private async Task<FileInfo?> FindEpisodeXml(EpisodeInfo info, string seriesId, CancellationToken cancellationToken)

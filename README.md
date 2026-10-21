@@ -110,6 +110,7 @@ Layout:
 - **Titles dump**: location and state of the AniDB titles dump
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
+- **General → Anime News Network**: extra staff, studios, rating and English episode titles from ANN where AniDB links an entry (on), the English dub cast (off), and a FlareSolverr address (and timeout) for when ANN puts a Cloudflare security check in front of the server's IP; FlareSolverr must use the same public IP as the server
 - **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged, and Verify / Revert / Set manually / Lift manual
 - **Blocks**: remembered failures, sortable and filterable by source, kind, reason or text, with lift, pin and lift-all-shown
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs

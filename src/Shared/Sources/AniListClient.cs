@@ -173,7 +173,7 @@ public static partial class AniListClient
         if (!response.IsSuccessStatusCode)
         {
             throw new SourceHttpException(
-                "AniList answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
+                "AniList answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + CloudflareGuard.Note(SourceIds.AniList, response),
                 response.StatusCode,
                 response.Headers.RetryAfter?.Delta ?? (response.StatusCode == HttpStatusCode.TooManyRequests ? TimeSpan.FromMinutes(1) : null));
         }

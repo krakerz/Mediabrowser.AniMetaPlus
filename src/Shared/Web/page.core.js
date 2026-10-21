@@ -923,8 +923,8 @@ function aniMetaPlusPage(host) {
         mapPage = Math.min(Math.max(mapPage, 0), pages - 1);
         var rows = shown.slice(mapPage * mapPageSize, (mapPage + 1) * mapPageSize);
 
-        view.querySelector('#ampMapCount').textContent = mapList.length ? shown.length + ' of ' + mapList.length + ' shown' : '';
-        view.querySelector('#ampMapPage').textContent = shown.length ? 'page ' + (mapPage + 1) + ' of ' + pages : '';
+        view.querySelector('#ampMapCount').textContent = mapList.length ? shown.length + ' of ' + mapList.length : '';
+        view.querySelector('#ampMapPage').textContent = shown.length ? (mapPage + 1) + ' / ' + pages : '';
         view.querySelector('#ampMapPrev').disabled = mapPage <= 0;
         view.querySelector('#ampMapNext').disabled = mapPage >= pages - 1;
 
@@ -1073,6 +1073,10 @@ function aniMetaPlusPage(host) {
         view.querySelector('#ampCastCharacters').checked = !!config.CastShowsCharacters;
         view.querySelector('#ampPublishIds').checked = !!config.PublishMappedIds;
         view.querySelector('#ampUseAniBridge').checked = !!config.UseAniBridgeMappings;
+        view.querySelector('#ampUseAnnExtras').checked = config.UseAnnExtras !== false;
+        view.querySelector('#ampAnnEnglishCast').checked = !!config.AnnEnglishCast;
+        view.querySelector('#ampFlareSolverrUrl').value = config.FlareSolverrUrl || '';
+        view.querySelector('#ampFlareSolverrTimeout').value = config.FlareSolverrTimeoutSeconds || 90;
         view.querySelector('#ampLogSettings').checked = config.LogSettings !== false;
     }
 
@@ -1596,6 +1600,10 @@ function aniMetaPlusPage(host) {
                 config.CastShowsCharacters = view.querySelector('#ampCastCharacters').checked;
                 config.PublishMappedIds = view.querySelector('#ampPublishIds').checked;
                 config.UseAniBridgeMappings = view.querySelector('#ampUseAniBridge').checked;
+                config.UseAnnExtras = view.querySelector('#ampUseAnnExtras').checked;
+                config.AnnEnglishCast = view.querySelector('#ampAnnEnglishCast').checked;
+                config.FlareSolverrUrl = view.querySelector('#ampFlareSolverrUrl').value.trim();
+                config.FlareSolverrTimeoutSeconds = Math.min(600, Math.max(10, parseInt(view.querySelector('#ampFlareSolverrTimeout').value, 10) || 90));
                 config.LogSettings = view.querySelector('#ampLogSettings').checked;
             });
         });

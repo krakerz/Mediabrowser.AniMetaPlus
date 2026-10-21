@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using AniMetaPlus.Core;
 using AniMetaPlus.Providers.AniDB.Identity;
+using AniMetaPlus.Sources;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -248,7 +249,13 @@ public static class TitlesDump
 
             using (var response = await httpClient.GetAsync(isXml ? XmlUrl : DatUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
             {
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new HttpRequestException(
+                        "AniDB's titles dump answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + CloudflareGuard.Note("AniDB titles dump", response),
+                        null,
+                        response.StatusCode);
+                }
 
                 using var body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 using var file = File.Create(temporary);

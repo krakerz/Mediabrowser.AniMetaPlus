@@ -127,6 +127,10 @@ public partial class PluginConfiguration : BasePluginConfiguration
         EnableSimilarItems = true;
         AniDbImagesFromCache = true;
         LogSettings = true;
+        UseAnnExtras = true;
+        AnnEnglishCast = false;
+        FlareSolverrUrl = string.Empty;
+        FlareSolverrTimeoutSeconds = 90;
     }
 
     /// <summary>
@@ -292,6 +296,35 @@ public partial class PluginConfiguration : BasePluginConfiguration
     /// matched against the settings without a screenshot of this page.
     /// </summary>
     public bool LogSettings { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether staff, studios, English episode titles and a
+    /// rating are added from Anime News Network where AniDB links an entry. ANN is not one of
+    /// the sources the owner orders: it only adds to what they produced, from one request per
+    /// show, kept a week.
+    /// </summary>
+    public bool UseAnnExtras { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the English dub cast is added from Anime News
+    /// Network, after the cast the sources gave. Off by default. Applies only when
+    /// <see cref="UseAnnExtras"/> is on.
+    /// </summary>
+    public bool AnnEnglishCast { get; set; }
+
+    /// <summary>
+    /// Gets or sets the address of a FlareSolverr, used to get past the Cloudflare check Anime
+    /// News Network answers some addresses with. Empty when there is none. It must reach the
+    /// internet from the same public address as this server, as the cookie it gets only works
+    /// from the address that solved the check.
+    /// </summary>
+    public string FlareSolverrUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the longest FlareSolverr may take to solve the check, in seconds. Kept
+    /// between 10 and 600 where it is used.
+    /// </summary>
+    public int FlareSolverrTimeoutSeconds { get; set; }
 
     /// <summary>
     /// Gets or sets the AniDB request gap the General tab used to set, in milliseconds. Read once

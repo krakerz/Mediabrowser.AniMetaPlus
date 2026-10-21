@@ -677,8 +677,9 @@ public static class AniMetaApi
             throw new ArgumentException("Only a corrected show can be reverted.", nameof(path));
         }
 
+        // The TVDB and TMDB ids go back too: a correction may have changed what they point at.
         var restored = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var provider in _handIdProviders)
+        foreach (var provider in _handIdProviders.Concat(["Tvdb", "Tmdb"]))
         {
             restored[provider] = existing.OldIds.GetValueOrDefault(provider) ?? string.Empty;
         }
@@ -732,6 +733,19 @@ public static class AniMetaApi
                 "AniMeta+ left {Show} without an AniDB id: the mappings file no entry under the id the owner gave, so it is filled from MyAnimeList and AniList alone",
                 show.Name);
         }
+
+        // The TVDB and TMDB ids the show carries came from whatever identified it before, and
+        // Charlotte kept another show's that way. They are taken from the mappings of the AniDB
+        // entry given, or cleared where the mappings have none, so the server's own providers
+        // and the artwork keyed by them follow the show the owner named.
+        // The IMDb id came from the same wrong show; it is cleared for the server's TVDB and TMDB
+        // providers to fill from the right one.
+        var shown = string.IsNullOrEmpty(ids[ProviderNames.AniDb])
+            ? MappedIds.None
+            : await AniDbMappings.ResolveShowIds(Plugin.Instance.AppPaths, ids[ProviderNames.AniDb], logger, CancellationToken.None).ConfigureAwait(false);
+        ids["Tvdb"] = shown.Tvdb ?? string.Empty;
+        ids["Tmdb"] = shown.Tmdb ?? string.Empty;
+        ids["Imdb"] = string.Empty;
 
         return await SetByHand(show, Db.IdRecords.FindById(path), ids, "Set by the owner").ConfigureAwait(false);
     }
@@ -876,7 +890,8 @@ public static class AniMetaApi
         var now = ids.Where(i => i.Value.Length > 0).ToDictionary(i => i.Key, i => i.Value, StringComparer.Ordinal);
         var record = Save(show, existing, IdRecord.Manual, existing is { Status: IdRecord.Manual } ? existing.OldIds : IdCheck.RecordedIds(show.ProviderIds), now, reason);
 
-        refresher.Refresh(show.Path, true);
+        // Images too: the poster and backdrop were found under the ids the show had.
+        refresher.Refresh(show.Path, true, true);
 
         var shown = IdCheck.RecordedIds(show.ProviderIds);
         foreach (var (provider, id) in ids)

@@ -75,6 +75,9 @@ public static class LibraryScan
 
         // The identified shows are checked first, from local data.
         await IdCheck.Run(items, logger, cancellationToken).ConfigureAwait(false);
+
+        // And given the Anime News Network id their cached AniDB answer names, without a request.
+        await AddAnnIds(items, logger, cancellationToken).ConfigureAwait(false);
         var identified = 0;
         var askingAniDb = 0;
         var deferred = 0;
@@ -163,6 +166,64 @@ public static class LibraryScan
         progress?.Report(100);
 
         return new ScanResult(identified, unmatched, deferred, askingAniDb);
+    }
+
+    // AniDB entries whose cached answer names no ANN entry, so their file is not read again
+    // every run. Cleared when the server restarts, by which time the answer may be new.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _noAnnId = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Puts the Anime News Network id on the shows and movies that lack one, read from the AniDB
+    /// answer already cached for them. A refresh does the same, but only when one happens; this
+    /// gives the whole library its ANN links at no cost.
+    /// </summary>
+    /// <param name="items">The anime libraries' items.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>How many items were given an ANN id.</returns>
+    internal static async Task<int> AddAnnIds(IReadOnlyList<ScanItem> items, ILogger logger, CancellationToken cancellationToken)
+    {
+        var refresher = HostServices.Refresher;
+        if (refresher == null)
+        {
+            return 0;
+        }
+
+        var paths = Plugin.Instance.AppPaths;
+        var added = 0;
+
+        foreach (var item in items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!item.ProviderIds.TryGetValue(ProviderNames.AniDb, out var animeId)
+                || string.IsNullOrEmpty(animeId)
+                || item.ProviderIds.TryGetValue(SourceIds.Ann, out var has) && !string.IsNullOrEmpty(has)
+                || _noAnnId.ContainsKey(animeId)
+                || !AniDbSeriesProvider.HasCachedSeriesData(paths, animeId))
+            {
+                continue;
+            }
+
+            var annId = AniDbSeriesProvider.ReadAnnId(AniDbSeriesProvider.CachedSeriesDataPath(paths, animeId));
+            if (annId == null)
+            {
+                _noAnnId[animeId] = true;
+                continue;
+            }
+
+            if (await refresher.SaveIds(item.Path, new Dictionary<string, string> { [SourceIds.Ann] = annId }, cancellationToken).ConfigureAwait(false))
+            {
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            logger.LogInformation("AniMeta+ gave {Count} shows and movies the Anime News Network id their cached AniDB answer names", added);
+        }
+
+        return added;
     }
 
     private static async Task<string?> FromMappings(ScanItem item, ILogger logger, CancellationToken cancellationToken)

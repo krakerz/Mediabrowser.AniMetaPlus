@@ -288,7 +288,7 @@ public static class MalClient
         if (!response.IsSuccessStatusCode)
         {
             throw new SourceHttpException(
-                name + " answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture),
+                name + " answered " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + CloudflareGuard.Note(name, response),
                 response.StatusCode,
                 response.Headers.RetryAfter?.Delta ?? (response.StatusCode == HttpStatusCode.TooManyRequests ? TimeSpan.FromMinutes(1) : null));
         }

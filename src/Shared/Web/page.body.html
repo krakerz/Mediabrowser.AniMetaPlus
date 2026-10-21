@@ -56,6 +56,11 @@
     #ampBlockFilters > input { flex-basis: 14em; }
     #ampMapFilters > select, #ampMapFilters > input { flex: 1 1 9em; width: auto; min-width: 0; }
     #ampMapFilters > input { flex-basis: 14em; }
+    #ampMapFilters > select { flex: 0 1 12em; }
+    .amp-map-count { white-space: nowrap; }
+    .amp-pager { display: inline-flex; align-items: center; gap: .4em; white-space: nowrap; }
+    .amp-pager button { background: rgba(128,128,128,.15); color: inherit; border: 1px solid rgba(128,128,128,.45); border-radius: .25em; width: 2em; height: 2em; font: inherit; font-size: 1.1em; line-height: 1; cursor: pointer; padding: 0; }
+    .amp-pager button:disabled { opacity: .35; cursor: default; }
     .amp-mapping td:nth-child(1) { min-width: 14em; max-width: 24em; }
     .amp-mapping .amp-path { word-break: break-all; }
     .amp-mapping a { color: inherit; text-decoration: underline; }
@@ -226,13 +231,13 @@
             <option value="none">Not checked</option>
         </select>
         <input type="text" id="ampMapFilterText" placeholder="Filter by name, path or id" />
+        <span class="amp-small amp-map-count" id="ampMapCount"></span>
+        <span class="amp-pager">
+            <button type="button" id="ampMapPrev" title="Previous page">&#8249;</button>
+            <span class="amp-small" id="ampMapPage"></span>
+            <button type="button" id="ampMapNext" title="Next page">&#8250;</button>
+        </span>
         <button is="emby-button" type="button" class="raised" id="ampMapReload"><span>Reload</span></button>
-    </div>
-    <div class="amp-row">
-        <span class="amp-small" id="ampMapCount"></span>
-        <button is="emby-button" type="button" class="raised" id="ampMapPrev"><span>Prev</span></button>
-        <span class="amp-small" id="ampMapPage"></span>
-        <button is="emby-button" type="button" class="raised" id="ampMapNext"><span>Next</span></button>
     </div>
     <div class="amp-scroll"><table class="amp-table amp-mapping" id="ampMapping"><tr><td class="amp-muted">Not loaded yet.</td></tr></table></div>
 </div>
@@ -339,6 +344,10 @@
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampCastCharacters" /><span>List characters rather than voice actors</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampPublishIds" /><span>Write the mapped TVDB and TMDB ids onto shows</span></label>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampUseAniBridge" /><span>Use the AniBridge mappings</span></label>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampUseAnnExtras" /><span>Add staff, studios, English episode titles and a rating from Anime News Network where AniDB links an entry</span></label>
+    <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampAnnEnglishCast" /><span>Add the English dub cast from Anime News Network</span></label>
+    <div class="inputContainer"><input is="emby-input" id="ampFlareSolverrUrl" type="text" label="FlareSolverr address, for Anime News Network's Cloudflare check (optional), e.g. http://192.168.1.3:8191. It must reach the internet from the same public IP as this server:" /></div>
+    <div class="inputContainer"><input is="emby-input" id="ampFlareSolverrTimeout" type="number" min="10" max="600" label="Longest FlareSolverr may take to solve the check, in seconds (10 to 600):" /></div>
     <label class="checkboxContainer"><input type="checkbox" is="emby-checkbox" id="ampLogSettings" /><span>Write these settings to the server log at startup and when saved (client names and keys left out), to match a problem against them</span></label>
     <div class="amp-actions"><button is="emby-button" type="button" class="raised button-submit" id="ampSaveGeneral"><span>Save</span></button></div>
     </div>

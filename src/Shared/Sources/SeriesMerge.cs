@@ -74,6 +74,20 @@ public static class SeriesMerge
         var outcomes = new Dictionary<string, SourceOutcome>(StringComparer.OrdinalIgnoreCase) { [SourceIds.AniDb] = aniDb };
         var hasData = aniDb.State == SourceState.Ok;
         string? pausedFor = null;
+        AnnRecord? ann = null;
+        var annLoaded = false;
+
+        // What Anime News Network knows, asked for at most once and only where AniDB links an entry.
+        async Task<AnnRecord?> GetAnn()
+        {
+            if (!annLoaded)
+            {
+                annLoaded = true;
+                ann = await AnnExtras.Load(result.Item, context, logger, cancellationToken).ConfigureAwait(false);
+            }
+
+            return ann;
+        }
 
         async Task<SourceOutcome> Get(string source)
         {
@@ -119,9 +133,20 @@ public static class SeriesMerge
                     }
                 }
 
-                if (contributors.Count > 0)
+                // ANN's score is one more contributor to the rating, though it is no source in
+                // the order and so is not among the sources the field's provenance records.
+                var combined = contributors;
+                if (kind == DataKind.Rating
+                    && configuration.ImportCommunityRating
+                    && await GetAnn().ConfigureAwait(false) is { } annScore
+                    && AnnExtras.RatingRecord(annScore) is { } annRating)
                 {
-                    ApplyCombined(kind, result, contributors, aniDb.Record);
+                    combined = [.. contributors, annRating];
+                }
+
+                if (combined.Count > 0)
+                {
+                    ApplyCombined(kind, result, combined, aniDb.Record);
                     hasData = true;
                 }
 
@@ -198,6 +223,13 @@ public static class SeriesMerge
             {
                 result.Item.SetProviderId(provider, id);
             }
+        }
+
+        // Staff, studios and the English cast Anime News Network adds, after everything the
+        // sources gave. An item that waits for a paused source is discarded, so it asks nothing.
+        if (pausedFor == null && configuration.UseAnnExtras && await GetAnn().ConfigureAwait(false) is { } annExtras)
+        {
+            AnnExtras.Apply(result, annExtras, configuration);
         }
 
         db.Wrote();
@@ -674,26 +706,9 @@ public static class SeriesMerge
                     return;
                 }
 
-                double total = 0;
-                double weight = 0;
-
-                foreach (var record in contributors)
+                if (AverageRating(contributors, source => source == SourceIds.Ann || configuration.GetSource(source).IncludeInRating) is { } average)
                 {
-                    if (!configuration.GetSource(record.Source).IncludeInRating || record.Rating is not { } rating)
-                    {
-                        continue;
-                    }
-
-                    // Weighted by votes, so that a score from a handful of voters does not pull one
-                    // from a hundred thousand. A source that gives no count weighs as one hundred.
-                    var votes = Math.Max(record.Votes ?? 100, 1);
-                    total += rating * votes;
-                    weight += votes;
-                }
-
-                if (weight > 0)
-                {
-                    series.CommunityRating = (float)Math.Round(total / weight, 1);
+                    series.CommunityRating = average;
                 }
 
                 break;
@@ -746,6 +761,34 @@ public static class SeriesMerge
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// The combined rating of the sources that count towards it, weighted by their votes, so that
+    /// a score from a handful of voters does not pull one from a hundred thousand. A source that
+    /// gives no count weighs as one hundred.
+    /// </summary>
+    /// <param name="records">The contributors.</param>
+    /// <param name="counts">Whether a source's rating counts, by source id.</param>
+    /// <returns>The rating to one decimal, or <c>null</c> when no contributor counts.</returns>
+    internal static float? AverageRating(IEnumerable<AnimeRecord> records, Func<string, bool> counts)
+    {
+        double total = 0;
+        double weight = 0;
+
+        foreach (var record in records)
+        {
+            if (!counts(record.Source) || record.Rating is not { } rating)
+            {
+                continue;
+            }
+
+            var votes = Math.Max(record.Votes ?? 100, 1);
+            total += rating * votes;
+            weight += votes;
+        }
+
+        return weight > 0 ? (float)Math.Round(total / weight, 1) : null;
     }
 
     /// <summary>

@@ -117,7 +117,10 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
     }
 
     /// <inheritdoc />
-    public bool Refresh(string itemPath, bool replaceAll)
+    public bool Refresh(string itemPath, bool replaceAll) => Refresh(itemPath, replaceAll, false);
+
+    /// <inheritdoc />
+    public bool Refresh(string itemPath, bool replaceAll, bool replaceImages)
     {
         if (string.IsNullOrEmpty(itemPath))
         {
@@ -134,7 +137,8 @@ public sealed class HostLibrary : IHostRefresher, IHostImages, IHostCollections
         {
             MetadataRefreshMode = MetadataRefreshMode.FullRefresh,
             ImageRefreshMode = MetadataRefreshMode.FullRefresh,
-            ReplaceAllMetadata = replaceAll
+            ReplaceAllMetadata = replaceAll,
+            ReplaceAllImages = replaceImages
         };
 
 #if EMBY
