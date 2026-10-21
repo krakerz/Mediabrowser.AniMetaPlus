@@ -93,6 +93,35 @@ public static class DelegatedProviders
         return result is { HasMetadata: true } ? result : null;
     }
 
+#if EMBY
+    /// <summary>
+    /// Asks the server's series provider of a name for all the episodes of a show, aired or not.
+    /// </summary>
+    /// <param name="name">The provider name.</param>
+    /// <param name="info">The lookup info, carrying the ids that provider is keyed by.</param>
+    /// <param name="itemKey">The item key, for blocks and the request log.</param>
+    /// <param name="itemName">The item's name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The episodes, or <c>null</c> when the provider is not installed or cannot list them.</returns>
+    /// <exception cref="SourceBlockedException">The source may not be asked, or the request failed and is now blocked.</exception>
+    internal static async Task<RemoteSearchResult[]?> GetAllEpisodes(string name, SeriesInfo info, string itemKey, string itemName, CancellationToken cancellationToken)
+    {
+        if (Find<Series, SeriesInfo>(name) is not ISeriesMetadataProvider provider)
+        {
+            return null;
+        }
+
+        return await SourceGate.Run(
+            name,
+            itemKey,
+            itemName,
+            "Episodes",
+            "episodes " + itemName,
+            ct => provider.GetAllEpisodes(info, ct),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+#endif
     /// <summary>
     /// Searches the server's TheTVDB or TheMovieDb provider by name, for an identify, and keeps
     /// the hits the mappings file under an AniDB entry.

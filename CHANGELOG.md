@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.22.0] — 2026-10-21
+
+### Added
+- Upcoming and Missing episodes for anime series on Emby, from TheTVDB renumbered to the library's seasons, or from cached AniDB air dates
+- On Jellyfin, ticking TheTVDB and its Missing Episode Fetcher below AniMeta+ in the anime library adds upcoming episodes
+
 ## [2.21.0] — 2026-10-21
 
 ### Added
