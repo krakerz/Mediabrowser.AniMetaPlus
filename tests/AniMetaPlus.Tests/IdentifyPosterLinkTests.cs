@@ -115,6 +115,21 @@ public class IdentifyPosterLinkTests
     }
 
     [Fact]
+    public void AnAbsoluteLoopbackAddressReadsBackAndVerifies()
+    {
+        var url = "http://127.0.0.1:8096" + IdentifyLabel.PosterUrl(_label, "/emby", _key);
+
+        Assert.StartsWith("http://127.0.0.1:8096/emby/AniMetaPlus/Identify/Poster?l=", url, StringComparison.Ordinal);
+        Assert.True(IdentifyLabel.TryParseAddress(url, out var payload, out var signature));
+        Assert.Equal(_label, IdentifyLabel.ParseQuery(payload));
+        Assert.True(IdentifySigner.Verify(payload, signature, _key));
+    }
+
+    [Fact]
+    public void ARootRelativeAddressStaysFreeOfAnyOrigin()
+        => Assert.StartsWith("/jellyfin/AniMetaPlus/Identify/Poster?l=", IdentifyLabel.PosterUrl(_label, "/jellyfin", _key), StringComparison.Ordinal);
+
+    [Fact]
     public void ATamperedAddressIsReadButDoesNotVerify()
     {
         var url = IdentifyLabel.PosterUrl(_label, "/emby", _key);
@@ -147,4 +162,63 @@ public class IdentifyPosterLinkTests
         Assert.Equal("image/svg", IdentifyLabel.EmbyContentType);
         Assert.Equal("image/svg+xml", IdentifyLabel.SvgContentType);
     }
+
+    [Theory]
+    [InlineData(8096)]
+    [InlineData(1)]
+    [InlineData(65535)]
+    public void TheProxyAddressIsTheLoopbackFormWithAFlagOutsideTheSignedPayload(int port)
+    {
+        var relative = IdentifyLabel.PosterUrl(_label, "/emby", _key);
+        var url = IdentifyLabel.ProxyUrl(relative, port);
+
+        Assert.Equal("http://127.0.0.1:" + port + relative + "&t=1", url);
+        Assert.True(IdentifyLabel.TryParseAddress(url!, out var payload, out var signature));
+        Assert.Equal(_label, IdentifyLabel.ParseQuery(payload));
+        Assert.Equal(IdentifyLabel.Query(_label), payload);
+        Assert.True(IdentifySigner.Verify(payload, signature, _key));
+    }
+
+    [Theory]
+    [InlineData(null, "/emby/AniMetaPlus/Identify/Poster?l=a&sig=b")]
+    [InlineData(0, "/emby/AniMetaPlus/Identify/Poster?l=a&sig=b")]
+    [InlineData(70000, "/emby/AniMetaPlus/Identify/Poster?l=a&sig=b")]
+    [InlineData(8096, "https://s4.anilist.co/a.jpg")]
+    [InlineData(8096, "//evil.example/x")]
+    [InlineData(8096, "animetaplus-label:?p=a")]
+    public void NoProxyAddressWithoutAPortOrForAnAddressThatIsNotRootRelative(int? port, string url)
+        => Assert.Null(IdentifyLabel.ProxyUrl(url, port));
+
+    [Theory]
+    [InlineData("/emby/Images/Remote?api_key=k&imageUrl=")]
+    [InlineData("http://emby.lan:8096/emby/Images/Remote?api_key=k&imageUrl=")]
+    [InlineData("/Images/remote/?imageUrl=")]
+    public void AnImageProxyWrapperGivesUpTheAddressInsideIt(string wrapper)
+    {
+        var inner = "http://127.0.0.1:8096" + IdentifyLabel.PosterUrl(_label, "/emby", _key) + "&t=1";
+
+        Assert.True(IdentifyLabel.TryUnwrapProxy(wrapper + Uri.EscapeDataString(inner), out var unwrapped));
+        Assert.Equal(inner, unwrapped);
+        Assert.True(IdentifyLabel.TryParseAddress(unwrapped, out var payload, out var signature));
+        Assert.True(IdentifySigner.Verify(payload, signature, _key));
+    }
+
+    [Fact]
+    public void AWrappedAddressOnAnotherHostIsStillNotAPosterAddress()
+    {
+        Assert.True(IdentifyLabel.TryUnwrapProxy("/emby/Images/Remote?api_key=k&imageUrl=" + Uri.EscapeDataString("http://evil.example/x.jpg"), out var inner));
+        Assert.Equal("http://evil.example/x.jpg", inner);
+        Assert.False(IdentifySearch.IsPosterUrl(inner, out _));
+        Assert.False(IdentifySearch.IsAniDbUrl(inner));
+        Assert.False(IdentifyLabel.TryParseAddress(inner, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("/emby/Images/Remote?api_key=k")]
+    [InlineData("/emby/Images/Remote?imageUrl=")]
+    [InlineData("/emby/Items/Remote?imageUrl=http%3A%2F%2Fa")]
+    [InlineData("https://s4.anilist.co/a.jpg?imageUrl=x")]
+    [InlineData("/emby/AniMetaPlus/Identify/Poster?l=a&sig=b")]
+    public void OtherAddressesAreNotWrappers(string url)
+        => Assert.False(IdentifyLabel.TryUnwrapProxy(url, out _));
 }

@@ -1228,6 +1228,15 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             SearchProviderName = ProviderNames.Display
         };
 
+#if EMBY
+        // Emby 4.10.2's page has the server fetch a result's image, which it cannot do for a
+        // root-relative address; the thumbnail is the same picture by the server's loopback.
+        if (labels)
+        {
+            search.ThumbnailUrl = IdentifyLabel.ProxyUrl(search.ImageUrl, HostServices.LocalPort?.Invoke());
+        }
+#endif
+
         if (!string.IsNullOrEmpty(result.AnimeId))
         {
             search.SetProviderId(ProviderNames.AniDb, result.AnimeId);
@@ -1247,13 +1256,19 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
     /// <summary>
     /// Answers a request for an identify result's picture: a poster with its label band (by the
-    /// server's signed address for it, or the older label url), the "Local only" poster, a poster an online source gave, or - for an AniDB address, as before - AniDB's own.
+    /// server's signed address for it, or the older label url, even wrapped in Emby's image proxy address), the "Local only" poster, a poster an online source gave, or - for an AniDB address, as before - AniDB's own.
     /// </summary>
     /// <param name="url">The image url.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The server's image response.</returns>
     internal static Task<HostImageResponse> GetIdentifyImage(string url, CancellationToken cancellationToken)
     {
+        // Emby 4.10.2's image proxy wraps the address in its own; the one inside goes through the same checks, once.
+        if (IdentifyLabel.TryUnwrapProxy(url, out var inner))
+        {
+            url = inner;
+        }
+
         if (IdentifyLabel.Is(url))
         {
             return IdentifyLabel.GetImage(url, cancellationToken);

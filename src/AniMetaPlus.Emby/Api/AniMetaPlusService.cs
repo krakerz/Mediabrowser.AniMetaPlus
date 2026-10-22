@@ -412,6 +412,9 @@ public class GetIdentifyPoster : IReturn<byte[]>
 
     /// <summary>Gets or sets the signature the address carried.</summary>
     public string? Sig { get; set; }
+
+    /// <summary>Gets or sets the flag the server's own image proxy's address carries.</summary>
+    public string? T { get; set; }
 }
 
 #pragma warning restore SA1402
@@ -681,10 +684,10 @@ public class AniMetaPlusService : IService
 }
 
 /// <summary>
-/// The identify poster, apart from the settings endpoints because it is open to anyone: the result
-/// list puts its address into the page as a picture, and the browser sends no login for that.
-/// The signature keeps it to labels this server's own identify made, and the poster is only ever
-/// fetched from a source's image host.
+/// The identify poster, apart from the settings endpoints because it is open to anyone: the browser
+/// loads it for the result list on older web clients, and the server fetches it from itself, through
+/// its image proxy, on 4.10.2 and later; neither sends a login. The signature keeps it to labels
+/// this server's own identify made, and the poster is only ever fetched from a source's image host.
 /// </summary>
 public class AniMetaPlusPosterService : IService, IRequiresRequest
 {
@@ -716,6 +719,9 @@ public class AniMetaPlusPosterService : IService, IRequiresRequest
             throw new MediaBrowser.Common.Extensions.ResourceNotFoundException("No such poster");
         }
 
-        return _results.GetResult(Request, svg, IdentifyLabel.SvgContentType, new Dictionary<string, string> { ["Cache-Control"] = "public, max-age=86400" });
+        // The server's image proxy (flagged) serves what it saved by the type's ending; a browser needs the real type.
+        var type = string.IsNullOrEmpty(request.T) ? IdentifyLabel.SvgContentType : IdentifyLabel.EmbyContentType;
+
+        return _results.GetResult(Request, svg, type, new Dictionary<string, string> { ["Cache-Control"] = "public, max-age=86400" });
     }
 }
