@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.23.0] — 2026-10-22
+
+### Added
+- The Status tab says when a newer AniMeta+ release is out on GitHub, with a link to it; checked at most every 6 hours while the settings page is open
+
 ## [2.22.0] — 2026-10-21
 
 ### Added

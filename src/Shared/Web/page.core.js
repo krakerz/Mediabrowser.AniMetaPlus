@@ -157,7 +157,8 @@ function aniMetaPlusPage(host) {
         var line = view.querySelector('#ampPluginState');
         Promise.all([
             ApiClient.getInstalledPlugins().catch(function () { return []; }),
-            ApiClient.getSystemInfo().catch(function () { return {}; })
+            ApiClient.getSystemInfo().catch(function () { return {}; }),
+            get('LatestRelease').catch(function () { return {}; })
         ]).then(function (results) {
             var mine = (results[0] || []).filter(function (p) {
                 return String(p.Id || '').replace(/-/g, '').toLowerCase() === pluginId.replace(/-/g, '').toLowerCase();
@@ -173,6 +174,14 @@ function aniMetaPlusPage(host) {
                 line.innerHTML = badge('Restart pending', 'amp-warn') + ' ' + esc(text + '; the server is waiting for a restart to finish an update.');
             } else {
                 line.innerHTML = badge('Up to date', 'amp-ok') + ' ' + esc(text + '; no restart needed.');
+            }
+
+            // Only when the release is newer than what is installed too, so a pending restart isn't also called an update.
+            var release = results[2] || {};
+            var have = newest && compareVersions(newest, running) > 0 ? newest : running;
+            if (release.Version && compareVersions(release.Version, have) > 0) {
+                line.innerHTML += '<br>' + badge('Update available', 'amp-warn') + ' AniMeta+ ' + esc(shortVersion(release.Version)) + ' is out'
+                    + (release.Url ? ': <a href="' + esc(release.Url) + '" target="_blank" rel="noopener">release notes</a>.' : '.');
             }
         });
     }
