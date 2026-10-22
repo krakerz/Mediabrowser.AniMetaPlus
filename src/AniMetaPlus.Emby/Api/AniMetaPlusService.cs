@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AniMetaPlus.Core;
 using AniMetaPlus.Data;
 using AniMetaPlus.Logging;
 using AniMetaPlus.Providers.AniDB.Metadata;
@@ -19,6 +20,12 @@ namespace AniMetaPlus.Api;
 /// <summary>Gets everything the settings page shows at a glance.</summary>
 [Route("/AniMetaPlus/Overview", "GET")]
 public class GetOverview : IReturn<OverviewStatus>
+{
+}
+
+/// <summary>Gets the newest AniMeta+ release published on GitHub.</summary>
+[Route("/AniMetaPlus/LatestRelease", "GET")]
+public class GetLatestRelease : IReturn<LatestRelease>
 {
 }
 
@@ -431,6 +438,11 @@ public class AniMetaPlusService : IService
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
     public async Task<object> Get(GetOverview request) => await AniMetaApi.GetOverview(_logger, CancellationToken.None).ConfigureAwait(false);
+
+    /// <summary>Handles the request.</summary>
+    /// <param name="request">The request.</param>
+    /// <returns>The response.</returns>
+    public async Task<object> Get(GetLatestRelease request) => await ReleaseCheck.Get(_logger, CancellationToken.None).ConfigureAwait(false);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

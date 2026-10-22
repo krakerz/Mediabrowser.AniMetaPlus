@@ -144,6 +144,12 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     [HttpGet("Overview")]
     public Task<OverviewStatus> GetOverview(CancellationToken cancellationToken) => AniMetaApi.GetOverview(logger, cancellationToken);
 
+    /// <summary>Gets the newest AniMeta+ release published on GitHub.</summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The release.</returns>
+    [HttpGet("LatestRelease")]
+    public Task<LatestRelease> GetLatestRelease(CancellationToken cancellationToken) => ReleaseCheck.Get(logger, cancellationToken);
+
     /// <summary>Lists blocks.</summary>
     /// <param name="includeExpired">Whether to include lapsed blocks.</param>
     /// <returns>The blocks.</returns>
