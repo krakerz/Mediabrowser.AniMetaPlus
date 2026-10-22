@@ -4,6 +4,11 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.23.1] — 2026-10-22
+
+### Fixed
+- Identify results on Emby showed blank posters, because Emby's web client has the server fetch them and the server could not reach the address
+
 ## [2.23.0] — 2026-10-22
 
 ### Added

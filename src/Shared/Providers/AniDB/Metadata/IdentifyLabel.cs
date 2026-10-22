@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -48,6 +49,14 @@ internal static partial class IdentifyLabel
     /// What the picture is, for a browser.
     /// </summary>
     internal const string SvgContentType = "image/svg+xml";
+
+    /// <summary>
+    /// The query flag on an address that the server's own image proxy fetches, which is answered
+    /// as <see cref="EmbyContentType"/>.
+    /// </summary>
+    internal const string ProxyFlag = "t";
+
+    private const string ProxyPath = "/Images/Remote";
     private const int MaxLine = 28;
     private const int MaxPosterBytes = 5 * 1024 * 1024;
     private const double LineWidth = 368;
@@ -70,14 +79,73 @@ internal static partial class IdentifyLabel
     {
         ArgumentNullException.ThrowIfNull(paths);
 
-        // Both pages put the url straight into a card, so it has to be an address of the server's own.
 #if EMBY
-        // Emby serves its api under "/emby".
-        const string basePath = "/emby";
+        // Emby serves its api under "/emby". Older web clients load this url in the browser;
+        // newer ones ask the server for it, which <see cref="ProxyUrl"/> is for.
+        return PosterUrl(label, "/emby", IdentifySigner.Key(paths));
 #else
-        var basePath = HostServices.BasePath?.Invoke();
+        // Jellyfin's page puts the url straight into a card, so it has to be an address of the server's own.
+        return PosterUrl(label, HostServices.BasePath?.Invoke(), IdentifySigner.Key(paths));
 #endif
-        return PosterUrl(label, basePath, IdentifySigner.Key(paths));
+    }
+
+    /// <summary>
+    /// Makes the address the server itself can fetch a root-relative picture address by: Emby 4.10.2's
+    /// web client has the server fetch a result's image, and the server cannot know which host the
+    /// browser used, so it is addressed on its own loopback.
+    /// </summary>
+    /// <param name="resultUrl">A root-relative address, such as <see cref="ResultUrl"/> made.</param>
+    /// <param name="port">The plain-http port the server listens on locally.</param>
+    /// <returns>An absolute address that answers as <see cref="EmbyContentType"/>, or <c>null</c> where there is no port or the address is not root-relative.</returns>
+    internal static string? ProxyUrl(string resultUrl, int? port)
+    {
+        if (port is not (> 0 and <= 65535) || !resultUrl.StartsWith('/') || resultUrl.StartsWith("//", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // The flag is no part of what is signed.
+        return "http://127.0.0.1:" + port.Value.ToString(CultureInfo.InvariantCulture) + resultUrl + "&" + ProxyFlag + "=1";
+    }
+
+    /// <summary>
+    /// Reads the address Emby's image proxy wraps a result's picture address in
+    /// ("…/Images/Remote?api_key=…&amp;imageUrl=…").
+    /// </summary>
+    /// <param name="url">The url.</param>
+    /// <param name="inner">The wrapped address, decoded.</param>
+    /// <returns><c>true</c> when the url is a wrapper that holds an address.</returns>
+    internal static bool TryUnwrapProxy(string url, [NotNullWhen(true)] out string? inner)
+    {
+        inner = null;
+
+        var fragment = url.IndexOf('#', StringComparison.Ordinal);
+        var trimmed = fragment < 0 ? url : url[..fragment];
+        var separator = trimmed.IndexOf('?', StringComparison.Ordinal);
+
+        if (separator < 0 || !trimmed[..separator].TrimEnd('/').EndsWith(ProxyPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var part in trimmed[(separator + 1)..].Split('&'))
+        {
+            var equals = part.IndexOf('=', StringComparison.Ordinal);
+
+            if (equals > 0 && part[..equals].Equals("imageUrl", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = Uri.UnescapeDataString(part[(equals + 1)..]);
+
+                if (value.Length > 0)
+                {
+                    inner = value;
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

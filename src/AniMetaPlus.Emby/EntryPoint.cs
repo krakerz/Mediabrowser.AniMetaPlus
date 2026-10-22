@@ -39,6 +39,7 @@ public class EntryPoint : IServerEntryPoint
         var library = new HostLibrary(_libraryManager, _providerManager, _fileSystem);
         HostServices.Refresher = library;
         HostServices.Images = library;
+        HostServices.LocalPort = () => plugin.AppHost.HttpPort;
     }
 
     /// <inheritdoc />

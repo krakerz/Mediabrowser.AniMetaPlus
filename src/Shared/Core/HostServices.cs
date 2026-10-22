@@ -180,4 +180,11 @@ public static class HostServices
     /// owner can change it without a restart.
     /// </summary>
     public static Func<string?>? BasePath { get; set; }
+
+    /// <summary>
+    /// Gets or sets how to read the plain-http port the server listens on locally, which the server
+    /// itself can reach on the loopback address however its clients connect. Emby fetches an
+    /// identify result's picture itself, so it needs an address that works from the server.
+    /// </summary>
+    public static Func<int?>? LocalPort { get; set; }
 }
