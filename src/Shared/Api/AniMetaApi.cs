@@ -150,7 +150,7 @@ public class IdRow
     /// <summary>Gets or sets the ids the show has now, by provider; missing ones are left out.</summary>
     public Dictionary<string, string> Ids { get; set => field = value ?? new(); } = new();
 
-    /// <summary>Gets or sets the status: Corrected, Suspect, Verified, Manual, or empty when nothing was decided.</summary>
+    /// <summary>Gets or sets the status: Corrected, Suspect, TvdbConflict, Verified, Manual, or empty when nothing was decided.</summary>
     public string Status { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the ids the show had before.</summary>
@@ -829,9 +829,9 @@ public static class AniMetaApi
         }
 
         var existing = Db.IdRecords.FindById(path);
-        if (existing is not { Status: IdRecord.Corrected })
+        if (!CanRevert(existing, show.ProviderIds))
         {
-            throw new ArgumentException("Only a corrected show can be reverted.", nameof(path));
+            throw new ArgumentException("Only a corrected show, or one whose TVDB id the plugin replaced, can be reverted.", nameof(path));
         }
 
         // The TVDB and TMDB ids go back too: a correction may have changed what they point at.
@@ -845,37 +845,70 @@ public static class AniMetaApi
     }
 
     /// <summary>
-    /// Sets a show's AniDB, MyAnimeList and AniList ids by hand, marks them as the owner's, and
+    /// Whether a show's ids can be put back: after a correction, or after the plugin replaced a
+    /// TVDB id it found missing on TheTVDB.
+    /// </summary>
+    /// <param name="record">The show's id record, if any.</param>
+    /// <param name="currentIds">The ids the show has now, by provider.</param>
+    /// <returns><c>true</c> when there are earlier ids to go back to.</returns>
+    internal static bool CanRevert(IdRecord? record, IReadOnlyDictionary<string, string> currentIds)
+    {
+        if (record is null)
+        {
+            return false;
+        }
+
+        if (record.Status == IdRecord.Corrected)
+        {
+            return true;
+        }
+
+        if (record.Status != IdRecord.TvdbConflict)
+        {
+            return false;
+        }
+
+        var old = record.OldIds.GetValueOrDefault("Tvdb");
+        return !string.IsNullOrEmpty(old) && !string.Equals(old, currentIds.GetValueOrDefault("Tvdb"), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Sets a show's AniDB, MyAnimeList, AniList, TVDB and TMDB ids by hand, marks them as the owner's, and
     /// refreshes the show with its metadata replaced.
     /// </summary>
     /// <remarks>
     /// Where the owner gives no AniDB id but a MyAnimeList or AniList one, the AniDB entry the
     /// mappings file under that id is put on the show with them, and the show is filled from
-    /// AniDB like any other. Where the mappings file none, the show is filled from MyAnimeList
-    /// and AniList alone.
+    /// AniDB like any other; so does a TVDB or TMDB id the mappings file under an AniDB entry.
+    /// Where the mappings file none, the show keeps the ids the owner typed and is left to the
+    /// server's own providers. TVDB and TMDB ids the owner types are always kept.
     /// </remarks>
     /// <param name="path">The show's folder.</param>
     /// <param name="aniDb">The AniDB id, digits only, or empty for none.</param>
     /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
     /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
+    /// <param name="tvdb">The TVDB id, digits only, or empty for none.</param>
+    /// <param name="tmdb">The TMDB id, digits only, or empty for none.</param>
     /// <param name="logger">The logger.</param>
     /// <returns>The show, or <c>null</c> when it is not in the libraries.</returns>
     /// <exception cref="ArgumentException">An id is not digits, or no id is given at all.</exception>
-    public static async Task<IdRow?> SetIds(string path, string? aniDb, string? mal, string? aniList, ILogger logger)
+    public static async Task<IdRow?> SetIds(string path, string? aniDb, string? mal, string? aniList, string? tvdb, string? tmdb, ILogger logger)
     {
-        var ids = ParseHandIds(aniDb, mal, aniList);
+        var ids = ParseHandIds(aniDb, mal, aniList, tvdb, tmdb);
 
         if (FindShow(path) is not { } show)
         {
             return null;
         }
 
-        // The owner named the show by its MyAnimeList or AniList id, so the AniDB entry the
-        // mappings file under that id is put on the show with them.
+        // The owner named the show by its MyAnimeList, AniList, TVDB or TMDB id, so the AniDB entry
+        // the mappings file under that id is put on the show with them.
+        var paths = Plugin.Instance.AppPaths;
         var given = ids[ProviderNames.AniDb].Length > 0;
         var animeId = await HandAniDbId(
             ids,
-            links => AniDbMappings.ResolveSeriesIdByLink(Plugin.Instance.AppPaths, links, logger, CancellationToken.None)).ConfigureAwait(false);
+            links => AniDbMappings.ResolveSeriesIdByLink(paths, links, logger, CancellationToken.None),
+            async (t, m) => (await AniDbMappings.ResolveSeriesId(paths, t, m, logger, CancellationToken.None).ConfigureAwait(false))?.AnimeId).ConfigureAwait(false);
 
         if (!given && !string.IsNullOrEmpty(animeId))
         {
@@ -883,25 +916,54 @@ public static class AniMetaApi
                 "AniMeta+ linked {Show} to AniDB {AnimeId}, which the mappings file under the id the owner gave",
                 show.Name,
                 animeId);
+
+            // The entry's own links fill the ones the owner left empty.
+            var linked = await IdCheck.LinkedIds(paths, animeId, logger, CancellationToken.None).ConfigureAwait(false);
+            foreach (var provider in new[] { SourceIds.Mal, SourceIds.AniList })
+            {
+                if (ids[provider].Length == 0 && linked.GetValueOrDefault(provider) is { Length: > 0 } link)
+                {
+                    ids[provider] = link;
+                }
+            }
         }
-        else if (!given)
+        else if (!given && (ids[SourceIds.Mal].Length > 0 || ids[SourceIds.AniList].Length > 0))
         {
             logger.LogInformation(
                 "AniMeta+ left {Show} without an AniDB id: the mappings file no entry under the id the owner gave, so it is filled from MyAnimeList and AniList alone",
                 show.Name);
         }
+        else if (!given)
+        {
+            logger.LogInformation(
+                "AniMeta+ left {Show} without an AniDB id: the mappings file no entry under the ids the owner gave, so it is left to the server's TVDB and TMDB providers",
+                show.Name);
+        }
 
-        // The TVDB and TMDB ids the show carries came from whatever identified it before, and
-        // Charlotte kept another show's that way. They are taken from the mappings of the AniDB
-        // entry given, or cleared where the mappings have none, so the server's own providers
-        // and the artwork keyed by them follow the show the owner named.
+        // The TVDB and TMDB ids the owner typed are kept. Those left empty are taken from the
+        // mappings of the AniDB entry, or cleared where the mappings have none, so the server's
+        // own providers and the artwork keyed by them follow the show the owner named (Charlotte
+        // kept another show's ids otherwise). Where the AniDB mapping and the MyAnimeList or
+        // AniList one name different TVDB shows, the one TheTVDB still has is taken.
         // The IMDb id came from the same wrong show; it is cleared for the server's TVDB and TMDB
         // providers to fill from the right one.
-        var shown = string.IsNullOrEmpty(ids[ProviderNames.AniDb])
-            ? MappedIds.None
-            : await AniDbMappings.ResolveShowIds(Plugin.Instance.AppPaths, ids[ProviderNames.AniDb], logger, CancellationToken.None).ConfigureAwait(false);
-        ids["Tvdb"] = shown.Tvdb ?? string.Empty;
-        ids["Tmdb"] = shown.Tmdb ?? string.Empty;
+        var finalAnimeId = ids[ProviderNames.AniDb];
+        if (finalAnimeId.Length > 0 && (ids["Tvdb"].Length == 0 || ids["Tmdb"].Length == 0))
+        {
+            var shown = await AniDbMappings.ResolveShowIds(paths, finalAnimeId, logger, CancellationToken.None).ConfigureAwait(false);
+            if (ids["Tmdb"].Length == 0)
+            {
+                ids["Tmdb"] = shown.Tmdb ?? string.Empty;
+            }
+
+            if (ids["Tvdb"].Length == 0)
+            {
+                var candidates = await AniDbMappings.ResolveTvdbCandidates(paths, finalAnimeId, ids, logger, CancellationToken.None).ConfigureAwait(false);
+                var choice = await TvdbPick.Choose(paths, candidates, Db.IdRecords.FindById(path), show.Name, null, logger, CancellationToken.None).ConfigureAwait(false);
+                ids["Tvdb"] = choice?.Chosen ?? shown.Tvdb ?? string.Empty;
+            }
+        }
+
         ids["Imdb"] = string.Empty;
 
         return await SetByHand(show, Db.IdRecords.FindById(path), ids, "Set by the owner").ConfigureAwait(false);
@@ -915,10 +977,12 @@ public static class AniMetaApi
     /// </summary>
     /// <param name="ids">The ids the owner gave, by provider.</param>
     /// <param name="resolve">What the mappings file under a link, as the AniDB id.</param>
+    /// <param name="resolveShow">What the mappings file under a TVDB and a TMDB id, as the AniDB id.</param>
     /// <returns>The AniDB id the show is set to, or <c>null</c> where it has none.</returns>
     internal static async Task<string?> HandAniDbId(
         Dictionary<string, string> ids,
-        Func<IReadOnlyList<string>, Task<string?>> resolve)
+        Func<IReadOnlyList<string>, Task<string?>> resolve,
+        Func<string?, string?, Task<string?>>? resolveShow = null)
     {
         if (ids[ProviderNames.AniDb].Length > 0)
         {
@@ -926,6 +990,13 @@ public static class AniMetaApi
         }
 
         var animeId = await resolve(AniDbSeriesProvider.LinksFromIds(ids)).ConfigureAwait(false);
+
+        var tvdb = ids.GetValueOrDefault("Tvdb");
+        var tmdb = ids.GetValueOrDefault("Tmdb");
+        if (string.IsNullOrEmpty(animeId) && resolveShow != null && (!string.IsNullOrEmpty(tvdb) || !string.IsNullOrEmpty(tmdb)))
+        {
+            animeId = await resolveShow(tvdb, tmdb).ConfigureAwait(false);
+        }
 
         if (!string.IsNullOrEmpty(animeId))
         {
@@ -964,18 +1035,22 @@ public static class AniMetaApi
     /// <param name="aniDb">The AniDB id, digits only, or empty for none.</param>
     /// <param name="mal">The MyAnimeList id, digits only, or empty for none.</param>
     /// <param name="aniList">The AniList id, digits only, or empty for none.</param>
+    /// <param name="tvdb">The TVDB id, digits only, or empty for none.</param>
+    /// <param name="tmdb">The TMDB id, digits only, or empty for none.</param>
     /// <returns>The ids by provider; an empty one removes that id from the show.</returns>
     /// <exception cref="ArgumentException">An id is not digits, or no id is given at all.</exception>
-    public static Dictionary<string, string> ParseHandIds(string? aniDb, string? mal, string? aniList)
+    public static Dictionary<string, string> ParseHandIds(string? aniDb, string? mal, string? aniList, string? tvdb = null, string? tmdb = null)
     {
         var ids = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [ProviderNames.AniDb] = (aniDb ?? string.Empty).Trim(),
             [SourceIds.Mal] = (mal ?? string.Empty).Trim(),
-            [SourceIds.AniList] = (aniList ?? string.Empty).Trim()
+            [SourceIds.AniList] = (aniList ?? string.Empty).Trim(),
+            ["Tvdb"] = (tvdb ?? string.Empty).Trim(),
+            ["Tmdb"] = (tmdb ?? string.Empty).Trim()
         };
 
-        if (ids[ProviderNames.AniDb].Length == 0 && ids[SourceIds.Mal].Length == 0 && ids[SourceIds.AniList].Length == 0)
+        if (ids.Values.All(v => v.Length == 0))
         {
             throw new ArgumentException("At least one id is required.", nameof(aniDb));
         }
@@ -993,6 +1068,16 @@ public static class AniMetaApi
         if (!ids[SourceIds.AniList].All(char.IsAsciiDigit))
         {
             throw new ArgumentException("The AniList id is digits only.", nameof(aniList));
+        }
+
+        if (!ids["Tvdb"].All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException("The TVDB id is digits only.", nameof(tvdb));
+        }
+
+        if (!ids["Tmdb"].All(char.IsAsciiDigit))
+        {
+            throw new ArgumentException("The TMDB id is digits only.", nameof(tmdb));
         }
 
         return ids;

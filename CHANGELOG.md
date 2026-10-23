@@ -4,6 +4,16 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.24.0] — 2026-10-23
+
+### Added
+- Set manually on the Mapping tab also takes TVDB and TMDB ids, and keeps any id you type
+- Set manually finds the AniDB entry from a TVDB id when no AniDB, MyAnimeList or AniList id is given
+- The Mapping tab marks a show as TVDB conflict when its AniDB and MyAnimeList or AniList entries are filed under different TVDB shows, with both ids and the reason
+
+### Fixed
+- A show whose AniDB mapping names a TVDB series TheTVDB has deleted gets the TVDB id its MyAnimeList or AniList entry is filed under
+
 ## [2.23.1] — 2026-10-22
 
 ### Fixed

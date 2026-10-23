@@ -190,6 +190,12 @@ public class SetIdRecord : IReturn<IdRow>
 
     /// <summary>Gets or sets the AniList id, or empty for none.</summary>
     public string AniList { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the TVDB id, or empty for none.</summary>
+    public string Tvdb { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the TMDB id, or empty for none.</summary>
+    public string Tmdb { get; set; } = string.Empty;
 }
 
 /// <summary>Takes the owner's mark off a show.</summary>
@@ -535,7 +541,7 @@ public class AniMetaPlusService : IService
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>
     /// <returns>The response.</returns>
-    public async Task<object> Post(SetIdRecord request) => await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, _logger).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
+    public async Task<object> Post(SetIdRecord request) => await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, request.Tvdb, request.Tmdb, _logger).ConfigureAwait(false) ?? throw ShowNotFound(request.Path);
 
     /// <summary>Handles the request.</summary>
     /// <param name="request">The request.</param>

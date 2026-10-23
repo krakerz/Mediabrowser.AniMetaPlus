@@ -40,6 +40,10 @@ one key per season, naming ranges of the entry against ranges of the season:
   air date, as any other unplaced special is.
 - The third corrects one season of a show the downloaded sources already place. The entry named
   need not be the one the show is identified as; the TVDB id is what ties the two together.
+- An override that places an entry under a TVDB show also decides the TVDB id written onto the
+  show, and the check for AniDB and MyAnimeList or AniList filing it under different TVDB shows
+  leaves it alone. This fixes a show whose entry the downloaded sources file under a TVDB series
+  that no longer exists: `"anidb:18777:R": { "tvdb_show:480909:s1": { "1-12": "1-12" } }`.
 
 A season's side can also list several ranges, and can end with a ratio weighting its episodes
 against the entry's, both of which the AniBridge schema writes and this reads:

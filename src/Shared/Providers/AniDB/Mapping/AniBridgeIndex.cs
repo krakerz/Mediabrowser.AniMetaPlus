@@ -36,6 +36,8 @@ internal sealed class AniBridgeIndex
     private readonly IReadOnlyDictionary<string, AniDbAnimeListEpisode> _soleMovieByAnimeId;
     private IReadOnlyDictionary<string, string> _animeByLink = new Dictionary<string, string>();
     private IReadOnlyDictionary<string, string> _linkByAnime = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, string> _tvdbByLink = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> _linksByTvdb = new Dictionary<string, IReadOnlyList<string>>();
 
     private AniBridgeIndex(
         IReadOnlyDictionary<string, AniBridgeEntry> byAnimeId,
@@ -106,6 +108,7 @@ internal sealed class AniBridgeIndex
         var tmdbCandidates = new Dictionary<string, List<SeasonClaim>>(StringComparer.Ordinal);
         var movies = new Dictionary<string, List<AniDbAnimeListEpisode>>(StringComparer.Ordinal);
         var animeByLink = new Dictionary<string, string>(StringComparer.Ordinal);
+        var linkClaims = new List<LinkClaim>();
         string? schemaVersion = null;
 
         if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
@@ -123,9 +126,29 @@ internal sealed class AniBridgeIndex
                 continue;
             }
 
-            // Only the AniDB side of the mappings is read. Every mapping is written in both
-            // directions - all 8,633 AniDB-to-TVDB placements appear as TVDB-to-AniDB ones too
-            // - so the shows keyed the other way are the same shows, and skipping them here
+            // The mappings keyed by a MyAnimeList or AniList entry are read for the TVDB show
+            // they file it under, and nothing else: the AniDB side holds the rest of what they say.
+            if (reader.ValueSpan.StartsWith("mal:"u8) || reader.ValueSpan.StartsWith("anilist:"u8))
+            {
+                var link = reader.GetString()!;
+
+                reader.Read();
+
+                if (link[(link.IndexOf(':') + 1)..] is { Length: > 0 } linked && linked.All(char.IsAsciiDigit))
+                {
+                    ReadLinkShows(ref reader, link, linkClaims);
+                }
+                else
+                {
+                    reader.Skip();
+                }
+
+                continue;
+            }
+
+            // Otherwise only the AniDB side of the mappings is read. Every mapping is written in
+            // both directions - all 8,633 AniDB-to-TVDB placements appear as TVDB-to-AniDB ones
+            // too - so the shows keyed the other way are the same shows, and skipping them here
             // costs nothing but saves reading some sixty thousand keys.
             if (!reader.ValueSpan.StartsWith("anidb:"u8))
             {
@@ -162,6 +185,7 @@ internal sealed class AniBridgeIndex
         index._linkByAnime = animeByLink
             .GroupBy(pair => pair.Value + ":" + pair.Key[..pair.Key.IndexOf(':')], StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First().Key[(group.First().Key.IndexOf(':') + 1)..], StringComparer.Ordinal);
+        (index._tvdbByLink, index._linksByTvdb) = BuildTvdbLinks(linkClaims);
 
         return index;
     }
@@ -328,6 +352,26 @@ internal sealed class AniBridgeIndex
     /// <returns>The id in that database, or <c>null</c> where the mappings link none.</returns>
     public string? LinkOf(string animeId, string prefix)
         => _linkByAnime.GetValueOrDefault(animeId + ":" + prefix);
+
+    /// <summary>
+    /// The TVDB show the mappings file a MyAnimeList or AniList entry under, read from the
+    /// entry's own key rather than from the AniDB entry it is linked to. The two can name
+    /// different shows where one of them has been corrected and the other has not.
+    /// </summary>
+    /// <param name="prefix">The mappings' name for the database, "mal" or "anilist".</param>
+    /// <param name="id">The id in that database.</param>
+    /// <returns>The TVDB show id, or <c>null</c> where the mappings file the entry under no ordinary season of a show.</returns>
+    public string? TvdbShowByLink(string prefix, string id)
+        => _tvdbByLink.GetValueOrDefault(prefix + ":" + id);
+
+    /// <summary>
+    /// The MyAnimeList and AniList entries the mappings file at the start of a TVDB show, AniList
+    /// first, each in the form the mappings key them by.
+    /// </summary>
+    /// <param name="tvdbId">The TVDB show id.</param>
+    /// <returns>The links, or an empty list where none is filed under that show.</returns>
+    public IReadOnlyList<string> FirstSeasonLinksByTvdb(string tvdbId)
+        => _linksByTvdb.GetValueOrDefault(tvdbId) ?? [];
 
     /// <summary>
     /// The AniDB entry a movie is, and which of its episodes holds it.
@@ -876,11 +920,34 @@ internal sealed class AniBridgeIndex
         int season,
         Dictionary<string, List<SeasonClaim>> tmdbCandidates)
     {
+        var earliest = ReadEarliestTargetStart(ref reader);
+
+        if (kind != AniDbEpisodeKind.Regular || season < 1 || earliest == int.MaxValue)
+        {
+            return;
+        }
+
+        if (!tmdbCandidates.TryGetValue(showId, out var claims))
+        {
+            claims = [];
+            tmdbCandidates[showId] = claims;
+        }
+
+        claims.Add(new SeasonClaim(season, earliest, animeId));
+    }
+
+    /// <summary>
+    /// Reads where an entry starts in a show's season, given the ranges it is mapped onto.
+    /// </summary>
+    /// <param name="reader">The reader, positioned at the ranges of one show descriptor.</param>
+    /// <returns>The earliest episode of the season any range starts at, or <see cref="int.MaxValue"/> where none is mapped.</returns>
+    private static int ReadEarliestTargetStart(ref Utf8JsonReader reader)
+    {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
             reader.Skip();
 
-            return;
+            return int.MaxValue;
         }
 
         var earliest = int.MaxValue;
@@ -904,18 +971,94 @@ internal sealed class AniBridgeIndex
             }
         }
 
-        if (kind != AniDbEpisodeKind.Regular || season < 1 || earliest == int.MaxValue)
+        return earliest;
+    }
+
+    /// <summary>
+    /// Reads the TVDB shows a MyAnimeList or AniList entry is filed under in its own key.
+    /// </summary>
+    /// <param name="reader">The reader, positioned at the value of the entry's key.</param>
+    /// <param name="link">The entry, as the mappings key it: "mal:&lt;id&gt;" or "anilist:&lt;id&gt;".</param>
+    /// <param name="claims">Every claim read so far.</param>
+    private static void ReadLinkShows(ref Utf8JsonReader reader, string link, List<LinkClaim> claims)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
+            reader.Skip();
+
             return;
         }
 
-        if (!tmdbCandidates.TryGetValue(showId, out var claims))
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
         {
-            claims = [];
-            tmdbCandidates[showId] = claims;
-        }
+            if (!reader.ValueSpan.StartsWith("tvdb_show:"u8))
+            {
+                reader.Read();
+                reader.Skip();
 
-        claims.Add(new SeasonClaim(season, earliest, animeId));
+                continue;
+            }
+
+            var descriptor = reader.GetString()!;
+
+            reader.Read();
+
+            // Season 0 is the show's specials, which says nothing about which show the entry begins.
+            if (!TryReadShow(descriptor, out var showId, out var season) || season < 1)
+            {
+                reader.Skip();
+
+                continue;
+            }
+
+            var earliest = ReadEarliestTargetStart(ref reader);
+
+            if (earliest != int.MaxValue)
+            {
+                claims.Add(new LinkClaim(link, showId, season, earliest));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Works out, from what the link keys say, the show each entry is filed under and the entries
+    /// each show begins with.
+    /// </summary>
+    /// <param name="claims">Every claim read.</param>
+    /// <returns>The show by link, and the first-season links by show.</returns>
+    private static (IReadOnlyDictionary<string, string> TvdbByLink, IReadOnlyDictionary<string, IReadOnlyList<string>> LinksByTvdb) BuildTvdbLinks(List<LinkClaim> claims)
+    {
+        // An entry filed under two shows belongs to the one it enters at the earliest season, the
+        // lower id deciding a tie, so that the answer does not depend on the order of the file.
+        var tvdbByLink = claims
+            .GroupBy(claim => claim.Link, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(claim => claim.Season)
+                    .ThenBy(claim => claim.Start)
+                    .ThenBy(claim => NumericId(claim.ShowId))
+                    .First().ShowId,
+                StringComparer.Ordinal);
+
+        var linksByTvdb = claims
+            .GroupBy(claim => claim.ShowId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var first = group.OrderBy(claim => claim.Season).ThenBy(claim => claim.Start).First();
+
+                    return (IReadOnlyList<string>)group
+                        .Where(claim => claim.Season == first.Season && claim.Start == first.Start)
+                        .Select(claim => claim.Link)
+                        .OrderBy(link => link.StartsWith("anilist:", StringComparison.Ordinal) ? 0 : 1)
+                        .ThenBy(link => NumericId(link[(link.IndexOf(':') + 1)..]))
+                        .ToList();
+                },
+                StringComparer.Ordinal);
+
+        return (tvdbByLink, linksByTvdb);
     }
 
     /// <summary>
@@ -1025,4 +1168,13 @@ internal sealed class AniBridgeIndex
     /// <param name="Start">The episode of that season the entry starts at.</param>
     /// <param name="AnimeId">The AniDB id of the entry.</param>
     private sealed record SeasonClaim(int Season, int Start, string AnimeId);
+
+    /// <summary>
+    /// One MyAnimeList or AniList entry's claim on a season of a TVDB show.
+    /// </summary>
+    /// <param name="Link">The entry, as the mappings key it.</param>
+    /// <param name="ShowId">The TVDB show id.</param>
+    /// <param name="Season">The season claimed.</param>
+    /// <param name="Start">The episode of that season the entry starts at.</param>
+    private sealed record LinkClaim(string Link, string ShowId, int Season, int Start);
 }

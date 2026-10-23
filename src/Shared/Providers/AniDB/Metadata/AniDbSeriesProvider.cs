@@ -471,6 +471,16 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
             animeId = await AniDbMappings.ResolveSeriesIdByLink(_appPaths, links, Logger ?? (ILogger)NullLogger.Instance, cancellationToken).ConfigureAwait(false);
             link = links.FirstOrDefault();
+
+            // Only TVDB or TMDB ids were typed, and nothing links them to AniDB: matching the
+            // name would replace what the owner chose with a guess.
+            if (string.IsNullOrEmpty(animeId) && link is null)
+            {
+                Queues.ClearUnmatched(unidentifiedKey);
+                Logger?.LogInformation("{SeriesName} has its ids set by hand with no AniDB, MyAnimeList or AniList id, so AniMeta+ leaves it to the server's TVDB and TMDB providers", info.Name);
+
+                return new MetadataResult<Series>();
+            }
         }
 
         // An identify pick of an anime AniDB does not list: the server named the item after the
@@ -949,15 +959,37 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
     private async Task AddMappedShowIds(Series series, SeriesInfo info, string animeId, CancellationToken cancellationToken)
     {
+        var record = IdCheck.Record(info.Path);
+        IReadOnlyDictionary<string, string> known = info.ProviderIds;
+
+        // What the owner typed is theirs. A refresh that replaces everything has stripped the ids
+        // from the lookup, so they are put back from the record, and count as carried below.
+        if (record is { Status: IdRecord.Manual })
+        {
+            var withTyped = new Dictionary<string, string>(info.ProviderIds, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var provider in new[] { nameof(MetadataProvider.Tvdb), nameof(MetadataProvider.Tmdb) })
+            {
+                if (record.NewIds.GetValueOrDefault(provider) is { Length: > 0 } typed && string.IsNullOrEmpty(withTyped.GetValueOrDefault(provider)))
+                {
+                    withTyped[provider] = typed;
+                    series.ProviderIds[provider] = typed;
+                }
+            }
+
+            known = withTyped;
+        }
+
         if (!Plugin.Instance.Configuration.PublishMappedIds)
         {
             return;
         }
 
+        var logger = Logger ?? (ILogger)NullLogger.Instance;
         var ids = await AniDbMappings.ResolveShowIds(
             _appPaths,
             animeId,
-            Logger ?? (ILogger)NullLogger.Instance,
+            logger,
             cancellationToken).ConfigureAwait(false);
 
         if (!ids.Any)
@@ -965,14 +997,117 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
             return;
         }
 
-        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tvdb), ids.Tvdb);
-        AddMappedId(series, info.ProviderIds, nameof(MetadataProvider.Tmdb), ids.Tmdb);
+        // Where the sources file the show under two TVDB ids, the one TheTVDB still has is written.
+        var picked = record is not { Status: IdRecord.Manual or IdRecord.Verified }
+            && ids.Tvdb != null
+            && !string.IsNullOrEmpty(info.Path)
+            && await PickTvdb(series, info, animeId, record, logger, cancellationToken).ConfigureAwait(false);
+
+        if (!picked)
+        {
+            AddMappedId(series, known, nameof(MetadataProvider.Tvdb), ids.Tvdb);
+        }
+
+        AddMappedId(series, known, nameof(MetadataProvider.Tmdb), ids.Tmdb);
 
         Logger?.LogDebug(
             "AniDB anime {AnimeId} is filed under TVDB {TvdbId} and TMDB {TmdbId}, which are written onto the show so that whatever is keyed by them can fetch its artwork",
             animeId,
             ids.Tvdb,
             ids.Tmdb);
+    }
+
+    /// <summary>
+    /// Settles the TVDB id of a show the AniDB-keyed mappings and the MyAnimeList or AniList ones
+    /// file under different shows, and records it for the Mapping tab.
+    /// </summary>
+    /// <param name="series">The show being filled in.</param>
+    /// <param name="info">The lookup info, holding whatever ids the item already carries.</param>
+    /// <param name="animeId">The AniDB id of the show.</param>
+    /// <param name="record">The show's record, if any.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns><c>true</c> where the TVDB id was settled here, so the plain mapped id is not written over it.</returns>
+    private async Task<bool> PickTvdb(Series series, SeriesInfo info, string animeId, IdRecord? record, ILogger logger, CancellationToken cancellationToken)
+    {
+        var candidates = await AniDbMappings.ResolveTvdbCandidates(_appPaths, animeId, info.ProviderIds, logger, cancellationToken).ConfigureAwait(false);
+
+        if (!candidates.Disagree)
+        {
+            // The sources have come to agree since it was flagged.
+            if (record is { Status: IdRecord.TvdbConflict })
+            {
+                AniMetaDb.Current.IdRecords.Delete(info.Path);
+            }
+
+            return false;
+        }
+
+        // An id that is neither candidate came from the owner or the server's own provider.
+        var stored = info.ProviderIds.GetValueOrDefault(nameof(MetadataProvider.Tvdb));
+        if (!string.IsNullOrEmpty(stored) && !string.Equals(stored, candidates.Primary, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        var reused = TvdbPick.Reusable(record, candidates, now);
+        var choice = await TvdbPick.Choose(_appPaths, candidates, record, info.Name ?? string.Empty, info.MetadataLanguage, logger, cancellationToken).ConfigureAwait(false);
+
+        if (choice == null)
+        {
+            return false;
+        }
+
+        var write = TvdbPick.Replacement(stored, choice);
+
+        // Taken before the id is replaced below, so the record keeps the one it replaced for Revert.
+        var idsBefore = new Dictionary<string, string>(info.ProviderIds, StringComparer.OrdinalIgnoreCase);
+
+        if (write != null)
+        {
+            series.ProviderIds[nameof(MetadataProvider.Tvdb)] = write;
+
+            // The servers keep an id the item already has when a refresh merges the answer, so a
+            // replaced one is put on the item itself, as for the MyAnimeList and AniList ids.
+            if (!string.IsNullOrEmpty(stored))
+            {
+                info.ProviderIds[nameof(MetadataProvider.Tvdb)] = write;
+                HostServices.Refresher?.CorrectIds(info.Path, new Dictionary<string, string> { [nameof(MetadataProvider.Tvdb)] = write });
+
+                logger.LogInformation(
+                    "{SeriesName} ({Path}): TheTVDB no longer has TVDB {Old}, which the mappings file AniDB {AnimeId} under; {New}, which they file {Link} under, is used instead",
+                    info.Name,
+                    info.Path,
+                    stored,
+                    animeId,
+                    write,
+                    choice.Alternative?.Link);
+            }
+        }
+
+        // The owner's and the id check's records are left alone, and a choice read back from a
+        // record is already what the tab shows.
+        if (!reused && record is null or { Status: IdRecord.TvdbConflict })
+        {
+            var fresh = TvdbPick.ToRecord(info.Path, info.Name ?? string.Empty, idsBefore, choice, record, now);
+            var changed = record == null || new[] { "TvdbOutcome", "TvdbByAniDb", "TvdbByLink", "TvdbLink", "Tvdb" }
+                .Any(key => !string.Equals(record.NewIds.GetValueOrDefault(key), fresh.NewIds.GetValueOrDefault(key), StringComparison.Ordinal));
+
+            // Written again when TheTVDB gave an answer, which restarts the days it stands for;
+            // an unchanged "could not be asked" is not worth a write each refresh.
+            if (changed || choice.Outcome != TvdbOutcome.Unknown)
+            {
+                AniMetaDb.Current.IdRecords.Upsert(fresh);
+            }
+
+            if (changed)
+            {
+                logger.LogInformation("{SeriesName} ({Path}): {Reason}", info.Name, info.Path, choice.Reason);
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
