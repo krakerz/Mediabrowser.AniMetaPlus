@@ -37,6 +37,10 @@ public static class IdCheck
     /// </summary>
     public static readonly string[] RecordedProviders = [ProviderNames.AniDb, SourceIds.Mal, SourceIds.AniList, "Tvdb", "Tmdb"];
 
+    // TheTVDB is asked for at most this many shows in one run, so that a first run over a large
+    // library does not send a burst of requests; the rest have no record yet and follow in later runs.
+    private const int MaxTvdbChecksPerRun = 10;
+
     // A show checked under these ids is not checked again until one of them changes or the
     // server restarts: the evidence is local and does not change between runs.
     private static readonly ConcurrentDictionary<string, bool> _checked = new(StringComparer.Ordinal);
@@ -240,7 +244,7 @@ public static class IdCheck
         var folders = shows.Select(s => (Show: s, Name: Queues.StripNotes(FolderName(s)))).ToList();
         var byFolderName = await Equals_check.XmlFindExactIds(folders.Select(f => (f.Name, FolderYear(f.Show.Path))), cancellationToken).ConfigureAwait(false);
 
-        int fixedAniDb = 0, fixedLinks = 0, suspects = 0, askingAniDb = 0, deferred = 0;
+        int fixedAniDb = 0, fixedLinks = 0, suspects = 0, askingAniDb = 0, deferred = 0, tvdbChecks = 0, tvdbSwitched = 0;
 
         foreach (var (show, folder) in folders)
         {
@@ -310,13 +314,36 @@ public static class IdCheck
 
             if (wanted.Count == 0)
             {
+                var record = records.GetValueOrDefault(show.Path);
+
                 // A suspect noted earlier that the show no longer is, since its ids were fixed by other means.
-                if (!verdict.Suspect && records.GetValueOrDefault(show.Path) is { Status: IdRecord.Suspect })
+                if (!verdict.Suspect && record is { Status: IdRecord.Suspect })
                 {
                     db.IdRecords.Delete(show.Path);
                 }
 
-                _checked[CheckKey(show)] = true;
+                // The AniDB id stands, so the TVDB id it is filed under is what is left to check.
+                // Not a refresh: that may ask AniDB, and only TheTVDB is asked here.
+                var tvdbCheck = verdict.Suspect
+                    ? default
+                    : await CheckTvdb(paths, db, refresher, show, current, record, tvdbChecks < MaxTvdbChecksPerRun, logger, cancellationToken).ConfigureAwait(false);
+
+                if (tvdbCheck.Asked)
+                {
+                    tvdbChecks++;
+                }
+
+                if (tvdbCheck.Switched)
+                {
+                    tvdbSwitched++;
+                }
+
+                // A show left over the cap is not marked as checked, so that a later run takes it.
+                if (!tvdbCheck.Capped)
+                {
+                    _checked[CheckKey(show)] = true;
+                }
+
                 continue;
             }
 
@@ -361,12 +388,14 @@ public static class IdCheck
         }
 
         logger.LogInformation(
-            "AniMeta+ id check: {Checked} shows checked, {FixedAniDb} wrong AniDB ids and {FixedLinks} wrong AniList or MyAnimeList ids corrected, {Suspects} AniDB ids that may be wrong logged, {Deferred} wait for AniDB in later runs",
+            "AniMeta+ id check: {Checked} shows checked, {FixedAniDb} wrong AniDB ids and {FixedLinks} wrong AniList or MyAnimeList ids corrected, {Suspects} AniDB ids that may be wrong logged, {Deferred} wait for AniDB in later runs, {TvdbChecks} TVDB ids the mappings disagree about checked ({TvdbSwitched} replaced)",
             shows.Count,
             fixedAniDb,
             fixedLinks,
             suspects,
-            deferred);
+            deferred,
+            tvdbChecks,
+            tvdbSwitched);
 
         return askingAniDb;
     }
@@ -377,7 +406,15 @@ public static class IdCheck
     /// <param name="path">The show's folder.</param>
     /// <returns><c>true</c> when the show has a manual record.</returns>
     public static bool IsManual(string? path)
-        => !string.IsNullOrEmpty(path) && AniMetaDb.Current.IdRecords.FindById(path) is { Status: IdRecord.Manual };
+        => Record(path) is { Status: IdRecord.Manual };
+
+    /// <summary>
+    /// What was decided about a show's ids.
+    /// </summary>
+    /// <param name="path">The show's folder.</param>
+    /// <returns>The show's record, or <c>null</c> where it has none.</returns>
+    public static IdRecord? Record(string? path)
+        => string.IsNullOrEmpty(path) ? null : AniMetaDb.Current.IdRecords.FindById(path);
 
     /// <summary>
     /// The ids a show has once the corrections are put on it: those it had, replaced by the
@@ -404,6 +441,95 @@ public static class IdCheck
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Settles the TVDB id of a show whose AniDB entry the mappings file under one show and whose
+    /// MyAnimeList or AniList entry they file under another, and puts the one TheTVDB has on it.
+    /// </summary>
+    /// <param name="paths">The server paths.</param>
+    /// <param name="db">The database.</param>
+    /// <param name="refresher">The library.</param>
+    /// <param name="show">The show.</param>
+    /// <param name="animeId">The AniDB id of the show.</param>
+    /// <param name="record">The show's record, if any.</param>
+    /// <param name="mayAsk">Whether this run may still ask TheTVDB.</param>
+    /// <param name="logger">The logger.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Whether TheTVDB was asked, whether the show's id was replaced, and whether the show was left for a later run.</returns>
+    private static async Task<(bool Asked, bool Switched, bool Capped)> CheckTvdb(
+        MediaBrowser.Common.Configuration.IApplicationPaths paths,
+        AniMetaDb db,
+        IHostRefresher refresher,
+        ScanItem show,
+        string animeId,
+        IdRecord? record,
+        bool mayAsk,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        // What the owner confirmed stands.
+        if (record is { Status: IdRecord.Verified })
+        {
+            return default;
+        }
+
+        var candidates = await AniDbMappings.ResolveTvdbCandidates(paths, animeId, show.ProviderIds, logger, cancellationToken).ConfigureAwait(false);
+
+        if (!candidates.Disagree)
+        {
+            if (record is { Status: IdRecord.TvdbConflict })
+            {
+                db.IdRecords.Delete(show.Path);
+            }
+
+            return default;
+        }
+
+        // An id that is neither candidate came from the owner or the server's own provider.
+        var stored = show.ProviderIds.GetValueOrDefault("Tvdb");
+        if (!string.IsNullOrEmpty(stored) && !string.Equals(stored, candidates.Primary, StringComparison.Ordinal))
+        {
+            return default;
+        }
+
+        var now = DateTime.UtcNow;
+        var reusable = TvdbPick.Reusable(record, candidates, now);
+        if (!reusable && !mayAsk)
+        {
+            return (false, false, true);
+        }
+
+        var choice = await TvdbPick.Choose(paths, candidates, record, show.Name, null, logger, cancellationToken).ConfigureAwait(false);
+        if (choice == null)
+        {
+            return default;
+        }
+
+        var replacement = TvdbPick.Replacement(stored, choice);
+        var saved = replacement != null
+            && await refresher.SaveIds(show.Path, new Dictionary<string, string> { ["Tvdb"] = replacement }, cancellationToken).ConfigureAwait(false);
+
+        if (saved && !string.IsNullOrEmpty(stored))
+        {
+            logger.LogInformation(
+                "{Name} ({Path}): TheTVDB no longer has TVDB {Old}, which the mappings file AniDB {AnimeId} under; {New}, which they file {Link} under, is used instead",
+                show.Name,
+                show.Path,
+                stored,
+                animeId,
+                replacement,
+                choice.Alternative?.Link);
+        }
+
+        // A choice read back from the record is the one already shown, and an owner's or the
+        // id check's own record is not overwritten by it.
+        if (!reusable && record is null or { Status: IdRecord.TvdbConflict })
+        {
+            db.IdRecords.Upsert(TvdbPick.ToRecord(show.Path, show.Name, show.ProviderIds, choice, record, now));
+        }
+
+        return (!reusable, saved && choice.Outcome == TvdbOutcome.Switched, false);
     }
 
     private static void RecordCorrection(AniMetaDb db, IdRecord? existing, ScanItem show, IReadOnlyDictionary<string, string> wanted, string? reason)

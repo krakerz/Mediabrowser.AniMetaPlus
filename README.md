@@ -112,7 +112,7 @@ Layout:
 - **Unmatched**: items AniMeta+ could not identify, with suggestions and manual mapping
 - **Review**: replacement values waiting for Accept / Keep / Lock
 - **General → Anime News Network**: extra staff, studios, rating and English episode titles from ANN where AniDB links an entry (on), the English dub cast (off), and a FlareSolverr address (and timeout) for when ANN puts a Cloudflare security check in front of the server's IP; FlareSolverr must use the same public IP as the server
-- **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged, and Verify / Revert / Set manually / Lift manual; shows mapped by hand on the Unmatched tab are marked and their hand mapping can be removed here
+- **Mapping**: every identified show's ids with links to each site, what the id check corrected or flagged (including TVDB conflicts, where the AniDB entry and its MyAnimeList or AniList entry are filed under different TVDB shows), and Verify / Revert / Set manually (AniDB, MyAnimeList, AniList, TVDB and TMDB ids; ids you type are kept) / Lift manual; shows mapped by hand on the Unmatched tab are marked and their hand mapping can be removed here
 - **Blocks**: remembered failures, sortable and filterable by source, kind, reason or text, with lift, pin and lift-all-shown
 - **Image overrides**: posters the AniDB poster task replaced, side by side with the previous ones, to revert or acknowledge; reverting runs in the background with progress shown, and reverted items are skipped by later runs
 - **General**: title language for shows and, separately, for episodes (every source; romaji only from AniDB), where season details and season names come from, searchable alternative titles, plus the other plugin options

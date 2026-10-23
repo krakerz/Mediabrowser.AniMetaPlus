@@ -1022,7 +1022,7 @@ function aniMetaPlusPage(host) {
     var mapList = [];
     var mapSort = { key: 'status', dir: 1 };
     var mapEdit = null;
-    var mapStatusOrder = ['Corrected', 'Suspect', 'Manual', 'Verified', ''];
+    var mapStatusOrder = ['Corrected', 'Suspect', 'TvdbConflict', 'Manual', 'Verified', ''];
 
     // Key, header, keys the id may be stored under, site link.
     var mapIds = [
@@ -1068,7 +1068,7 @@ function aniMetaPlusPage(host) {
             var own = mapStatus(r);
 
             // A hand mapping with no show in the list has no check to be missing.
-            if (status === 'attention' ? ['Corrected', 'Suspect'].indexOf(own) < 0
+            if (status === 'attention' ? ['Corrected', 'Suspect', 'TvdbConflict'].indexOf(own) < 0
                 : status === 'none' ? own !== '' || !r.Path
                 : status === 'hand' ? !r.HandMapping
                 : status !== 'all' && own !== status) {
@@ -1092,7 +1092,7 @@ function aniMetaPlusPage(host) {
         var status = mapStatus(record);
         var html = now ? mapLink(def, now) : '<span class="amp-muted">-</span>';
 
-        if (status === 'Corrected') {
+        if (status === 'Corrected' || status === 'TvdbConflict') {
             var old = mapId(record.OldIds, def[2]);
             if (old && old !== now) {
                 html += '<div><s class="amp-small">' + esc(old) + '</s></div>';
@@ -1108,6 +1108,20 @@ function aniMetaPlusPage(host) {
             });
         }
 
+        if (status === 'TvdbConflict' && def[0] === 'tvdb') {
+            var byAniDb = mapId(record.NewIds, ['TvdbByAniDb']);
+            var byLink = mapId(record.NewIds, ['TvdbByLink']);
+            var link = mapId(record.NewIds, ['TvdbLink']).split(':');
+            var site = link[0] === 'anilist' ? 'AniList' : 'MyAnimeList';
+            if (byAniDb) {
+                html += '<div class="amp-small">AniDB says ' + mapLink(def, byAniDb) + '</div>';
+            }
+
+            if (byLink) {
+                html += '<div class="amp-small">' + site + ' ' + esc(link[1] || '') + ' says ' + mapLink(def, byLink) + '</div>';
+            }
+        }
+
         return '<td>' + html + '</td>';
     }
 
@@ -1117,13 +1131,15 @@ function aniMetaPlusPage(host) {
 
     function mapRow(record) {
         var status = mapStatus(record);
-        var kind = status === 'Corrected' ? 'amp-warn' : status === 'Suspect' ? 'amp-bad' : status === 'Verified' ? 'amp-ok' : '';
+        var kind = status === 'Corrected' || status === 'TvdbConflict' ? 'amp-warn' : status === 'Suspect' ? 'amp-bad' : status === 'Verified' ? 'amp-ok' : '';
 
         // A hand mapping no listed show matches has no folder: it is keyed by its mapping, and
         // only its removal makes sense.
+        var oldTvdb = mapId(record.OldIds, mapIds[3][2]);
+        var canRevert = status === 'Corrected' || (status === 'TvdbConflict' && oldTvdb && oldTvdb !== mapId(record.Ids, mapIds[3][2]));
         var actions = record.Path
-            ? (status === 'Corrected' || status === 'Suspect' || status === '' ? mapButton('verify', 'Verify', status === 'Suspect') : '')
-                + (status === 'Corrected' ? mapButton('revert', 'Revert') : '')
+            ? (status === 'Corrected' || status === 'Suspect' || status === 'TvdbConflict' || status === '' ? mapButton('verify', 'Verify', status === 'Suspect') : '')
+                + (canRevert ? mapButton('revert', 'Revert') : '')
                 + mapButton('edit', 'Set manually')
                 + (status === 'Manual' ? mapButton('lift', 'Lift manual') : '')
             : '';
@@ -1135,21 +1151,21 @@ function aniMetaPlusPage(host) {
         return '<tr ' + (record.Path ? 'data-path="' + esc(record.Path) : 'data-key="' + esc(record.MappingKey)) + '"><td><b>' + esc(record.Name || record.Path || record.MappingKey) + '</b>'
             + '<div class="amp-small amp-path">' + (record.Path ? esc(record.Path) : '<span class="amp-muted">Not in the library list</span>') + '</div></td>'
             + mapIds.map(function (def) { return mapCell(record, def); }).join('')
-            + '<td>' + (status ? badge(status, kind) : '<span class="amp-muted">-</span>')
+            + '<td>' + (status ? badge(status === 'TvdbConflict' ? 'TVDB conflict' : status, kind) : '<span class="amp-muted">-</span>')
             + (record.HandMapping ? ' ' + badge('mapped by hand') : '')
-            + (record.Reason && (status === 'Corrected' || status === 'Suspect') ? '<div class="amp-small">' + esc(record.Reason) + '</div>' : '') + '</td>'
+            + (record.Reason && (status === 'Corrected' || status === 'Suspect' || status === 'TvdbConflict') ? '<div class="amp-small">' + esc(record.Reason) + '</div>' : '') + '</td>'
             + '<td><div class="amp-map-acts">' + actions + '</div></td></tr>';
     }
 
     function mapEditRow() {
         function field(name, label) {
-            return '<label class="amp-small">' + label + '<input type="text" data-map-field="' + name + '" value="' + esc(mapEdit[name]) + '" /></label>';
+            return '<label class="amp-small">' + label + '<input type="text" data-map-field="' + name + '" value="' + esc(mapEdit[name]) + '"' + (mapEdit['now' + name] ? ' placeholder="now ' + esc(mapEdit['now' + name]) + '"' : '') + ' /></label>';
         }
 
         return '<tr class="amp-map-edit" data-path="' + esc(mapEdit.path) + '"><td colspan="' + (mapIds.length + 3) + '"><div class="amp-map-form">'
-            + field('AniDb', 'AniDB id') + field('Mal', 'MyAnimeList id') + field('AniList', 'AniList id')
+            + field('AniDb', 'AniDB id') + field('Mal', 'MyAnimeList id') + field('AniList', 'AniList id') + field('Tvdb', 'TVDB id') + field('Tmdb', 'TMDB id')
             + mapButton('save', 'Save', true) + mapButton('cancel', 'Cancel')
-            + '<span class="amp-small amp-muted">An AniDB id left empty is looked up from the MyAnimeList or AniList id; where there is none, the show is filled from those sites alone.</span>'
+            + '<span class="amp-small amp-muted">An AniDB id left empty is looked up from the MyAnimeList, AniList or TVDB id. TVDB and TMDB ids left empty are taken from the mappings; ids you type are kept. With no AniDB, MyAnimeList or AniList id, the show is left to the server&#39;s TVDB and TMDB providers.</span>'
             + '</div></td></tr>';
     }
 
@@ -1229,11 +1245,16 @@ function aniMetaPlusPage(host) {
                 mapAct(view, 'Lift', { Path: path }, 'Lifted');
             }
         } else if (act === 'edit' && record) {
+            var isManual = mapStatus(record) === 'Manual';
             mapEdit = {
                 path: path,
                 AniDb: mapId(record.Ids, mapIds[0][2]),
                 Mal: mapId(record.Ids, mapIds[1][2]),
-                AniList: mapId(record.Ids, mapIds[2][2])
+                AniList: mapId(record.Ids, mapIds[2][2]),
+                Tvdb: isManual ? mapId(record.Ids, mapIds[3][2]) : '',
+                Tmdb: isManual ? mapId(record.Ids, mapIds[4][2]) : '',
+                nowTvdb: isManual ? '' : mapId(record.Ids, mapIds[3][2]),
+                nowTmdb: isManual ? '' : mapId(record.Ids, mapIds[4][2])
             };
             renderMapping(view);
         } else if (act === 'cancel') {
@@ -1243,7 +1264,9 @@ function aniMetaPlusPage(host) {
             var aniDb = mapEdit.AniDb.trim();
             var malId = mapEdit.Mal.trim();
             var aniListId = mapEdit.AniList.trim();
-            if (!aniDb && !malId && !aniListId) {
+            var tvdbId = mapEdit.Tvdb.trim();
+            var tmdbId = mapEdit.Tmdb.trim();
+            if (!aniDb && !malId && !aniListId && !tvdbId && !tmdbId) {
                 notify('At least one id is required');
                 return;
             }
@@ -1263,9 +1286,19 @@ function aniMetaPlusPage(host) {
                 return;
             }
 
+            if (tvdbId && !/^[0-9]+$/.test(tvdbId)) {
+                notify('The TVDB id must be digits');
+                return;
+            }
+
+            if (tmdbId && !/^[0-9]+$/.test(tmdbId)) {
+                notify('The TMDB id must be digits');
+                return;
+            }
+
             var edit = mapEdit;
             mapEdit = null;
-            mapAct(view, 'Manual', { Path: path, AniDb: aniDb, Mal: malId, AniList: aniListId }, 'Saved; refreshing');
+            mapAct(view, 'Manual', { Path: path, AniDb: aniDb, Mal: malId, AniList: aniListId, Tvdb: tvdbId, Tmdb: tmdbId }, 'Saved; refreshing');
         }
     }
 

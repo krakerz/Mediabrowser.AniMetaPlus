@@ -74,6 +74,12 @@ public class IdManualRequest
 
     /// <summary>Gets or sets the AniList id, or empty for none.</summary>
     public string AniList { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the TVDB id, or empty for none.</summary>
+    public string Tvdb { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the TMDB id, or empty for none.</summary>
+    public string Tmdb { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -277,7 +283,7 @@ public class AniMetaPlusController(ILogger<AniMetaPlusController> logger) : Cont
     {
         try
         {
-            return await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, logger).ConfigureAwait(false) is { } row ? row : NotFound();
+            return await AniMetaApi.SetIds(request.Path, request.AniDb, request.Mal, request.AniList, request.Tvdb, request.Tmdb, logger).ConfigureAwait(false) is { } row ? row : NotFound();
         }
         catch (ArgumentException ex)
         {

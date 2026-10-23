@@ -223,6 +223,12 @@ public class IdRecord
     /// <summary>The id check finds the AniDB id doubtful and left it alone.</summary>
     public const string Suspect = "Suspect";
 
+    /// <summary>
+    /// The AniDB-keyed mappings and the MyAnimeList or AniList ones file the show under different
+    /// TVDB ids. The plugin asked TheTVDB which exists and flags the show either way.
+    /// </summary>
+    public const string TvdbConflict = "TvdbConflict";
+
     /// <summary>The owner confirmed the ids.</summary>
     public const string Verified = "Verified";
 
@@ -235,13 +241,17 @@ public class IdRecord
     /// <summary>Gets or sets the show's name when it was recorded.</summary>
     public string ItemName { get; set => field = value ?? string.Empty; } = string.Empty;
 
-    /// <summary>Gets or sets the status: Corrected, Suspect, Verified or Manual.</summary>
+    /// <summary>Gets or sets the status: Corrected, Suspect, TvdbConflict, Verified or Manual.</summary>
     public string Status { get; set => field = value ?? string.Empty; } = string.Empty;
 
     /// <summary>Gets or sets the ids the show had before, by provider.</summary>
     public Dictionary<string, string> OldIds { get; set => field = value ?? new(); } = new();
 
-    /// <summary>Gets or sets the ids the show has now, or for a suspect the candidates, by provider.</summary>
+    /// <summary>
+    /// Gets or sets the ids the show has now, or for a suspect the candidates, by provider. A TVDB
+    /// conflict also holds TvdbByAniDb and TvdbByLink (the two ids in dispute), TvdbLink (the entry
+    /// behind the second, such as "mal:59415") and TvdbOutcome (Kept, Switched or Unknown).
+    /// </summary>
     public Dictionary<string, string> NewIds { get; set => field = value ?? new(); } = new();
 
     /// <summary>Gets or sets why, in a short phrase.</summary>

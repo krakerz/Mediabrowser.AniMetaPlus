@@ -198,4 +198,85 @@ public class IdRecordTests
         Assert.Null(animeId);
         Assert.Equal(string.Empty, ids["AniDB"]);
     }
+
+    [Fact]
+    public void ReadsTheTvdbAndTmdbHandIds()
+    {
+        var ids = AniMetaApi.ParseHandIds("", "", "", "480909", "");
+
+        Assert.Equal("480909", ids["Tvdb"]);
+        Assert.Equal(string.Empty, ids["Tmdb"]);
+        Assert.Equal(string.Empty, ids["AniDB"]);
+        Assert.Equal("77", AniMetaApi.ParseHandIds("", "", "", "", " 77 ")["Tmdb"]);
+    }
+
+    [Theory]
+    [InlineData("", "", "", "12a", "")]
+    [InlineData("", "", "", "", "x")]
+    [InlineData("", "", "", "", "")]
+    public void RefusesTvdbAndTmdbHandIdsThatAreNotDigitsOrAllEmpty(string aniDb, string mal, string aniList, string tvdb, string tmdb)
+        => Assert.Throws<ArgumentException>(() => AniMetaApi.ParseHandIds(aniDb, mal, aniList, tvdb, tmdb));
+
+    [Fact]
+    public async Task AsksForTheAniDbIdUnderTheTvdbIdWhereNoLinkResolves()
+    {
+        var ids = AniMetaApi.ParseHandIds("", "", "", "480909", "");
+        string? askedTvdb = null;
+        string? askedTmdb = null;
+
+        var animeId = await AniMetaApi.HandAniDbId(
+            ids,
+            _ => Task.FromResult<string?>(null),
+            (tvdb, tmdb) =>
+            {
+                askedTvdb = tvdb;
+                askedTmdb = tmdb;
+
+                return Task.FromResult<string?>("18777");
+            });
+
+        Assert.Equal("18777", animeId);
+        Assert.Equal("18777", ids["AniDB"]);
+        Assert.Equal("480909", askedTvdb);
+        Assert.Equal(string.Empty, askedTmdb);
+    }
+
+    [Fact]
+    public async Task DoesNotAskUnderTheTvdbIdWhereTheLinksResolve()
+    {
+        var ids = AniMetaApi.ParseHandIds("", "100", "", "480909", "");
+        var asked = false;
+
+        var animeId = await AniMetaApi.HandAniDbId(
+            ids,
+            _ => Task.FromResult<string?>("456"),
+            (_, _) =>
+            {
+                asked = true;
+
+                return Task.FromResult<string?>("1");
+            });
+
+        Assert.Equal("456", animeId);
+        Assert.False(asked);
+    }
+
+    [Theory]
+    [InlineData(IdRecord.Corrected, "", "9", true)]
+    [InlineData(IdRecord.TvdbConflict, "452665", "480909", true)]
+    [InlineData(IdRecord.TvdbConflict, "452665", "452665", false)]
+    [InlineData(IdRecord.TvdbConflict, "", "480909", false)]
+    [InlineData(IdRecord.Suspect, "452665", "480909", false)]
+    [InlineData(IdRecord.Manual, "452665", "480909", false)]
+    public void RevertsOnlyACorrectionOrAReplacedTvdbId(string status, string oldTvdb, string currentTvdb, bool expected)
+    {
+        var record = new IdRecord { Status = status };
+        if (oldTvdb.Length > 0)
+        {
+            record.OldIds["Tvdb"] = oldTvdb;
+        }
+
+        Assert.Equal(expected, AniMetaApi.CanRevert(record, new Dictionary<string, string> { ["Tvdb"] = currentTvdb }));
+        Assert.False(AniMetaApi.CanRevert(null, new Dictionary<string, string>()));
+    }
 }

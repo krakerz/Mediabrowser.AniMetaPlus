@@ -146,7 +146,16 @@ internal static class AniDbMappings
 
         var byTmdb = await AniBridgeMappings.ResolveSeriesIdByTmdb(appPaths, tmdbId, logger, cancellationToken).ConfigureAwait(false);
 
-        return string.IsNullOrEmpty(byTmdb) ? null : new MappedSeries(byTmdb, AniBridge, "TMDB", tmdbId!);
+        if (!string.IsNullOrEmpty(byTmdb))
+        {
+            return new MappedSeries(byTmdb, AniBridge, "TMDB", tmdbId!);
+        }
+
+        // Last, for a TVDB id the AniDB side does not carry, such as the one the MyAnimeList and
+        // AniList entries are filed under where AniDB's own still names a show TVDB has dropped.
+        var byLinks = await AniBridgeMappings.ResolveSeriesIdByTvdbLinks(appPaths, tvdbId, logger, cancellationToken).ConfigureAwait(false);
+
+        return string.IsNullOrEmpty(byLinks) ? null : new MappedSeries(byLinks, "the AniBridge mappings' MyAnimeList and AniList links", "TVDB", tvdbId!);
     }
 
     /// <summary>
@@ -399,9 +408,7 @@ internal static class AniDbMappings
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        var tvdbId = await AniDbMappingOverrides.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
-            ?? await AniBridgeMappings.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
-            ?? await AniDbAnimeList.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+        var (tvdbId, _) = await ResolvePrimaryTvdb(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
 
         // Only the overrides and AniBridge carry TMDB show ids; the anime list has them for
         // movies alone.
@@ -412,6 +419,125 @@ internal static class AniDbMappings
         // than an id, and a placeholder written onto a show would send the other provider
         // looking for a series that does not exist.
         return new MappedIds(Numeric(tvdbId), Numeric(tmdbId), null);
+    }
+
+    /// <summary>
+    /// The TVDB show the mapping sources file an entry under, and every other show the
+    /// MyAnimeList and AniList entries that are the same anime are filed under, when those differ.
+    /// </summary>
+    /// <remarks>
+    /// The AniDB-keyed TVDB id is the one written onto a show, and TheTVDB drops and merges
+    /// series, so it can name one that no longer exists while the entries keyed the other way
+    /// have been corrected. The answer says where they disagree and leaves it to the caller to
+    /// find out which TheTVDB still has. An id from the overrides is final: the owner wrote it.
+    /// </remarks>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="animeId">The AniDB id of the entry the show begins at.</param>
+    /// <param name="itemIds">The ids the item carries, whose AniList and MyAnimeList ids are asked about too.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The candidates.</returns>
+    public static async Task<TvdbCandidates> ResolveTvdbCandidates(
+        IApplicationPaths appPaths,
+        string animeId,
+        IReadOnlyDictionary<string, string> itemIds,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var (primary, overridden) = await ResolvePrimaryTvdb(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+        var index = await AniBridgeMappings.GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return CandidatesFrom(index, animeId, Numeric(primary), overridden, itemIds);
+    }
+
+    /// <summary>
+    /// Works out the candidates from an index already read.
+    /// </summary>
+    /// <param name="index">The AniBridge mappings, or <c>null</c> where they are off.</param>
+    /// <param name="animeId">The AniDB id of the entry the show begins at.</param>
+    /// <param name="primary">The TVDB id the sources file the entry under, where numeric.</param>
+    /// <param name="overridden">Whether the overrides gave it.</param>
+    /// <param name="itemIds">The ids the item carries.</param>
+    /// <returns>The candidates.</returns>
+    internal static TvdbCandidates CandidatesFrom(
+        AniBridgeIndex? index,
+        string animeId,
+        string? primary,
+        bool overridden,
+        IReadOnlyDictionary<string, string> itemIds)
+    {
+        if (index == null || primary == null || overridden)
+        {
+            return new TvdbCandidates(primary, overridden, []);
+        }
+
+        var links = new List<string>(4);
+
+        foreach (var prefix in new[] { "mal", "anilist" })
+        {
+            if (index.LinkOf(animeId, prefix) is { } own)
+            {
+                links.Add(prefix + ":" + own);
+            }
+        }
+
+        // An id on the item that the mappings link to another entry is a different season's id
+        // (or a wrong one), and what TVDB files that under says nothing about this show.
+        foreach (var link in AniDbSeriesProvider.LinksFromIds(itemIds))
+        {
+            var split = link.IndexOf(':');
+
+            if (index.AnimeIdByLink(link[..split], link[(split + 1)..]) is { } linked && !string.Equals(linked, animeId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            links.Add(link);
+        }
+
+        var alternatives = new List<LinkedTvdb>(3);
+
+        // One link agreeing with the AniDB side settles nothing: the MyAnimeList and AniList
+        // entries are corrected at different times (Dark Machine had MyAnimeList on the dropped
+        // show and AniList on the new one), so any link naming another show is a dispute.
+        foreach (var link in links.Distinct(StringComparer.Ordinal))
+        {
+            var split = link.IndexOf(':');
+
+            if (index.TvdbShowByLink(link[..split], link[(split + 1)..]) is not { } tvdbId
+                || string.Equals(tvdbId, primary, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (alternatives.Count < 3 && !alternatives.Any(alternative => alternative.TvdbId == tvdbId))
+            {
+                alternatives.Add(new LinkedTvdb(tvdbId, link));
+            }
+        }
+
+        return new TvdbCandidates(primary, overridden, alternatives);
+    }
+
+    /// <summary>
+    /// The TVDB id for an entry from the first source that files it under one, and whether that
+    /// was the overrides.
+    /// </summary>
+    private static async Task<(string? Id, bool Overridden)> ResolvePrimaryTvdb(
+        IApplicationPaths appPaths,
+        string animeId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (await AniDbMappingOverrides.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false) is { } overridden)
+        {
+            return (overridden, true);
+        }
+
+        var tvdbId = await AniBridgeMappings.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false)
+            ?? await AniDbAnimeList.ResolveSeriesKey(appPaths, animeId, logger, cancellationToken).ConfigureAwait(false);
+
+        return (tvdbId, false);
     }
 
     /// <summary>

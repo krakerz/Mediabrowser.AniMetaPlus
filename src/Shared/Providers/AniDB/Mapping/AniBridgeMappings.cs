@@ -199,6 +199,74 @@ internal static class AniBridgeMappings
     }
 
     /// <summary>
+    /// The TVDB show the mappings file a MyAnimeList or AniList entry under, from the entry's own
+    /// key rather than from the AniDB entry linked to it.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="prefix">The mappings' name for the database, "mal" or "anilist".</param>
+    /// <param name="id">The id in that database.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The TVDB show id, or <c>null</c> when the mappings file that entry under no show.</returns>
+    public static async Task<string?> ResolveTvdbShowByLink(
+        IApplicationPaths appPaths,
+        string prefix,
+        string? id,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(id) || !id.All(char.IsAsciiDigit))
+        {
+            return null;
+        }
+
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        return index?.TvdbShowByLink(prefix, id);
+    }
+
+    /// <summary>
+    /// The AniDB entry a show begins in, found from the TVDB id through the MyAnimeList and
+    /// AniList entries the mappings file at its start. For a TVDB id the AniDB side does not
+    /// carry, which is the case where the two sides disagree about the show.
+    /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
+    /// <param name="tvdbId">The TVDB id of the series.</param>
+    /// <param name="logger">The logger of whichever provider is asking.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The AniDB id, or <c>null</c> when no linked entry leads to one.</returns>
+    public static async Task<string?> ResolveSeriesIdByTvdbLinks(
+        IApplicationPaths appPaths,
+        string? tvdbId,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(tvdbId) || !tvdbId.All(char.IsAsciiDigit))
+        {
+            return null;
+        }
+
+        var index = await GetIndex(appPaths, logger, cancellationToken).ConfigureAwait(false);
+
+        if (index == null)
+        {
+            return null;
+        }
+
+        foreach (var link in index.FirstSeasonLinksByTvdb(tvdbId))
+        {
+            var split = link.IndexOf(':');
+
+            if (index.AnimeIdByLink(link[..split], link[(split + 1)..]) is { } animeId)
+            {
+                return animeId;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// What the mappings say an entry is of its show.
     /// </summary>
     /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
@@ -462,7 +530,7 @@ internal static class AniBridgeMappings
     /// <param name="logger">The logger of whichever provider is asking.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The mappings.</returns>
-    private static Task<AniBridgeIndex?> GetIndex(IApplicationPaths appPaths, ILogger logger, CancellationToken cancellationToken)
+    internal static Task<AniBridgeIndex?> GetIndex(IApplicationPaths appPaths, ILogger logger, CancellationToken cancellationToken)
     {
         if (!Plugin.Instance.Configuration.UseAniBridgeMappings)
         {
