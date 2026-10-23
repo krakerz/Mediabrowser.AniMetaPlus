@@ -48,13 +48,27 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
     private async Task<MetadataResult<Movie>> GetMovieMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
         RefreshScope.Enter(info);
-        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
+        // Older versions stored a movie's hand-mapped AniList or MyAnimeList link as its AniDB id.
+        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb) is var stored && AniDbSeriesProvider.IsAniDbId(stored) ? stored : null;
         var unidentifiedKey = ItemKeys.ForUnidentified("Movie", info.Path, info.Name);
         MappedMovie? mapped = null;
 
         if (string.IsNullOrEmpty(animeId))
         {
             animeId = Queues.MappedAnimeId(unidentifiedKey);
+
+            // Mapped to an AniList or MyAnimeList entry: AniDB is asked only once the mappings
+            // link that entry to one of its own.
+            if (AniDbSeriesProvider.LinkParts(animeId) is { } link)
+            {
+                animeId = await AniBridgeMappings.ResolveSeriesIdByLink(appPaths, link.Prefix, link.Id, _logger, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(animeId))
+                {
+                    Queues.ClearUnmatched(unidentifiedKey);
+
+                    return await GetLinkedMetadata(link, info, cancellationToken).ConfigureAwait(false);
+                }
+            }
         }
 
         // An id another provider has already settled on names the movie outright, where the name
@@ -202,6 +216,47 @@ public class AniDbMovieProvider(IApplicationPaths appPaths, PluginLog<AniDbMovie
             return new MetadataResult<Movie>();
         }
 
+        result.HasMetadata = merged.HasData;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Fills a movie AniDB has no entry for from the AniList or MyAnimeList entry it is mapped
+    /// to, and from every other source in the order the owner set.
+    /// </summary>
+    private async Task<MetadataResult<Movie>> GetLinkedMetadata((string Source, string Prefix, string Id) link, MovieInfo info, CancellationToken cancellationToken)
+    {
+        var result = new MetadataResult<Movie> { Item = new Movie() };
+        result.Item.SetProviderId(link.Source, link.Id);
+
+        var context = new FetchContext
+        {
+            ItemKey = link.Prefix + ":" + link.Id,
+            ItemName = info.Name ?? string.Empty,
+            ItemPath = info.Path ?? string.Empty,
+            Year = info.Year,
+            Language = info.MetadataLanguage ?? "en",
+            IsMovie = true
+        };
+
+        foreach (var (provider, id) in info.ProviderIds)
+        {
+            context.Ids[provider] = id;
+        }
+
+        context.Ids[link.Source] = link.Id;
+
+        var merged = await SeriesMerge.Apply(result, SourceOutcome.Missing, context, _logger, cancellationToken).ConfigureAwait(false);
+
+        if (merged.PausedFor is { } paused)
+        {
+            Queues.Wait(context.ItemKey, context.ItemName, context.ItemPath, paused);
+
+            return new MetadataResult<Movie>();
+        }
+
+        _logger.LogInformation("{MovieName} has no AniDB entry and is filled from {Source} {Id} and the other sources", info.Name, link.Source, link.Id);
         result.HasMetadata = merged.HasData;
 
         return result;
