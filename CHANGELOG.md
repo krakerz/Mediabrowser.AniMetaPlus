@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.24.1] — 2026-10-23
+
+### Fixed
+- A movie mapped by hand to an AniList or MyAnimeList entry is filled from it instead of asking AniDB with that id, which AniDB refused
+- Movies that kept such a link as their AniDB id stop sending it to AniDB
+
 ## [2.24.0] — 2026-10-23
 
 ### Added

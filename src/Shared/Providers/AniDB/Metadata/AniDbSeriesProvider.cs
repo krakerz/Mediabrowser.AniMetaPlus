@@ -444,7 +444,9 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     private async Task<MetadataResult<Series>> GetSeriesMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
         RefreshScope.Enter(info);
-        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb);
+
+        // Older versions could store a hand-mapped link as the AniDB id: it is not one.
+        var animeId = info.ProviderIds.GetValueOrDefault(ProviderNames.AniDb) is var stored && IsAniDbId(stored) ? stored : null;
         var unidentifiedKey = ItemKeys.ForUnidentified("Series", info.Path, info.Name);
 
         // What the owner mapped by hand settles the question before anything is guessed.
@@ -640,6 +642,14 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
 
         return null;
     }
+
+    /// <summary>
+    /// Tells an AniDB id, which is all digits, from a link or anything else stored in its place.
+    /// </summary>
+    /// <param name="id">The id.</param>
+    /// <returns><c>true</c> for an AniDB id.</returns>
+    internal static bool IsAniDbId([NotNullWhen(true)] string? id)
+        => !string.IsNullOrEmpty(id) && id.All(char.IsAsciiDigit);
 
     /// <summary>
     /// Gets the AniList or MyAnimeList mapping an item's own ids make, AniList's first.
@@ -1475,6 +1485,12 @@ public partial class AniDbSeriesProvider : IRemoteMetadataProvider<Series, Serie
     /// <returns>The path to the series data file.</returns>
     public static async Task<string> GetSeriesData(IApplicationPaths appPaths, string seriesId, CancellationToken cancellationToken)
     {
+        // An AniList or MyAnimeList link taken for an AniDB id would only spend a request on a refusal.
+        if (!IsAniDbId(seriesId))
+        {
+            throw new InvalidOperationException("Not an AniDB id: " + seriesId);
+        }
+
         var seriesDataPath = Path.Combine(GetSeriesDataPath(appPaths, seriesId), "series.xml");
 
         if (!NeedsDownload(seriesDataPath) || (IsCacheOnly(seriesId) && HasCopy(seriesDataPath)))
