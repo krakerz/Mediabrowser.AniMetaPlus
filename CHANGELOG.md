@@ -4,6 +4,12 @@ All notable changes to AniMeta+ are documented here. The format follows Keep a C
 
 ## [Unreleased]
 
+## [2.25.0] — 2026-10-26
+
+### Changed
+- The Jellyfin plugin's requests identify as AniMeta+ instead of the Jellyfin AniDB plugin
+- Source files taken from the Jellyfin AniDB plugin carry a notice of their origin, and its authors are credited in the README and CONTRIBUTORS.md
+
 ## [2.24.1] — 2026-10-23
 
 ### Fixed

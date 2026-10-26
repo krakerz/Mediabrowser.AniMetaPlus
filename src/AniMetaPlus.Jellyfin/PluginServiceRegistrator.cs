@@ -1,3 +1,7 @@
+// Derived from jellyfin-plugin-anidb (https://github.com/jellyfin/jellyfin-plugin-anidb),
+// Copyright (C) the Jellyfin contributors, licensed GPL-2.0-only.
+// Modified for AniMeta+ since 2026-10-14; the changes are in this repository's git history.
+
 using System;
 using System.Net;
 using System.Net.Http;
@@ -29,7 +33,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
                     applicationHost.Name.Replace(' ', '-'),
                     applicationHost.ApplicationVersionString));
                 client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(
-                    "jellyfin-plugin-anidb",
+                    "animetaplus",
                     ResolveVersion()));
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Xml, 0.9));
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*", 0.8));

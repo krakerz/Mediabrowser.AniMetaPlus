@@ -1,5 +1,7 @@
 # AniMeta+
 
+![AniMeta+ settings page](https://gist.githubusercontent.com/krakerz/072045a807d5dbdb5bb80ad6dbc0ce29/raw/screenshot.png)
+
 Anime metadata for Emby and Jellyfin from AniDB, AniList and MyAnimeList, with the server's own TVDB and TMDB providers as fallbacks.
 
 ## Description
@@ -8,7 +10,7 @@ AniDB bans an IP address when it is asked too often, and every install of the ol
 
 AniMeta+ identifies anime from a local AniDB titles dump and mapping files first, and only asks AniDB with the user's own registered client name. It remembers every failed request so it does not repeat it, and fills each field from other sources in an order the user sets. One codebase builds two plugins, one for Emby and one for Jellyfin.
 
-Licensed under GPL-2.0, see [LICENSE](LICENSE). The bundled Lucide icons are under the ISC license, see `src/Shared/Web/LICENSE-lucide.txt`.
+AniMeta+ is a fork of the [Jellyfin AniDB plugin](https://github.com/jellyfin/jellyfin-plugin-anidb), see [Credits](#credits). Licensed under GPL-2.0, as upstream is, see [LICENSE](LICENSE). The bundled Lucide icons are under the ISC license, see `src/Shared/Web/LICENSE-lucide.txt`.
 
 ## Features
 
@@ -173,6 +175,15 @@ On Emby it is automatic: AniMeta+ lists a show's episodes from TheTVDB, renumber
 
 **Can I move my mappings between Emby and Jellyfin?**
 Yes, using Import/Export.
+
+## Credits
+
+AniMeta+ started as a fork of [jellyfin/jellyfin-plugin-anidb](https://github.com/jellyfin/jellyfin-plugin-anidb), taken from its `master` branch in September 2026. Thanks to [its contributors](https://github.com/jellyfin/jellyfin-plugin-anidb/graphs/contributors) and to everyone listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).
+
+- From upstream, with changes: the AniDB provider core under `src/Shared/Providers/AniDB/` (title matching, AniBridge and Anime-Lists mappings, season resolving, mapping overrides, similar anime, episode and description parsing), the Jellyfin service registration, the original unit tests and `docs/mapping-overrides.md`.
+- New in AniMeta+: the Emby plugin, the AniList, MyAnimeList, TheTVDB and TheMovieDb sources and the source order, blocks and review, the request pacing, and the settings page.
+
+AniDB, AniList, MyAnimeList, AniBridge and Anime-Lists supply the data. The icons are [Lucide](https://lucide.dev) (ISC).
 
 ---
 

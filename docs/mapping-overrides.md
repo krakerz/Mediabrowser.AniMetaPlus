@@ -1,5 +1,7 @@
 # Mapping overrides
 
+_Adapted from [jellyfin-plugin-anidb](https://github.com/jellyfin/jellyfin-plugin-anidb)'s docs/mapping-overrides.md, GPL-2.0-only._
+
 The plugin works out which AniDB entry fills which season from two downloaded sources, the
 [AniBridge mappings](https://github.com/anibridge/anibridge-mappings) and the
 [Anime-Lists](https://github.com/Anime-Lists/anime-lists) anime list. Both describe AniDB as it
