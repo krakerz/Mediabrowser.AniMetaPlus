@@ -6,6 +6,18 @@
  - [dkanada](https://github.com/dkanada)
  - [StillLoading](https://github.com/StillLoading)
  - [Nalsai](https://github.com/Nalsai)
+ - [Shadowghost](https://github.com/Shadowghost)
+ - [oddstr13](https://github.com/oddstr13)
+ - [crobibero](https://github.com/crobibero)
+ - [Bond-009](https://github.com/Bond-009)
+ - [EraYaN](https://github.com/EraYaN)
+ - [barronpm](https://github.com/barronpm)
+ - [azagon63](https://github.com/azagon63)
+ - [MateusToyama](https://github.com/MateusToyama)
+ - [Scholars-Mate](https://github.com/Scholars-Mate)
+ - [enter-a-random-username](https://github.com/enter-a-random-username)
+ - [trajano](https://github.com/trajano)
+ - [zepx](https://github.com/zepx)
 
 # Emby Contributors
 
